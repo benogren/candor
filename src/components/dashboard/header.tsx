@@ -1,17 +1,18 @@
 'use client';
 
-import { useState, useEffect, ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import supabase from '@/lib/supabase/client';
-import { useAuth } from '@/lib/context/auth-context';
+import { useAuth, useIsAdmin } from '@/lib/context/auth-context';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator
 } from '@/components/ui/dropdown-menu';
 import { toast } from '@/components/ui/use-toast';
 import { RefreshCw } from 'lucide-react';
@@ -36,129 +37,48 @@ export default function Header({ user, company, children }: HeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { memberStatus, refreshStatus } = useAuth();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [permissionCheckAttempts, setPermissionCheckAttempts] = useState(0);
+  const { isAdmin, loading: isAdminLoading } = useIsAdmin();
   
-  const ADMIN_ONLY_PATHS = ['/dashboard/team'];
+  const ADMIN_ONLY_PATHS = ['/dashboard/team', '/dashboard/admin/orgchart'];
   const requiresAdmin = ADMIN_ONLY_PATHS.some(path => pathname?.startsWith(path));
 
-  // Add initial delay to ensure auth is loaded
+  // Check if user has permission to access this page
   useEffect(() => {
-    async function checkPermissions() {
-      try {
-        console.log("Checking permissions... Attempt:", permissionCheckAttempts + 1);
-        
-        // Don't proceed if we don't have a user ID
-        if (!user?.id) {
-          // console.log("Skipping permission check - waiting for user data");
-          setPermissionCheckAttempts(prev => prev + 1);
-          return;
-        }
-        
-        // First, ensure we have the latest member status
-        if (refreshStatus) {
-          await refreshStatus();
-        } else {
-          console.error("refreshStatus is undefined!");
-        }
-  
-        // Handle deactivated users
-        if (memberStatus === "deactivated") {
-          router.push("/deactivated");
-          return;
-        }
-  
-        // Check admin privileges if needed
-        if (requiresAdmin || isAdmin === null) {
-          const { data, error } = await supabase
-            .from("company_members")
-            .select("role")
-            .eq("id", user.id)
-            .single();
-            
-          if (error) {
-            console.error("Error checking admin status:", error);
-            
-            // If we've already tried a few times and still have an error,
-            // redirect to dashboard rather than getting stuck
-            if (permissionCheckAttempts >= 2) {
-              toast({
-                title: "Error checking permissions",
-                description: "Redirecting to dashboard for safety",
-                variant: "destructive",
-              });
-              router.push("/dashboard");
-              return;
-            }
-            
-            // Increment attempts and try again
-            setPermissionCheckAttempts(prev => prev + 1);
-            setIsLoading(true);
-            return;
-          }
-  
-          const userIsAdmin = data.role === "admin";
-          setIsAdmin(userIsAdmin);
-  
-          if (requiresAdmin && !userIsAdmin) {
-            toast({
-              title: "Access Denied",
-              description: "You need admin privileges to access this page.",
-              variant: "destructive",
-            });
-            router.push("/dashboard");
-            return;
-          }
-        }
-  
-        // Show pending notification if needed
-        if (memberStatus === "pending") {
-          toast({
-            title: "Account Pending Approval",
-            description: "Your account is waiting for admin approval.",
-            variant: "default",
-          });
-        }
-  
-        setIsLoading(false);
-      } catch (error) {
-        console.error("Error checking permissions:", error);
-        setIsLoading(false);
+    async function checkAccess() {
+      // Ensure we have the latest member status
+      if (refreshStatus) {
+        await refreshStatus();
+      }
+
+      // Handle deactivated users
+      if (memberStatus === "deactivated") {
+        router.push("/deactivated");
+        return;
+      }
+
+      // Check admin access for restricted pages
+      if (requiresAdmin && !isAdmin && !isAdminLoading) {
+        toast({
+          title: "Access Denied",
+          description: "You need admin privileges to access this page.",
+          variant: "destructive",
+        });
+        router.push("/dashboard");
+        return;
+      }
+
+      // Show pending notification if needed
+      if (memberStatus === "pending") {
+        toast({
+          title: "Account Pending Approval",
+          description: "Your account is waiting for admin approval.",
+          variant: "default",
+        });
       }
     }
     
-    const initialCheckDelay = setTimeout(() => {
-      checkPermissions();
-    }, 500);
-    
-    return () => clearTimeout(initialCheckDelay);
-  }, [user, router, memberStatus, refreshStatus, requiresAdmin, isAdmin, permissionCheckAttempts]);
-
-  // Increase the timeout to give more time for admin checks to complete
-  useEffect(() => {
-    if (!isLoading) return;
-    
-    const timeout = setTimeout(() => {
-      // console.log("Permission check timeout triggered");
-      
-      if (isLoading) {
-        // If still loading after multiple attempts, give up and redirect
-        if (permissionCheckAttempts >= 2) {
-          setIsLoading(false);
-          if (requiresAdmin && isAdmin !== true) {
-            // console.log("Redirecting to dashboard after timeout");
-            router.push("/dashboard");
-          }
-        } else {
-          // Try one more time before giving up
-          setPermissionCheckAttempts(prev => prev + 1);
-        }
-      }
-    }, 5000); // Extended to 5 seconds
-    
-    return () => clearTimeout(timeout);
-  }, [isLoading, requiresAdmin, isAdmin, router, permissionCheckAttempts]);
+    checkAccess();
+  }, [user, router, memberStatus, refreshStatus, requiresAdmin, isAdmin, isAdminLoading]);
 
   const handleSignOut = async () => {
     try {
@@ -182,7 +102,7 @@ export default function Header({ user, company, children }: HeaderProps) {
     return "U";
   };
 
-  if (requiresAdmin && isLoading) {
+  if (requiresAdmin && isAdminLoading) {
     return (
       <>
         <header className="bg-white shadow-sm">
@@ -202,7 +122,7 @@ export default function Header({ user, company, children }: HeaderProps) {
         </header>
         <div className="flex flex-col justify-center items-center min-h-screen">
           <RefreshCw className="h-8 w-8 animate-spin text-gray-400 mb-2" />
-          <p className="text-gray-500">Checking permissions... {permissionCheckAttempts > 0 ? `(Attempt ${permissionCheckAttempts + 1})` : ''}</p>
+          <p className="text-gray-500">Checking permissions...</p>
         </div>
       </>
     );
@@ -212,21 +132,45 @@ export default function Header({ user, company, children }: HeaderProps) {
     <>
       <header className="bg-white shadow-sm">
         <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-          <Link href="/dashboard" className="text-xl font-bold text-slate-900">
-            <Image src="/logo/candor_cerulean.png" alt="Candor" width={98} height={25} />
-          </Link>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative rounded-full">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200">
-                  {getInitial()}
-                </span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleSignOut}>Sign Out</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center">
+            <Link href="/dashboard" className="text-xl font-bold text-slate-900">
+              <Image src="/logo/candor_cerulean.png" alt="Candor" width={98} height={25} />
+            </Link>
+            {company?.name && (
+              <span className="ml-4 mt-2 text-sm text-slate-500">{company.name}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-4">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative rounded-full">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200">
+                    {getInitial()}
+                  </span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard">Dashboard</Link>
+                </DropdownMenuItem>
+                {isAdmin && (
+                  <>
+                    <DropdownMenuItem asChild>
+                      <Link href="/dashboard/admin">Admin</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/dashboard/admin/orgchart">Organization Chart</Link>
+                    </DropdownMenuItem>
+                  </>
+                )}
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard/settings">Settings</Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut}>Sign Out</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </header>
       <main>{children}</main>

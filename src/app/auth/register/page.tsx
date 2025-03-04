@@ -224,12 +224,22 @@ export default function RegisterPage() {
       const isValid = await form.trigger(['name', 'email', 'password']);
       
       if (isValid) {
-        // If joining an existing company, skip company info step and submit the form
         if (existingCompanyId) {
-          // Call onSubmit directly with the current form values
           await onSubmit(form.getValues());
         } else {
-          setStep('companyInfo');
+          const emailValue = form.getValues().email;
+          const domain = emailValue.split('@')[1]?.split('.')[0] || '';
+      
+          setStep('companyInfo'); // Set the step first
+      
+          setTimeout(() => {
+            console.log('Setting company name:', domain.charAt(0).toUpperCase() + domain.slice(1));
+            form.setValue(
+              'companyName',
+              domain.charAt(0).toUpperCase() + domain.slice(1),
+              { shouldValidate: true, shouldDirty: true }
+            );
+          }, 0); // Wait for component to re-render
         }
       }
     } catch (error) {
@@ -265,7 +275,7 @@ export default function RegisterPage() {
                       <FormItem>
                         <FormLabel>Full Name</FormLabel>
                         <FormControl>
-                          <Input placeholder="John Doe" {...field} />
+                          <Input placeholder="Please enter your full name" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -302,7 +312,7 @@ export default function RegisterPage() {
                       <FormItem>
                         <FormLabel>Password</FormLabel>
                         <FormControl>
-                          <Input type="password" placeholder="********" {...field} />
+                          <Input type="password" placeholder="Please enter a password" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -368,9 +378,9 @@ export default function RegisterPage() {
           </Form>
         </CardContent>
         <CardFooter className="flex justify-center">
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-slate-500 font-light">
             Already have an account?{' '}
-            <Link href="/auth/login" className="text-blue-600 hover:underline">
+            <Link href="/auth/login" className="text-cerulean hover:underline">
               Login
             </Link>
           </p>

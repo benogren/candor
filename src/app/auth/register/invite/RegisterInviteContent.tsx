@@ -22,6 +22,8 @@ import { toast } from '@/components/ui/use-toast';
 import { Loader2, CheckCircle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import supabase from '@/lib/supabase/client';
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCircleCheck } from '@fortawesome/free-solid-svg-icons';
 
 // Define invite details type
 interface Company {
@@ -198,16 +200,18 @@ export default function RegisterInviteContent() {
         <CardHeader>
           <CardTitle className="text-2xl">Complete Your Registration</CardTitle>
           <CardDescription>
-            You&#39;ve been invited to join {inviteDetails?.companies?.name || 'your organization'}.
+            You&#39;ve been invited to join <strong>{inviteDetails?.companies?.name || 'your organization'}</strong>.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Alert className="mb-4 bg-green-50 border-green-200">
-            <CheckCircle className="h-4 w-4 text-green-600" />
+            
             <AlertTitle className="text-green-800">Invitation Verified</AlertTitle>
+            
             <AlertDescription className="text-green-700">
               Your invitation for {inviteDetails?.email} is valid.
             </AlertDescription>
+            
           </Alert>
           
           <Form {...form}>
@@ -219,7 +223,7 @@ export default function RegisterInviteContent() {
                   <FormItem>
                     <FormLabel>Full Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="John Doe" {...field} />
+                      <Input placeholder="Please enter your full name" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -232,7 +236,7 @@ export default function RegisterInviteContent() {
                   <FormItem>
                     <FormLabel>Password</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="********" {...field} />
+                      <Input type="password" placeholder="Please enter a password..." {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

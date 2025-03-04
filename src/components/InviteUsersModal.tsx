@@ -211,6 +211,9 @@ export default function InviteUsersModal({ isOpen, onClose, companyId, onSuccess
       
       // Trigger refresh of team members list
       onSuccess();
+      
+      // Close the modal
+      onClose();
     } catch (error) {
       console.error('Error inviting user:', error);
       toast({
@@ -284,6 +287,9 @@ export default function InviteUsersModal({ isOpen, onClose, companyId, onSuccess
         
         // Trigger refresh of team members list
         onSuccess();
+        
+        // Close the modal
+        onClose();
       } else {
         toast({
           title: 'Error inviting users',
@@ -358,6 +364,9 @@ export default function InviteUsersModal({ isOpen, onClose, companyId, onSuccess
         
         // Trigger refresh of team members list
         onSuccess();
+        
+        // Close the modal
+        onClose();
       } else {
         toast({
           title: 'Error inviting users',

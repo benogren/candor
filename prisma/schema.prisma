@@ -1,0 +1,43 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Company members table with manager relationships
+model company_members {
+  id         String   @id @default(uuid())
+  email      String   @unique
+  name       String?
+  role       String?  // 'member', 'admin', 'owner'
+  is_invited Boolean  @default(true) // This matches your actual schema
+  is_admin   Boolean? @default(false)
+  google_id  String?  @unique
+  manager_id String?
+  
+  // Self-relation for manager-direct report relationship
+  manager        company_members?  @relation("ManagerToDirectReports", fields: [manager_id], references: [id], onDelete: SetNull)
+  direct_reports company_members[] @relation("ManagerToDirectReports")
+  
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+// Integrations table for Google Workspace and other integrations
+model integrations {
+  id            Int       @id @default(autoincrement())
+  type          String    @unique
+  status        String    @default("pending")
+  access_token  String?   @db.Text
+  refresh_token String?   @db.Text
+  token_expiry  DateTime?
+  config        String?   @db.Text
+  last_sync_date DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+}

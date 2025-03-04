@@ -21,6 +21,7 @@ interface SuccessResult {
   id: string;
   email: string;
   name: string;
+  inviteCode?: string;
 }
 
 interface ErrorResult {
@@ -146,7 +147,7 @@ export async function POST(request: NextRequest) {
     console.log(`Processing ${users.length} users`);
     for (const user of users) {
       try {
-        const { email, name, role = 'member' } = user;
+        const { email, name = email.split('@')[0], role = 'member' } = user;
         
         if (!email) {
           console.log('Skipping user with no email:', user);
@@ -154,47 +155,57 @@ export async function POST(request: NextRequest) {
           continue;
         }
         
-        // Generate a UUID
-        const userId = crypto.randomUUID();
-        console.log(`Processing user: ${email}, ID: ${userId}`);
-        
-        // Insert profile
-        const { error: profileError } = await supabaseAdmin
-          .from('user_profiles')
-          .insert({
-            id: userId,
-            email: email,
-            name: name || email.split('@')[0], // Default name if not provided
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
+        // Check if email is already invited
+        const { data: existingInvite, error: inviteCheckError } = await supabaseAdmin
+          .from('invited_users')
+          .select('id')
+          .eq('email', email)
+          .eq('company_id', companyId)
+          .maybeSingle();
           
-        if (profileError) {
-          console.error(`Profile creation failed for ${email}:`, profileError);
-          results.errors.push({ 
-            user, 
-            message: `Profile creation failed: ${profileError.message}` 
+        if (inviteCheckError) {
+          console.error('Error checking for existing invite:', inviteCheckError);
+        }
+        
+        if (existingInvite) {
+          console.log('User already invited:', email);
+          results.success.push({
+            id: existingInvite.id,
+            email,
+            name,
           });
           continue;
         }
         
-        // Insert company member
-        const { error: memberError } = await supabaseAdmin
-          .from('company_members')
+        // Generate a UUID for the new user
+        const newUserId = crypto.randomUUID();
+        console.log('Generated new user ID:', newUserId);
+        
+        // Generate invite code
+        const { data: inviteCodeData } = await supabaseAdmin.rpc('generate_invite_code');
+        const inviteCode = inviteCodeData || Math.random().toString(36).substring(2, 10);
+        
+        // Insert into invited_users table
+        console.log('Creating invite for:', { email, name, id: newUserId });
+        const { data: inviteData, error: inviteError } = await supabaseAdmin
+          .from('invited_users')
           .insert({
-            id: userId,
+            id: newUserId,
+            email,
+            name,
+            role,
             company_id: companyId,
-            role: role,
-            status: 'pending',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
+            invite_code: inviteCode,
+            created_by: adminId,
+            created_at: new Date().toISOString()
+          })
+          .select();
           
-        if (memberError) {
-          console.error(`Company member creation failed for ${email}:`, memberError);
+        if (inviteError) {
+          console.error(`Invite creation failed for ${email}:`, inviteError);
           results.errors.push({ 
             user, 
-            message: `Company member creation failed: ${memberError.message}` 
+            message: `Invite creation failed: ${inviteError.message}` 
           });
           continue;
         }
@@ -202,9 +213,10 @@ export async function POST(request: NextRequest) {
         // Success
         console.log(`Successfully invited user: ${email}`);
         results.success.push({
-          id: userId,
-          email: email,
-          name: name || email.split('@')[0]
+          id: newUserId,
+          email,
+          name,
+          inviteCode
         });
       } catch (userError) {
         console.error('Error processing user:', user, userError);

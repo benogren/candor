@@ -1,3 +1,4 @@
+// lib/context/auth-context.tsx
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
@@ -12,9 +13,13 @@ interface AuthError {
   [key: string]: unknown;
 }
 
+// Add the user_role type to match your database enum
+type UserRole = 'member' | 'admin' | 'owner'; // Add any other roles you have
+
 interface AuthContextType {
   user: User | null;
   memberStatus: 'pending' | 'active' | 'deactivated' | null;
+  role: UserRole | null;  // Use role instead of isAdmin boolean
   loading: boolean;
   login: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   logout: () => Promise<void>;
@@ -24,17 +29,15 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // console.log('AuthProvider rendering');
-  
   const [user, setUser] = useState<User | null>(null);
   const [memberStatus, setMemberStatus] = useState<'pending' | 'active' | 'deactivated' | null>(null);
+  const [role, setRole] = useState<UserRole | null>(null);  // Add role state
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
 
-  // Implement a proper refreshStatus function
+  // Update refreshStatus to also refresh role
   async function refreshStatus() {
-    // console.log('Refreshing member status');
     if (!user?.id) {
       console.log('No user ID available to refresh status');
       return;
@@ -43,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data: memberData, error: memberError } = await supabase
         .from('company_members')
-        .select('status')
+        .select('status, role')  // Get role from the existing field
         .eq('id', user.id)
         .single();
 
@@ -53,8 +56,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (memberData) {
-        // console.log('Updated member status:', memberData.status);
         setMemberStatus(memberData.status as 'pending' | 'active' | 'deactivated');
+        setRole(memberData.role as UserRole);  // Set role
         
         if (memberData.status === 'deactivated') {
           router.push('/deactivated');
@@ -65,27 +68,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Update loadUser and auth state change handlers to get role
   useEffect(() => {
     async function loadUser() {
       try {
         setLoading(true);
         const { data } = await supabase.auth.getSession(); 
 
-        // console.log('Got session:', data);
-
         if (data.session?.user) {
-          // Use the User type directly from Supabase
           setUser(data.session.user);
 
           const { data: memberData, error: memberError } = await supabase
             .from('company_members')
-            .select('status')
+            .select('status, role')  // Get role
             .eq('id', data.session.user.id)
             .single();
 
           if (!memberError && memberData) {
-            // console.log('Got member data:', memberData);
             setMemberStatus(memberData.status as 'pending' | 'active' | 'deactivated');
+            setRole(memberData.role as UserRole);  // Set role
           }
         } else {
           console.warn('No session found, will redirect to login if needed...');
@@ -101,29 +102,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loadUser();
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      // console.log('Auth event:', event, 'Session:', session);
-
       if (event === 'SIGNED_OUT') {
-        // console.warn('User signed out! Redirecting...');
         setUser(null);
         setMemberStatus(null);
+        setRole(null);  // Reset role on sign out
         setTimeout(() => router.push('/auth/login'), 100);
       } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        // console.log('User signed in or token refreshed');
-        // Refresh member status when user signs in or token is refreshed
         if (session?.user) {
-          // Set user directly using Supabase User type
           setUser(session.user);
           
-          // We'll fetch the member status right away
+          // Fetch the member status and role
           supabase
             .from('company_members')
-            .select('status')
+            .select('status, role')  // Get role
             .eq('id', session.user.id)
             .single()
             .then(({ data, error }) => {
               if (!error && data) {
                 setMemberStatus(data.status as 'pending' | 'active' | 'deactivated');
+                setRole(data.role as UserRole);  // Set role
               }
             });
         }
@@ -135,50 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [router]);
 
-  // Only redirect to login if not loading and no user
-  useEffect(() => {
-    if (loading) return;
-    if (typeof window === 'undefined') return;
-
-    if (!user) {
-      // console.log('Redirecting to login from auth context...');
-      
-      // Store the current path to return to after login
-      if (pathname && !pathname.includes('/auth/')) {
-        try {
-          sessionStorage.setItem('redirectPath', pathname);
-        } catch (e) {
-          console.warn('Failed to set redirect path', e);
-        }
-      }
-      
-      // Check if we're not already on a login/register page to avoid redirect loops
-      const isAuthPage = pathname?.includes('/auth/');
-      
-      if (!isAuthPage) {
-        // Check if we've redirected multiple times in a short period
-        const now = Date.now();
-        const lastRedirect = parseInt(sessionStorage.getItem('lastRedirectTime') || '0', 10);
-        const redirectCount = parseInt(sessionStorage.getItem('redirectCount') || '0', 10);
-        
-        if (now - lastRedirect < 2000 && redirectCount > 2) {
-          console.warn('Too many redirects detected, staying on current page');
-          sessionStorage.setItem('redirectCount', '0');
-          return;
-        }
-        
-        // Update redirect tracking
-        sessionStorage.setItem('lastRedirectTime', now.toString());
-        sessionStorage.setItem('redirectCount', (redirectCount + 1).toString());
-        
-        setTimeout(() => router.push('/auth/login'), 100);
-      }
-    } else {
-      // Reset redirect count when user is available
-      sessionStorage.setItem('redirectCount', '0');
-    }
-  }, [user, loading, router, pathname]);
-
+  // Update login to also set role
   async function login(email: string, password: string) {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -187,17 +141,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (!error) {
-        // Set user directly without type casting
         setUser(data.user);
 
         const { data: memberData, error: memberError } = await supabase
           .from('company_members')
-          .select('status')
+          .select('status, role')  // Get role
           .eq('id', data.user?.id)
           .single();
 
         if (!memberError && memberData) {
           setMemberStatus(memberData.status as 'pending' | 'active' | 'deactivated');
+          setRole(memberData.role as UserRole);  // Set role
 
           if (memberData.status === 'deactivated') {
             router.push('/deactivated');
@@ -220,11 +174,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     setUser(null);
     setMemberStatus(null);
+    setRole(null);  // Reset role on logout
     window.location.href = '/';
   }
 
   return (
-    <AuthContext.Provider value={{ user, memberStatus, loading, login, logout, refreshStatus }}>
+    <AuthContext.Provider value={{ user, memberStatus, role, loading, login, logout, refreshStatus }}>
       {children}
     </AuthContext.Provider>
   );
@@ -236,4 +191,21 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+}
+
+// Create convenient hooks for role checks
+export function useIsAdmin() {
+  const { role, loading } = useAuth();
+  return {
+    isAdmin: role === 'admin' || role === 'owner',  // Consider owner as admin too
+    loading
+  };
+}
+
+export function useIsOwner() {
+  const { role, loading } = useAuth();
+  return {
+    isOwner: role === 'owner',
+    loading
+  };
 }
