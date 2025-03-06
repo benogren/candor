@@ -36,7 +36,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       if (!user?.id) return;
       
       try {
-        // console.log("Loading company data for user:", user.id);
+        console.log("Loading company data for user:", user.id);
         
         // First, try to get the company associated with this user
         const { data: userData, error: userError } = await supabase

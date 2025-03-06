@@ -1,8 +1,8 @@
 // utils/auth.ts
-import { NextRequest, NextResponse } from 'next/server';
-import type { NextApiRequest, NextApiResponse } from 'next';
+import type { NextApiRequest } from 'next';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { CookieOptions } from '@supabase/ssr';
 
 /**
  * Check if the current user is an admin - for API routes
@@ -19,11 +19,13 @@ export async function isAdmin(request: NextApiRequest): Promise<boolean> {
           get(name: string) {
             return requestCookies[name];
           },
-          set(name: string, value: string, options: any) {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          set(_name: string, _value: string, _options: CookieOptions) {
             // Note: This won't actually set the cookie in a middleware context
             // But it's required for the interface
           },
-          remove(name: string, options: any) {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          remove(_name: string, _options: CookieOptions) {
             // Note: This won't actually remove the cookie in a middleware context
             // But it's required for the interface
           },
@@ -71,10 +73,10 @@ export async function isAdminServer(): Promise<boolean> {
           get(name: string) {
             return cookieStore.get(name)?.value;
           },
-          set(name: string, value: string, options: any) {
+          set(name: string, value: string, options: CookieOptions) {
             cookieStore.set({ name, value, ...options });
           },
-          remove(name: string, options: any) {
+          remove(name: string, options: CookieOptions) {
             cookieStore.set({ name, value: '', ...options });
           },
         },

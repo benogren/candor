@@ -1,180 +1,244 @@
 // app/api/org-chart/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-import { OrgChartData, User, OrgChartNode } from '@/app/types/orgChart.types';
-import { prisma } from '@/lib/prisma';
+import { createClient } from '@supabase/supabase-js';
+import { OrgChartData, OrgChartNode, User } from '@/app/types/orgChart.types';
+
+// Define types for user profiles
+interface UserProfile {
+  id: string;
+  name?: string;
+  email: string;
+  avatar_url?: string;
+  job_title?: string;
+}
+
+interface InvitedUserProfile {
+  id: string;
+  name?: string;
+  email: string;
+  job_title?: string;
+}
+
+interface OrgStructureMember {
+  id: string;
+  email: string;
+  role: string;
+  is_invited: boolean;
+  is_pending: boolean;
+  manager_id?: string | null;
+  company_id: string;
+}
+
+// Type for profile lookup objects
+interface ProfileMap {
+  [key: string]: UserProfile | InvitedUserProfile;
+}
 
 export async function GET(request: NextRequest) {
   try {
-    // Get cookie store
-    const cookieStore = await cookies();
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     
-    // Create Supabase client with proper cookie handling
-    const supabase = createServerClient(
+    const token = authHeader.substring(7);
+    
+    const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-          set(name: string, value: string, options: any) {
-            // This won't actually set cookies in an API route, but the interface requires it
-            cookieStore.set({ name, value, ...options });
-          },
-          remove(name: string, options: any) {
-            // This won't actually remove cookies in an API route, but the interface requires it
-            cookieStore.set({ name, value: '', ...options });
-          },
-        },
-      }
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
     
-    // Get session with auto-refresh
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    
-    if (sessionError) {
-      console.error("Session error:", sessionError);
-      return NextResponse.json({ error: 'Session error', details: sessionError }, { status: 401 });
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
     
-    if (!session) {
-      console.log("No session found in API route");
-      // Debug: Check which cookies are available
-      const allCookies = cookieStore.getAll();
-      console.log("Available cookies:", allCookies.map(c => c.name));
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
+    console.log(`User authenticated as: ${user.email}`);
     
-    console.log("Session found for user:", session.user.email);
-    
-    // Get the user's role - following your existing auth context pattern
-    let { data: memberData, error: memberError } = await supabase
+    // Get the company ID for the current user
+    const { data: userData, error: companyError } = await supabase
       .from('company_members')
-      .select('role, status')
-      .eq('id', session.user.id)  // Using ID just like your auth context does
+      .select('company_id, role')
+      .eq('id', user.id)
       .single();
     
-    if (memberError) {
-      console.error("Member data error:", memberError);
+    if (companyError || !userData?.company_id) {
+      return NextResponse.json({ error: 'User not associated with a company' }, { status: 400 });
+    }
+    
+    const companyId = userData.company_id;
+    
+    // Fetch organization structure using the org_structure view
+    const { data: orgStructure, error: orgError } = await supabase
+      .from('org_structure')
+      .select('*')
+      .eq('company_id', companyId);
+    
+    if (orgError) {
+      return NextResponse.json({ error: 'Failed to fetch organization structure' }, { status: 500 });
+    }
+    
+    console.log(`Found ${orgStructure?.length || 0} users in organization structure`);
+    
+    // Fetch user profiles for all registered users
+    const registeredUserIds = orgStructure
+      .filter(member => !member.is_invited && !member.is_pending)
+      .map(member => member.id);
+    
+    // Fetch invited user IDs
+    const invitedUserIds = orgStructure
+      .filter(member => member.is_invited)
+      .map(member => member.id);
+    
+    let userProfiles: ProfileMap = {};
+    let invitedUserProfiles: ProfileMap = {};
+    
+    // Fetch registered user profiles
+    if (registeredUserIds.length > 0) {
+      const { data: profiles, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('id, name, email, avatar_url, job_title')
+        .in('id', registeredUserIds);
       
-      // Try fetching by email as a fallback
-      const { data: memberByEmail, error: emailError } = await supabase
-        .from('company_members')
-        .select('id, role, status')
-        .eq('email', session.user.email)
-        .single();
-        
-      if (emailError || !memberByEmail) {
-        console.log("Also tried by email, still no match");
-        return NextResponse.json({ 
-          error: 'User not found in company_members table',
-          userId: session.user.id,
-          userEmail: session.user.email
-        }, { status: 403 });
+      if (!profileError && profiles) {
+        userProfiles = profiles.reduce<ProfileMap>((acc, profile: UserProfile) => {
+          acc[profile.id] = profile;
+          return acc;
+        }, {});
+      }
+    }
+    
+    // Fetch invited user profiles
+    if (invitedUserIds.length > 0) {
+      const { data: invitedProfiles, error: invitedProfileError } = await supabase
+        .from('invited_users')
+        .select('id, name, email, job_title')
+        .in('id', invitedUserIds);
+      
+      if (!invitedProfileError && invitedProfiles) {
+        invitedUserProfiles = invitedProfiles.reduce<ProfileMap>((acc, profile: InvitedUserProfile) => {
+          acc[profile.id] = profile;
+          return acc;
+        }, {});
+      }
+    }
+    
+    // Transform members into User objects with enhanced profile information
+    const users: User[] = orgStructure.map((member: OrgStructureMember) => {
+      // Make sure managerId is never undefined
+      const managerId: string | null = member.manager_id || null;
+      
+      // For registered users, get profile info
+      if (!member.is_invited && !member.is_pending && userProfiles[member.id]) {
+        const profile = userProfiles[member.id] as UserProfile;
+        return {
+          id: member.id,
+          email: profile.email || member.email,
+          name: profile.name || member.email.split('@')[0],
+          role: member.role,
+          isInvited: member.is_invited,
+          isPending: member.is_pending || false,
+          managerId: managerId,
+          avatarUrl: profile.avatar_url,
+          jobTitle: profile.job_title
+        };
       }
       
-      console.log("Found user by email instead of ID");
-      memberData = memberByEmail;
-    }
-    
-    if (!memberData) {
-      return NextResponse.json({ error: 'User not found in database' }, { status: 403 });
-    }
-    
-    // Check permissions using the same logic as your useIsAdmin hook
-    const isAdmin = memberData.role === 'admin' || memberData.role === 'owner';
-    
-    if (!isAdmin) {
-      console.log("User does not have admin permissions. Role:", memberData.role);
-      return NextResponse.json({ 
-        error: 'Insufficient permissions', 
-        role: memberData.role 
-      }, { status: 403 });
-    }
-    
-    console.log("User authenticated as:", memberData.role);
-
-    // Fetch all users from the company_members table
-    const users = await prisma.company_members.findMany({
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        is_invited: true,
-        manager_id: true,
-      },
+      // For invited users, get profile info from invited_users table
+      if (member.is_invited && invitedUserProfiles[member.id]) {
+        const profile = invitedUserProfiles[member.id] as InvitedUserProfile;
+        return {
+          id: member.id,
+          email: profile.email || member.email,
+          name: profile.name || member.email.split('@')[0],
+          role: member.role,
+          isInvited: true,
+          isPending: false,
+          managerId: managerId,
+          jobTitle: profile.job_title
+        };
+      }
+      
+      // Fallback for any other users
+      return {
+        id: member.id,
+        email: member.email,
+        name: member.email.split('@')[0],
+        role: member.role,
+        isInvited: member.is_invited,
+        isPending: member.is_pending || false,
+        managerId: managerId
+      };
     });
-
-    // Transform database results into User objects
-    const transformedUsers: User[] = users.map((user) => ({
-      id: user.id,
-      name: user.name || '',
-      email: user.email || '',
-      role: user.role || '',
-      isInvited: user.is_invited,
-      managerId: user.manager_id,
-    }));
-
-    // Build the org chart hierarchy
-    const { hierarchical, unassigned } = buildOrgChart(transformedUsers);
-
-    return NextResponse.json({
+    
+    // Build the manager-to-direct-reports map
+    const managerMap = new Map<string, string[]>();
+    orgStructure.forEach((member: OrgStructureMember) => {
+      if (!member.manager_id) return;
+      
+      if (!managerMap.has(member.manager_id)) {
+        managerMap.set(member.manager_id, []);
+      }
+      managerMap.get(member.manager_id)?.push(member.id);
+    });
+    
+    // Find users with no managers (top-level)
+    const topLevelUserIds = new Set<string>();
+    users.forEach(user => {
+      if (!user.managerId) {
+        topLevelUserIds.add(user.id);
+      }
+    });
+    
+    // Build the hierarchical organization chart
+    const hierarchical: OrgChartNode[] = [];
+    const processedUsers = new Set<string>();
+    
+    // Helper function to recursively build the org chart
+    const buildOrgChart = (userId: string): OrgChartNode | null => {
+      const user = users.find(u => u.id === userId);
+      if (!user || processedUsers.has(userId)) return null;
+      
+      processedUsers.add(userId);
+      
+      const directReports: OrgChartNode[] = [];
+      const directReportIds = managerMap.get(userId) || [];
+      
+      for (const reportId of directReportIds) {
+        const reportNode = buildOrgChart(reportId);
+        if (reportNode) {
+          directReports.push(reportNode);
+        }
+      }
+      
+      return {
+        user,
+        directReports
+      };
+    };
+    
+    // Build the chart starting from top-level users
+    for (const userId of topLevelUserIds) {
+      const node = buildOrgChart(userId);
+      if (node) {
+        hierarchical.push(node);
+      }
+    }
+    
+    // Identify unassigned users (not in the hierarchy)
+    const unassigned = users.filter(user => !processedUsers.has(user.id));
+    
+    const orgChartData: OrgChartData = {
       hierarchical,
-      unassigned,
-    });
+      unassigned
+    };
+    
+    return NextResponse.json(orgChartData);
   } catch (error) {
-    console.error('Error in org chart API:', error);
-    return NextResponse.json({ 
-      error: 'Failed to fetch organization chart',
-      details: error instanceof Error ? error.message : String(error)
-    }, { status: 500 });
+    console.error('Error retrieving organization chart:', error);
+    return NextResponse.json(
+      { error: 'Failed to retrieve organization chart' },
+      { status: 500 }
+    );
   }
-}
-
-// Helper function to build the organization chart hierarchy
-function buildOrgChart(users: User[]): OrgChartData {
-  // Users with no manager (top level)
-  const rootUsers = users.filter((user) => !user.managerId);
-  
-  // Users with a manager
-  const managedUsers = users.filter((user) => user.managerId);
-  
-  // Build the hierarchy
-  const hierarchical: OrgChartNode[] = rootUsers.map((user) => {
-    return {
-      user,
-      directReports: getDirectReports(user.id, managedUsers),
-    };
-  });
-  
-  // Find any users who don't fit in the hierarchy (circular references, etc.)
-  const hierarchyUserIds = new Set<string>();
-  
-  // Collect all user IDs in the hierarchy
-  const collectUserIds = (node: OrgChartNode) => {
-    hierarchyUserIds.add(node.user.id);
-    node.directReports.forEach(collectUserIds);
-  };
-  
-  hierarchical.forEach(collectUserIds);
-  
-  // Users not in the hierarchy
-  const unassigned = users.filter((user) => !hierarchyUserIds.has(user.id));
-  
-  return { hierarchical, unassigned };
-}
-
-// Recursive function to get direct reports for a user
-function getDirectReports(managerId: string, users: User[]): OrgChartNode[] {
-  const directReports = users.filter((user) => user.managerId === managerId);
-  
-  return directReports.map((user) => {
-    return {
-      user,
-      directReports: getDirectReports(user.id, users),
-    };
-  });
 }

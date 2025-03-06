@@ -5,7 +5,7 @@ import { User } from '@/app/types/orgChart.types';
 interface UserAssignmentModalProps {
   user: User | null;
   managers: User[];
-  onAssign: (userId: string, managerId: string | null) => Promise<boolean>;
+  onAssign: (userId: string, managerId: string | null, isInvited?: boolean) => Promise<boolean>;
   onCreateManager: () => void;
   onClose: () => void;
 }
@@ -27,7 +27,10 @@ const UserAssignmentModal: React.FC<UserAssignmentModalProps> = ({
     
     if (user.id) {
       setIsSubmitting(true);
+      
+      // If onAssign only accepts 2 parameters, just pass those
       const success = await onAssign(user.id, selectedManagerId);
+      
       setIsSubmitting(false);
       
       if (success) {
@@ -42,7 +45,15 @@ const UserAssignmentModal: React.FC<UserAssignmentModalProps> = ({
         <div className="px-6 py-4 border-b">
           <h3 className="text-lg font-medium">Assign Manager</h3>
         </div>
-        
+        {user.isPending && (
+          <div className="px-6 py-4">
+            <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
+              <p className="text-sm text-blue-800">
+                This user has registered but has not verified their email yet.
+              </p>
+            </div>
+          </div>
+        )}
         <form onSubmit={handleSubmit}>
           <div className="px-6 py-4">
             <div className="mb-4">

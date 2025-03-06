@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/context/auth-context';
@@ -29,7 +29,7 @@ const formSchema = z.object({
   password: z.string().min(1, { message: 'Password is required' }),
 });
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
@@ -169,64 +169,64 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-  {/* Show success message if present */}
-  {urlMessage && (
-    <Alert className="mb-4 bg-green-50 border-green-200">
-      <CheckCircle className="h-4 w-4 text-green-600" />
-      <AlertDescription className="text-green-700">
-        {urlMessage}
-      </AlertDescription>
-    </Alert>
-  )}
+          {/* Show success message if present */}
+          {urlMessage && (
+            <Alert className="mb-4 bg-green-50 border-green-200">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <AlertDescription className="text-green-700">
+                {urlMessage}
+              </AlertDescription>
+            </Alert>
+          )}
 
-  {/* Show error message if present */}
-  {urlError && (
-    <Alert variant="destructive" className="mb-4">
-      <AlertCircle className="h-4 w-4" />
-      <AlertDescription>
-        {urlError}
-      </AlertDescription>
-    </Alert>
-  )}
+          {/* Show error message if present */}
+          {urlError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                {urlError}
+              </AlertDescription>
+            </Alert>
+          )}
 
-  <Form {...form}>
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-      <FormField
-        control={form.control}
-        name="email"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>Email</FormLabel>
-            <FormControl>
-              <Input placeholder="email@example.com" {...field} />
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-      <FormField
-        control={form.control}
-        name="password"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>Password</FormLabel>
-            <FormControl>
-              <Input type="password" placeholder="Please enter your password" {...field} />
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-      <Button 
-        type="submit" 
-        className="w-full"
-        disabled={isLoading}
-      >
-        {isLoading ? 'Signing in...' : 'Sign In'}
-      </Button>
-    </form>
-  </Form>
-</CardContent>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input placeholder="email@example.com" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Password</FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="Please enter your password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <Button 
+                type="submit" 
+                className="w-full"
+                disabled={isLoading}
+              >
+                {isLoading ? 'Signing in...' : 'Sign In'}
+              </Button>
+            </form>
+          </Form>
+        </CardContent>
         <CardFooter className="flex justify-center">
           <p className="text-sm text-slate-500 font-light">
             Don&apos;t have an account?{' '}
@@ -237,5 +237,23 @@ export default function LoginPage() {
         </CardFooter>
       </Card>
     </div>
+  );
+}
+
+// Loading state for Suspense fallback
+function LoginLoadingFallback() {
+  return (
+    <div className="flex justify-center items-center min-h-screen bg-slate-50">
+      <LoadingSpinner />
+      <p className="ml-2">Loading...</p>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginLoadingFallback />}>
+      <LoginContent />
+    </Suspense>
   );
 }

@@ -26,6 +26,7 @@ const BulkAssignmentModal: React.FC<BulkAssignmentModalProps> = ({
     const assignments: ManagerAssignment[] = selectedUsers.map((user) => ({
       userId: user.id,
       managerId: selectedManagerId,
+      isInvited: false, // or any appropriate value
     }));
     
     setIsSubmitting(true);

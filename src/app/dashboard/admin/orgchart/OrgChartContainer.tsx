@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { User, ManagerAssignment, OrgChartData, ImportResult, ImportError, OrgChartNode } from '@/app/types/orgChart.types';
+import { User, OrgChartData, ImportResult, ImportError, OrgChartNode } from '@/app/types/orgChart.types';
 import OrgChartView from '@/components/orgchart/OrgChartView';
 import UserAssignmentModal from '@/components/orgchart/UserAssignmentModal';
 import BulkAssignmentModal from '@/components/orgchart/BulkAssignmentModal';
 import CreateUserModal from '@/components/orgchart/CreateUserModal';
 import ImportOrgChartModal from '@/components/orgchart/ImportOrgChartModal';
-import SyncIntegrationPanel from '@/components/orgchart/SyncIntegrationPanel';
+// import SyncIntegrationPanel from '@/components/orgchart/SyncIntegrationPanel';
 import supabase from '@/lib/supabase/client';
 
 interface CsvRow {
@@ -24,9 +24,9 @@ export default function OrgChartContainer() {
   const [error, setError] = useState<Error | null>(null);
 
   // State for Google Workspace integration
-  const [isGoogleWorkspaceConnected, setIsGoogleWorkspaceConnected] = useState<boolean>(false);
-  const [lastSyncDate, setLastSyncDate] = useState<Date | null>(null);
-  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  // const [isGoogleWorkspaceConnected, setIsGoogleWorkspaceConnected] = useState<boolean>(false);
+  // const [lastSyncDate, setLastSyncDate] = useState<Date | null>(null);
+  // const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   // Selected users state
   const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
@@ -40,17 +40,28 @@ export default function OrgChartContainer() {
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
 
   // CSV import state
-  const [parsedData, setParsedData] = useState<CsvRow[]>([]);
   const [previewData, setPreviewData] = useState<CsvRow[]>([]);
   const [validationErrors, setValidationErrors] = useState<ImportError[]>([]);
   const [importing, setImporting] = useState<boolean>(false);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
   // Fetch org chart data
   const fetchOrgChart = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/org-chart');
+      
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      if (!token) {
+        throw new Error('Not authenticated');
+      }
+      
+      const response = await fetch('/api/org-chart', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       
       if (!response.ok) {
         throw new Error(`Failed to fetch organization chart: ${response.statusText}`);
@@ -74,9 +85,18 @@ export default function OrgChartContainer() {
   // Assign manager to user
   const assignManager = useCallback(async (userId: string, managerId: string | null): Promise<boolean> => {
     try {
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      if (!token) {
+        throw new Error('Not authenticated');
+      }
+      
       const response = await fetch('/api/org-chart/assign-manager', {
         method: 'PATCH',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ userId, managerId }),
@@ -95,11 +115,20 @@ export default function OrgChartContainer() {
   }, [fetchOrgChart]);
 
   // Bulk update managers
-  const bulkUpdateManagers = useCallback(async (assignments: ManagerAssignment[]): Promise<boolean> => {
+  const bulkUpdateManagers = useCallback(async (assignments: {userId: string, managerId: string | null}[]): Promise<boolean> => {
     try {
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      if (!token) {
+        throw new Error('Not authenticated');
+      }
+      
       const response = await fetch('/api/org-chart/bulk-update', {
         method: 'PATCH',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ assignments }),
@@ -120,9 +149,18 @@ export default function OrgChartContainer() {
   // Invite new user
   const inviteUser = useCallback(async (userData: Partial<User>): Promise<User | null> => {
     try {
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      if (!token) {
+        throw new Error('Not authenticated');
+      }
+      
       const response = await fetch('/api/users/invite', {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(userData),
@@ -140,22 +178,6 @@ export default function OrgChartContainer() {
       return null;
     }
   }, [fetchOrgChart]);
-
-  // Get all users from org chart data
-  const getAllUsers = useCallback((): User[] => {
-    if (!orgChartData) return [];
-
-    const allUsers: User[] = [...orgChartData.unassigned];
-    
-    const addUsersFromNode = (node: OrgChartNode) => {
-      allUsers.push(node.user);
-      node.directReports.forEach(addUsersFromNode);
-    };
-    
-    orgChartData.hierarchical.forEach(addUsersFromNode);
-    
-    return allUsers;
-  }, [orgChartData]);
 
   // Get all managers from org chart data
   const getManagers = useCallback((): User[] => {
@@ -185,41 +207,65 @@ export default function OrgChartContainer() {
     setIsUserAssignmentModalOpen(true);
   }, []);
 
-  // Handle bulk user selection toggle
-  const handleToggleUserSelection = useCallback((user: User) => {
-    setSelectedUsers((prev) => {
-      const isSelected = prev.some((u) => u.id === user.id);
-      if (isSelected) {
-        return prev.filter((u) => u.id !== user.id);
-      } else {
-        return [...prev, user];
-      }
-    });
-  }, []);
-
   // Parse CSV file for preview
   const parseFile = useCallback(async (file: File): Promise<boolean> => {
     try {
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      if (!token) {
+        throw new Error('Authentication token not found');
+      }
+      
       const formData = new FormData();
       formData.append('file', file);
       
       const response = await fetch('/api/org-chart/parse-csv', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
       });
       
       if (!response.ok) {
-        throw new Error('Failed to parse CSV');
+        const errorData = await response.json();
+        console.error('Error parsing CSV:', errorData);
+        setValidationErrors([{
+          row: 0,
+          email: '',
+          errorType: 'PARSE_ERROR',
+          message: errorData.error || 'Failed to parse CSV'
+        }]);
+        return false;
       }
       
-      const result = await response.json() as { data: CsvRow[], errors: ImportError[] };
-      setParsedData(result.data);
-      setPreviewData(result.data.slice(0, 5));
-      setValidationErrors(result.errors);
+      const data = await response.json();
       
-      return true;
+      if (!data.rows || !Array.isArray(data.rows)) {
+        console.error('API response missing rows array:', data);
+        setValidationErrors([{
+          row: 0,
+          email: '',
+          errorType: 'API_ERROR',
+          message: 'API response format error - missing rows'
+        }]);
+        return false;
+      }
+      
+      setPreviewData(data.rows.slice(0, 5)); // Show first 5 rows as preview
+      setValidationErrors(data.errors || []);
+      
+      return data.errors?.length === 0;
     } catch (error) {
-      console.error('Error parsing CSV:', error);
+      console.error('Error previewing CSV:', error);
+      setValidationErrors([{
+        row: 0,
+        email: '',
+        errorType: 'PARSE_ERROR',
+        message: error instanceof Error ? error.message : 'Failed to parse CSV'
+      }]);
       return false;
     }
   }, []);
@@ -229,20 +275,34 @@ export default function OrgChartContainer() {
     try {
       setImporting(true);
       
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      if (!token) {
+        throw new Error('Authentication token not found');
+      }
+      
       const formData = new FormData();
       formData.append('file', file);
       
+      console.log("Sending import request with file:", file.name, file.size);
+      
       const response = await fetch('/api/org-chart/import', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
       });
       
       if (!response.ok) {
-        throw new Error('Failed to import organization chart');
+        const errorText = await response.text();
+        throw new Error(`Import failed: ${errorText}`);
       }
       
-      const result = await response.json() as ImportResult;
-      setImportResult(result);
+      const result = await response.json();
+      console.log("Import API Response:", result);
       
       if (result.success) {
         await fetchOrgChart();
@@ -251,54 +311,21 @@ export default function OrgChartContainer() {
       return result;
     } catch (error) {
       console.error('Error importing org chart:', error);
-      return null;
+      return {
+        success: false,
+        errors: [{
+          row: 0,
+          email: '',
+          errorType: 'IMPORT_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to import organization chart'
+        }],
+        usersAdded: 0,
+        relationshipsCreated: 0
+      };
     } finally {
       setImporting(false);
     }
   }, [fetchOrgChart]);
-
-  // Handle Google Workspace sync
-  const handleGoogleWorkspaceSync = useCallback(async (): Promise<void> => {
-    setIsSyncing(true);
-    try {
-      const response = await fetch('/api/integrations/google-workspace/sync', {
-        method: 'POST',
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to sync with Google Workspace');
-      }
-      
-      await fetchOrgChart();
-      setLastSyncDate(new Date());
-    } catch (error) {
-      console.error('Error syncing with Google Workspace:', error);
-    } finally {
-      setIsSyncing(false);
-    }
-  }, [fetchOrgChart]);
-
-  // Handle Google Workspace connection
-  const handleConnectGoogleWorkspace = useCallback(async (): Promise<void> => {
-    try {
-      const response = await fetch('/api/integrations/google-workspace/connect', {
-        method: 'POST',
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to connect to Google Workspace');
-      }
-      
-      const data = await response.json() as { authUrl: string };
-      
-      // Open Google auth window
-      if (data.authUrl) {
-        window.open(data.authUrl, '_blank');
-      }
-    } catch (error) {
-      console.error('Error connecting to Google Workspace:', error);
-    }
-  }, []);
 
   // Render loading state
   if (loading) {
@@ -350,7 +377,7 @@ export default function OrgChartContainer() {
             </svg>
             Import
           </button>
-          <button
+          {/* <button
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
             onClick={() => setIsCreateUserModalOpen(true)}
           >
@@ -369,18 +396,9 @@ export default function OrgChartContainer() {
               />
             </svg>
             Add User
-          </button>
+          </button> */}
         </div>
       </div>
-
-      {/* Google Workspace Integration Panel */}
-      <SyncIntegrationPanel
-        isConnected={isGoogleWorkspaceConnected}
-        lastSyncDate={lastSyncDate}
-        onSync={handleGoogleWorkspaceSync}
-        onConnect={handleConnectGoogleWorkspace}
-        isSyncing={isSyncing}
-      />
 
       {/* Bulk Actions (visible when users are selected) */}
       {selectedUsers.length > 0 && (
@@ -508,6 +526,8 @@ export default function OrgChartContainer() {
           importing={importing}
           onClose={() => {
             setIsImportModalOpen(false);
+            setPreviewData([]);
+            setValidationErrors([]);
             fetchOrgChart(); // Refresh data after import
           }}
         />

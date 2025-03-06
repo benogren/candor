@@ -23,15 +23,16 @@ const OrgChartView: React.FC<OrgChartViewProps> = ({
   }
 
   return (
-    <div className="overflow-auto">
-      <div className="flex flex-col items-center min-w-max">
+    <div className="overflow-x-auto w-full p-4">
+      <div className="min-w-fit inline-block">
         {data.map((node) => (
-          <ManagerCard 
-            key={node.user.id} 
-            node={node} 
-            onSelectUser={onSelectUser} 
-            onSelectManager={onSelectManager} 
-          />
+          <div key={node.user.id} className="mb-16">
+            <ManagerCard 
+              node={node} 
+              onSelectUser={onSelectUser} 
+              onSelectManager={onSelectManager} 
+            />
+          </div>
         ))}
       </div>
     </div>

@@ -1,43 +1,72 @@
-// prisma/schema.prisma
-
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  schemas   = ["public"]
 }
 
-// Company members table with manager relationships
-model company_members {
+// ENUMS (Make sure they match your Supabase ENUM definitions)
+enum user_role {
+  member
+  admin
+  owner
+
+  @@schema("public") // Add this
+}
+
+enum member_status {
+  pending
+  active
+  deactivated
+
+  @@schema("public") // Add this
+}
+
+// COMPANIES TABLE
+model companies {
   id         String   @id @default(uuid())
-  email      String   @unique
+  name       String
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+  domains    String[] @default([])
+
+  members    company_members[]
+
+  @@schema("public")
+}
+
+// COMPANY MEMBERS TABLE
+model company_members {
+  id         String        @id
+  company_id String
+  role       user_role     @default(member)
+  created_at DateTime      @default(now())
+  updated_at DateTime      @default(now())
+  status     member_status @default(pending)
+  manager_id String?
+
+  // Relations
+  company        companies        @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  manager        company_members? @relation("ManagerToDirectReports", fields: [manager_id], references: [id], onDelete: SetNull)
+  direct_reports company_members[] @relation("ManagerToDirectReports")
+
+  @@schema("public")
+}
+
+// USER PROFILES TABLE
+model user_profiles {
+  id         String   @id
+  email      String
   name       String?
-  role       String?  // 'member', 'admin', 'owner'
-  is_invited Boolean  @default(true) // This matches your actual schema
-  is_admin   Boolean? @default(false)
-  google_id  String?  @unique
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
   manager_id String?
   
-  // Self-relation for manager-direct report relationship
-  manager        company_members?  @relation("ManagerToDirectReports", fields: [manager_id], references: [id], onDelete: SetNull)
-  direct_reports company_members[] @relation("ManagerToDirectReports")
-  
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  @@schema("public")
 }
 
-// Integrations table for Google Workspace and other integrations
-model integrations {
-  id            Int       @id @default(autoincrement())
-  type          String    @unique
-  status        String    @default("pending")
-  access_token  String?   @db.Text
-  refresh_token String?   @db.Text
-  token_expiry  DateTime?
-  config        String?   @db.Text
-  last_sync_date DateTime?
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
-}

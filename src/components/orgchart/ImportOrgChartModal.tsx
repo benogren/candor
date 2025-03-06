@@ -1,5 +1,5 @@
 // components/orgchart/ImportOrgChartModal.tsx
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { CsvRow } from '../../services/importService';
 import { ImportResult, ImportError } from '@/app/types/orgChart.types';
 
@@ -26,6 +26,11 @@ const ImportOrgChartModal: React.FC<ImportOrgChartModalProps> = ({
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Debug effect to log preview data when it changes
+  useEffect(() => {
+    console.log("Preview data from API:", previewData);
+  }, [previewData]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0]);
@@ -37,6 +42,16 @@ const ImportOrgChartModal: React.FC<ImportOrgChartModalProps> = ({
 
   const handlePreview = async () => {
     if (file) {
+      // Read file for debugging
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const content = e.target?.result as string;
+        console.log("File content preview:", content.substring(0, 300));
+        console.log("File size:", file.size, "bytes");
+      };
+      reader.readAsText(file);
+      
+      // Call the provided onPreview function
       const success = await onPreview(file);
       setPreviewed(success);
     }
@@ -51,12 +66,12 @@ const ImportOrgChartModal: React.FC<ImportOrgChartModalProps> = ({
   };
 
   const downloadTemplate = () => {
-    const template = 'email,managerEmail,name,role\njohn@example.com,manager@example.com,John Doe,Engineer\njane@example.com,manager@example.com,Jane Smith,Designer\n';
+    const template = 'email,managerEmail,name,title,role\njohn@example.com,,John Doe,CEO,admin\njane@example.com,john@example.com,Jane Smith,HR,admin\njoe@example.com,john@example.com,Joe Smith,Engineer,member\n';
     const blob = new Blob([template], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'org_chart_template.csv';
+    a.download = 'candor_org_chart_template.csv';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -138,18 +153,28 @@ const ImportOrgChartModal: React.FC<ImportOrgChartModalProps> = ({
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Manager Email</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                          {previewData.map((row, index) => (
-                            <tr key={index}>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm">{row.email}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm">{row.managerEmail}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm">{row.name}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm">{row.role}</td>
+                          {previewData && previewData.length > 0 ? (
+                            previewData.map((row, index) => (
+                              <tr key={index}>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm">{row.email}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm">{row.managerEmail}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm">{row.name}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm">{row.title}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm">{row.role}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">
+                                {previewed ? "No data found in CSV file" : "CSV data will appear here"}
+                              </td>
                             </tr>
-                          ))}
+                          )}
                         </tbody>
                       </table>
                     </div>

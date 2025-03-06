@@ -2,7 +2,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { User } from '@supabase/supabase-js';
 import supabase from '@/lib/supabase/client';
 
@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<UserRole | null>(null);  // Add role state
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const pathname = usePathname();
+  // const pathname = usePathname();
 
   // Update refreshStatus to also refresh role
   async function refreshStatus() {

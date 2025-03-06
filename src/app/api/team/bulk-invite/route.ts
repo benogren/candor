@@ -187,7 +187,7 @@ export async function POST(request: NextRequest) {
         
         // Insert into invited_users table
         console.log('Creating invite for:', { email, name, id: newUserId });
-        const { data: inviteData, error: inviteError } = await supabaseAdmin
+        const { error: inviteError } = await supabaseAdmin
           .from('invited_users')
           .insert({
             id: newUserId,

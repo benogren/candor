@@ -19,11 +19,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/components/ui/use-toast';
-import { Loader2, CheckCircle } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import supabase from '@/lib/supabase/client';
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCircleCheck } from '@fortawesome/free-solid-svg-icons';
 
 // Define invite details type
 interface Company {
@@ -114,39 +111,32 @@ export default function RegisterInviteContent() {
     setIsLoading(true);
   
     try {
-      const { data: authData, error: signUpError } = await supabase.auth.signUp({
-        email: inviteDetails.email,
-        password: values.password,
-        options: {
-          data: {
-            name: values.name,
-            pending_company_id: inviteDetails.company_id,
-            pending_company_role: inviteDetails.company_id ? 'member' : 'admin'
-          },
-        },
-      });
-  
-      if (signUpError) throw signUpError;
-      if (!authData.user) throw new Error('Failed to create user account');
-  
-      // Call our new API route to update invite status
-      console.log('Updating invite status... Company:', inviteDetails.company_id);
+      // Send all required data directly to our API endpoint
+      // Note: We're no longer using supabase.auth.signUp() directly
       const response = await fetch('/api/auth/register/invite', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inviteId: inviteDetails.id, userId: authData.user.id, email: inviteDetails.email, name: values.name, companyId: inviteDetails.company_id, role: inviteDetails.company_id ? 'member' : 'admin' }),
+        body: JSON.stringify({ 
+          inviteId: inviteDetails.id, 
+          password: values.password, // Important: Include password
+          email: inviteDetails.email, 
+          name: values.name, 
+          companyId: inviteDetails.company_id, 
+          role: inviteDetails.company_id ? 'member' : 'admin' 
+        }),
       });
   
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Unknown error updating invite status.');
+      if (!response.ok) throw new Error(result.error || 'Unknown error processing your registration.');
   
       toast({
         title: 'Account created!',
-        description: 'Check your email for confirmation before signing in.',
+        description: 'You can now sign in with your new account.',
       });
   
+      // Redirect to login without waiting for email confirmation
       setTimeout(() => {
-        router.push('/auth/login?message=Please check your email to confirm your account before signing in.');
+        router.push('/auth/login?message=Your account has been created successfully. You can now sign in.');
       }, 2000);
     } catch (error) {
       console.error('Registration error:', error);
@@ -205,13 +195,10 @@ export default function RegisterInviteContent() {
         </CardHeader>
         <CardContent>
           <Alert className="mb-4 bg-green-50 border-green-200">
-            
             <AlertTitle className="text-green-800">Invitation Verified</AlertTitle>
-            
             <AlertDescription className="text-green-700">
               Your invitation for {inviteDetails?.email} is valid.
             </AlertDescription>
-            
           </Alert>
           
           <Form {...form}>

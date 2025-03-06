@@ -33,6 +33,7 @@ export default function TeamManagementPage() {
           .single();
 
           setCompanyName(FetchCompanyName.name);
+          if (error) throw error;
         }
       } catch (error) {
         console.error('Error fetching company ID:', error);
@@ -45,6 +46,7 @@ export default function TeamManagementPage() {
   const handleRefreshMembers = () => {
     setRefreshKey(prev => prev + 1);
   };
+  console.log('check refresh:', handleRefreshMembers);
 
   return (
     <div className="container mx-auto py-8 px-4">

@@ -27,7 +27,7 @@ export class GoogleAuthClient extends OAuth2Client {
     access_type: 'online' | 'offline';
     prompt?: string;
   }): string {
-    return this.generateAuthUrl({
+    return super.generateAuthUrl({
       access_type: options.access_type,
       scope: options.scope,
       prompt: options.prompt,
@@ -43,9 +43,10 @@ export class GoogleAuthClient extends OAuth2Client {
   }
   
   /**
-   * Refresh access token using refresh token
+   * Get an access token using the refresh token
+   * This is a custom method that wraps the base refreshToken functionality
    */
-  async refreshToken(refreshToken: string): Promise<any> {
+  async getAccessTokenWithRefresh(refreshToken: string): Promise<string | null | undefined> {
     this.setCredentials({
       refresh_token: refreshToken,
     });

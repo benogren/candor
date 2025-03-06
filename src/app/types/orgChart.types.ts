@@ -1,11 +1,14 @@
-// types/orgChart.types.ts
+// src/app/types/orgChart.types.ts
 export interface User {
   id: string;
   name: string;
   email: string;
   role: string;
   isInvited: boolean;
+  isPending: boolean;
   managerId: string | null;
+  avatarUrl?: string;
+  jobTitle?: string;
 }
 
 export interface OrgChartNode {
@@ -21,6 +24,7 @@ export interface OrgChartData {
 export interface ManagerAssignment {
   userId: string;
   managerId: string | null;
+  isInvited: boolean;
 }
 
 export interface ImportResult {
@@ -33,18 +37,6 @@ export interface ImportResult {
 export interface ImportError {
   row: number;
   email: string;
-  errorType: 'INVALID_EMAIL' | 'USER_NOT_FOUND' | 'CIRCULAR_REFERENCE' | 'OTHER';
+  errorType: 'INVALID_EMAIL' | 'USER_NOT_FOUND' | 'CIRCULAR_REFERENCE' | 'OTHER' | 'MISSING_EMAIL' | 'INVALID_MANAGER_EMAIL' | 'PARSE_ERROR' | 'API_ERROR' | 'IMPORT_ERROR';
   message: string;
-}
-
-// Map from your database schema to our types
-export function mapCompanyMemberToUser(member: any): User {
-  return {
-    id: member.id,
-    name: member.name || '',
-    email: member.email || '',
-    role: member.role || '',
-    isInvited: member.status === 'pending',
-    managerId: member.manager_id,
-  };
 }

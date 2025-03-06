@@ -6,6 +6,7 @@ export interface CsvRow {
   email: string;
   managerEmail: string;
   name?: string;
+  title?: string;
   role?: string;
 }
 
@@ -82,15 +83,35 @@ export const importService = {
   },
 
   importOrgChart: async (file: File): Promise<ImportResult> => {
+    // Get the user's token from local storage
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      throw new Error('Authentication token not found. Please log in again.');
+    }
+    
     const formData = new FormData();
     formData.append('file', file);
 
     const response = await fetch('/api/org-chart/import', {
       method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
       body: formData,
     });
 
     if (!response.ok) {
+      const errorData = await response.json();
+      // Return the error details from the API if available
+      if (errorData.errors) {
+        return {
+          success: false,
+          errors: errorData.errors,
+          usersAdded: 0,
+          relationshipsCreated: 0
+        };
+      }
       throw new Error('Failed to import organization chart');
     }
 
