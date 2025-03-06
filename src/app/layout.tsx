@@ -3,6 +3,8 @@
 
 import { AuthProvider } from '@/lib/context/auth-context';
 import { Roboto } from 'next/font/google';
+import { Analytics } from "@vercel/analytics/react"
+import { SpeedInsights } from "@vercel/speed-insights/next"
 import './globals.css';
 
 const roboto = Roboto({
@@ -21,6 +23,8 @@ export default function RootLayout({
       <body>
         <AuthProvider>
           {children}
+          <Analytics />
+          <SpeedInsights />
         </AuthProvider>
       </body>
     </html>
