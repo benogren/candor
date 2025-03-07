@@ -22,7 +22,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/components/ui/use-toast';
-import { AlertCircle, CheckCircle, RefreshCw, XCircle, UserPlus, Mail } from 'lucide-react';
+import { RefreshCw, XCircle, UserPlus } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import InviteUsersModal from './InviteUsersModal';
 
@@ -407,27 +407,22 @@ export default function MemberManagementPanel() {
   function getStatusBadge(status: string, source: string) {
     if (source === 'invited') {
       return (
-        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-          <Mail className="h-3.5 w-3.5 mr-1" />
+        <span className="inline-block bg-honeydew text-honeydew-900 text-xs px-2 py-0.5 rounded">
           Invited
-        </Badge>
+        </span>
       );
     }
     
     switch (status) {
       case 'pending':
         return (
-          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-            <AlertCircle className="h-3.5 w-3.5 mr-1" />
+          <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded">
             Pending
-          </Badge>
+          </span>
         );
       case 'active':
         return (
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-            <CheckCircle className="h-3.5 w-3.5 mr-1" />
-            Active
-          </Badge>
+          <></>
         );
       case 'deactivated':
         return (

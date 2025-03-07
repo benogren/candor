@@ -9,12 +9,18 @@ import CreateUserModal from '@/components/orgchart/CreateUserModal';
 import ImportOrgChartModal from '@/components/orgchart/ImportOrgChartModal';
 // import SyncIntegrationPanel from '@/components/orgchart/SyncIntegrationPanel';
 import supabase from '@/lib/supabase/client';
+import { Button } from '@/components/ui/button';
+import { faCloudArrowUp } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { LoadingSpinner } from '@/components/loading-spinner';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 interface CsvRow {
   email: string;
   managerEmail: string;
   name?: string;
   role?: string;
+  title?: string;
 }
 
 export default function OrgChartContainer() {
@@ -43,6 +49,7 @@ export default function OrgChartContainer() {
   const [previewData, setPreviewData] = useState<CsvRow[]>([]);
   const [validationErrors, setValidationErrors] = useState<ImportError[]>([]);
   const [importing, setImporting] = useState<boolean>(false);
+  const [justCompletedImport, setJustCompletedImport] = useState<boolean>(false);
 
   // Fetch org chart data
   const fetchOrgChart = useCallback(async () => {
@@ -81,6 +88,17 @@ export default function OrgChartContainer() {
   useEffect(() => {
     fetchOrgChart();
   }, [fetchOrgChart]);
+
+  // Handle import completion
+  useEffect(() => {
+    if (justCompletedImport) {
+      // Close the modal and reset import-related states
+      setIsImportModalOpen(false);
+      setPreviewData([]);
+      setValidationErrors([]);
+      setJustCompletedImport(false); // Reset the flag
+    }
+  }, [justCompletedImport]);
 
   // Assign manager to user
   const assignManager = useCallback(async (userId: string, managerId: string | null): Promise<boolean> => {
@@ -305,7 +323,9 @@ export default function OrgChartContainer() {
       console.log("Import API Response:", result);
       
       if (result.success) {
+        // Set the flag that we just completed an import
         await fetchOrgChart();
+        setJustCompletedImport(true);
       }
       
       return result;
@@ -330,9 +350,9 @@ export default function OrgChartContainer() {
   // Render loading state
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
+      <>
+      <LoadingSpinner />
+      </>
     );
   }
 
@@ -355,28 +375,17 @@ export default function OrgChartContainer() {
     <div className="container mx-auto px-4 py-6">
       {/* Action bar */}
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Organization Chart</h1>
+        <h2 className='text-4xl font-light text-berkeleyblue'>Organization Chart</h2>
         <div className="flex space-x-3">
-          <button
-            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 flex items-center"
-            onClick={() => setIsImportModalOpen(true)}
-          >
-            <svg
-              className="w-5 h-5 mr-2"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-              />
-            </svg>
+          <Button variant="outline" onClick={() => setIsImportModalOpen(true)}>
+            <FontAwesomeIcon 
+                icon={faCloudArrowUp}
+                height={18}
+                width={18}
+                className=""
+            />
             Import
-          </button>
+          </Button>
           {/* <button
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
             onClick={() => setIsCreateUserModalOpen(true)}
@@ -435,29 +444,52 @@ export default function OrgChartContainer() {
           />
 
           {/* Unassigned Users */}
-          {orgChartData.unassigned.length > 0 && (
-            <div className="mt-8 border-t pt-6">
-              <h3 className="text-lg font-medium mb-4">Unassigned Users</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {orgChartData.unassigned.map((user) => (
-                  <div
-                    key={user.id}
-                    className="bg-white border border-gray-300 rounded-md p-3 shadow-sm cursor-pointer hover:bg-gray-50"
-                    onClick={() => handleSelectUser(user)}
-                  >
-                    <div className="font-medium">{user.name}</div>
-                    <div className="text-sm text-gray-500">{user.email}</div>
-                    <div className="text-xs text-gray-400">{user.role}</div>
-                    {user.isInvited && (
-                      <span className="inline-block bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded mt-1">
-                        Invited
-                      </span>
-                    )}
+        {orgChartData.unassigned.length > 0 && (
+          <div className="mt-8 border-t border-gray-200 pt-6">
+            <h3 className="text-lg font-medium mb-4 text-berkeleyblue">Unassigned Users</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {orgChartData.unassigned.map((user) => (
+                <div
+                  key={user.id}
+                  className="bg-white border border-gray-200 rounded-md p-4 shadow-sm cursor-pointer hover:bg-gray-50 flex items-center"
+                  onClick={() => handleSelectUser(user)}
+                >
+                  <Avatar className="h-12 w-12 mr-4 border border-gray-100">
+                    {user.avatarUrl ? (
+                      <AvatarImage src={user.avatarUrl} alt={user.name} />
+                    ) : null}
+                    <AvatarFallback className="bg-cerulean text-white font-medium">
+                      {user.name.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  
+                  <div className="overflow-hidden">
+                    <h3 className="text-berkeleyblue font-medium truncate">{user.name}</h3>
+                    <p className="text-slate-500 text-sm truncate">{user.jobTitle || user.role || ''}</p>
+                    
+                    <div className="flex flex-wrap mt-1 gap-1">
+                      {user.role === 'admin' && (
+                        <span className="inline-block bg-nonphotoblue/20 text-nonphotoblue-900 text-xs px-2 py-0.5 rounded">
+                          Admin
+                        </span>
+                      )}
+                      {user.isPending && (
+                        <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded">
+                          Pending
+                        </span>
+                      )}
+                      {user.isInvited && (
+                        <span className="inline-block bg-honeydew text-honeydew-900 text-xs px-2 py-0.5 rounded">
+                          Invited
+                        </span>
+                      )}
+                    </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
-          )}
+          </div>
+        )}
         </div>
       )}
 
@@ -517,7 +549,7 @@ export default function OrgChartContainer() {
       )}
 
       {/* Import Modal */}
-      {isImportModalOpen && (
+      {isImportModalOpen && !justCompletedImport && (
         <ImportOrgChartModal
           onImport={importOrgChart}
           onPreview={parseFile}
@@ -525,10 +557,12 @@ export default function OrgChartContainer() {
           validationErrors={validationErrors}
           importing={importing}
           onClose={() => {
-            setIsImportModalOpen(false);
-            setPreviewData([]);
-            setValidationErrors([]);
-            fetchOrgChart(); // Refresh data after import
+            // Only close the modal if we're not in the middle of importing
+            if (!importing) {
+              setIsImportModalOpen(false);
+              setPreviewData([]);
+              setValidationErrors([]);
+            }
           }}
         />
       )}

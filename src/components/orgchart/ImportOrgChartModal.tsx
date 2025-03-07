@@ -1,7 +1,25 @@
 // components/orgchart/ImportOrgChartModal.tsx
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { CsvRow } from '../../services/importService';
 import { ImportResult, ImportError } from '@/app/types/orgChart.types';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogFooter,
+  DialogDescription
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { 
+  AlertCircle,
+  Upload,
+  CheckCircle,
+  FileText,
+  Loader2
+} from 'lucide-react';
 
 interface ImportOrgChartModalProps {
   onImport: (file: File) => Promise<ImportResult | null>;
@@ -22,19 +40,17 @@ const ImportOrgChartModal: React.FC<ImportOrgChartModalProps> = ({
 }) => {
   const [file, setFile] = useState<File | null>(null);
   const [previewed, setPreviewed] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [importComplete, setImportComplete] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Debug effect to log preview data when it changes
-  useEffect(() => {
-    console.log("Preview data from API:", previewData);
-  }, [previewData]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0]);
       setPreviewed(false);
+      setPreviewError(null);
       setImportComplete(false);
       setImportResult(null);
     }
@@ -42,36 +58,78 @@ const ImportOrgChartModal: React.FC<ImportOrgChartModalProps> = ({
 
   const handlePreview = async () => {
     if (file) {
-      // Read file for debugging
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const content = e.target?.result as string;
-        console.log("File content preview:", content.substring(0, 300));
-        console.log("File size:", file.size, "bytes");
-      };
-      reader.readAsText(file);
-      
-      // Call the provided onPreview function
-      const success = await onPreview(file);
-      setPreviewed(success);
+      setPreviewLoading(true);
+      setPreviewError(null);
+      try {
+        const success = await onPreview(file);
+        setPreviewed(success);
+        
+        // Even if preview was successful, we might have validation errors to show
+        if (validationErrors.length > 0) {
+          // Check specifically for deactivated user errors
+          const deactivatedErrors = validationErrors.filter(err => 
+            err.errorType === 'DEACTIVATED_USER' || 
+            err.errorType === 'DEACTIVATED_MANAGER'
+          );
+          
+          if (deactivatedErrors.length > 0) {
+            // Create a specific message for deactivated users
+            setPreviewError(`The CSV contains ${deactivatedErrors.length} deactivated user(s). Deactivated users cannot be included in the organization chart.`);
+          } else if (!success) {
+            // For other validation failures
+            setPreviewError(`CSV validation failed with ${validationErrors.length} error(s). Please check the errors below.`);
+          }
+        } else if (!success) {
+          setPreviewError("Failed to parse CSV file. Please check the file format.");
+        }
+      } catch (error) {
+        console.error("Error previewing file:", error);
+        setPreviewError(
+          error instanceof Error 
+            ? `Error: ${error.message}` 
+            : "An unexpected error occurred while parsing the CSV file."
+        );
+        setPreviewed(false);
+      } finally {
+        setPreviewLoading(false);
+      }
     }
   };
 
   const handleImport = async () => {
     if (file) {
-      const result = await onImport(file);
-      setImportResult(result);
-      setImportComplete(true);
+      try {
+        const result = await onImport(file);
+        setImportResult(result);
+        setImportComplete(true);
+      } catch (error) {
+        console.error("Error importing file:", error);
+        // In case of import failure, show error and don't mark as complete
+        setImportResult({
+          success: false,
+          usersAdded: 0,
+          relationshipsCreated: 0,
+          errors: [{
+            row: 0,
+            email: '',
+            errorType: 'OTHER',
+            message: error instanceof Error 
+              ? error.message 
+              : "An unexpected error occurred during import"
+          }]
+        });
+        setImportComplete(true);
+      }
     }
   };
 
   const downloadTemplate = () => {
-    const template = 'email,managerEmail,name,title,role\njohn@example.com,,John Doe,CEO,admin\njane@example.com,john@example.com,Jane Smith,HR,admin\njoe@example.com,john@example.com,Joe Smith,Engineer,member\n';
+    const template = 'email,managerEmail,name,role,title\njohn@example.com,,John Doe,admin,CEO\njane@example.com,john@example.com,Jane Smith,admin,CTO\nsarah@example.com,jane@example.com,Sarah Johnson,member,Engineer\nmark@example.com,jane@example.com,Mark Davis,member,Designer\n';
     const blob = new Blob([template], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'candor_org_chart_template.csv';
+    a.download = 'org_chart_template.csv';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -79,36 +137,44 @@ const ImportOrgChartModal: React.FC<ImportOrgChartModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-lg max-w-4xl w-full">
-        <div className="px-6 py-4 border-b">
-          <h3 className="text-lg font-medium">Import Organization Chart</h3>
-        </div>
+    <Dialog open={true} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Import Organization Chart</DialogTitle>
+          <DialogDescription>
+            Upload a CSV file to import your organization chart structure.
+            The file should contain employee emails and manager emails.
+          </DialogDescription>
+        </DialogHeader>
         
-        <div className="px-6 py-4">
+        <div className="py-2">
           {!importComplete ? (
             <>
-              <div className="mb-6">
-                <p className="mb-2">
-                  Upload a CSV file to import your organization chart structure. 
-                  The file should contain at minimum employee emails and manager emails.
-                </p>
-                <button
-                  type="button"
-                  className="text-blue-600 hover:text-blue-800 text-sm"
-                  onClick={downloadTemplate}
+            <div className='items-center flex justify-between mb-4'>
+              {file && (
+                  <div className="mt-2 text-sm text-gray-600">
+                    Selected file: {file.name}
+                  </div>
+              )}
+              <div className="flex justify-end">
+                <Button 
+                  variant="secondary" 
+                  onClick={downloadTemplate} 
+                  className="flex items-center gap-2"
                 >
-                  Download CSV template
-                </button>
+                  <FileText className="h-4 w-4" />
+                  Download CSV Template
+                </Button>
+              </div>
               </div>
               
               <div className="mb-6">
                 <div className="flex items-center justify-center w-full">
-                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
                     <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                      <svg className="w-8 h-8 mb-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                      </svg>
+                      <Upload
+                        className="w-8 h-8 mb-4 text-gray-500"
+                      />
                       <p className="mb-2 text-sm text-gray-500">
                         <span className="font-semibold">Click to upload</span> or drag and drop
                       </p>
@@ -123,22 +189,64 @@ const ImportOrgChartModal: React.FC<ImportOrgChartModalProps> = ({
                     />
                   </label>
                 </div>
-                {file && (
-                  <div className="mt-2 text-sm text-gray-600">
-                    Selected file: {file.name}
-                  </div>
-                )}
               </div>
               
               {file && !previewed && (
-                <div className="mb-6">
-                  <button
+                <div className="mb-6 space-y-3">
+                  <Button
                     type="button"
-                    className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-md"
+                    className="w-full"
                     onClick={handlePreview}
+                    disabled={previewLoading}
                   >
-                    Preview Data
-                  </button>
+                    {previewLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processing CSV...
+                      </>
+                    ) : (
+                      'Preview Data'
+                    )}
+                  </Button>
+                  
+                  {previewError && (
+                    <Alert variant="destructive">
+                      <AlertDescription>
+                      <div className='flex items-center gap-2'>
+                        <AlertCircle className="h-4 w-4 text-pantonered" />
+                        <span className="font-medium">{previewError}</span>
+                      </div>
+                        
+                        {/* Show specific deactivated users if that's the error type */}
+                        {validationErrors.some(err => 
+                          err.errorType === 'DEACTIVATED_USER' || 
+                          err.errorType === 'DEACTIVATED_MANAGER'
+                        ) && (
+                          <ul className="mt-2 list-disc list-inside text-sm">
+                            {validationErrors
+                              .filter(err => 
+                                err.errorType === 'DEACTIVATED_USER' || 
+                                err.errorType === 'DEACTIVATED_MANAGER'
+                              )
+                              .slice(0, 5) // Show just the first 5 to avoid overwhelming
+                              .map((err, idx) => (
+                                <li key={idx}>{err.message}</li>
+                              ))
+                            }
+                            {validationErrors.filter(err => 
+                              err.errorType === 'DEACTIVATED_USER' || 
+                              err.errorType === 'DEACTIVATED_MANAGER'
+                            ).length > 5 && (
+                              <li>...and {validationErrors.filter(err => 
+                                err.errorType === 'DEACTIVATED_USER' || 
+                                err.errorType === 'DEACTIVATED_MANAGER'
+                              ).length - 5} more</li>
+                            )}
+                          </ul>
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  )}
                 </div>
               )}
               
@@ -147,53 +255,73 @@ const ImportOrgChartModal: React.FC<ImportOrgChartModalProps> = ({
                   <div className="mb-6">
                     <h4 className="font-medium mb-2">Preview (First 5 rows)</h4>
                     <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Manager Email</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {previewData && previewData.length > 0 ? (
-                            previewData.map((row, index) => (
-                              <tr key={index}>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm">{row.email}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm">{row.managerEmail}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm">{row.name}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm">{row.title}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm">{row.role}</td>
+                      <ScrollArea className="h-[180px] rounded border">
+                        <div className="p-2">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Manager Email</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
                               </tr>
-                            ))
-                          ) : (
-                            <tr>
-                              <td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">
-                                {previewed ? "No data found in CSV file" : "CSV data will appear here"}
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {previewData.length > 0 ? (
+                                previewData.map((row, index) => (
+                                  <tr key={index}>
+                                    <td className="px-4 py-2 whitespace-nowrap text-sm">{row.email}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap text-sm">{row.managerEmail}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap text-sm">{row.name}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap text-sm">{row.role}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap text-sm">{row.title}</td>
+                                  </tr>
+                                ))
+                              ) : (
+                                <tr>
+                                  <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">
+                                    No data available in CSV
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </ScrollArea>
                     </div>
                   </div>
                   
                   {validationErrors.length > 0 && (
                     <div className="mb-6">
-                      <h4 className="font-medium text-red-600 mb-2">Validation Errors</h4>
-                      <div className="bg-red-50 p-4 rounded-md">
-                        <ul className="list-disc list-inside space-y-1 text-sm text-red-700">
-                          {validationErrors.map((error, index) => (
-                            <li key={index}>
-                              Row {error.row}: {error.message}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
+                      <Alert variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>
+                          <div className="font-medium mb-2">CSV has {validationErrors.length} validation errors:</div>
+                          <ScrollArea className="h-[120px]">
+                            <ul className="list-disc list-inside space-y-1 text-sm">
+                              {validationErrors.map((error, index) => (
+                                <li key={index}>
+                                  Row {error.row}: {error.message}
+                                </li>
+                              ))}
+                            </ul>
+                          </ScrollArea>
+                        </AlertDescription>
+                      </Alert>
                     </div>
                   )}
+
+                  {/* {validationErrors.length === 0 && (
+                    <Alert className="mb-6 bg-green-50 border-green-200">
+                      <AlertDescription className="text-green-700">
+                        <div className='flex items-center gap-2'>
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        CSV file is valid and ready to import.
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  )} */}
                 </>
               )}
             </>
@@ -201,58 +329,66 @@ const ImportOrgChartModal: React.FC<ImportOrgChartModalProps> = ({
             <div className="mb-6">
               <h4 className="font-medium mb-2">Import Result</h4>
               {importResult?.success ? (
-                <div className="bg-green-50 p-4 rounded-md">
-                  <p className="text-green-700">
-                    Import completed successfully!
-                  </p>
-                  <ul className="list-disc list-inside mt-2 text-sm text-green-700">
-                    <li>Users added: {importResult.usersAdded}</li>
-                    <li>Relationships created: {importResult.relationshipsCreated}</li>
-                  </ul>
-                </div>
-              ) : (
-                <div className="bg-red-50 p-4 rounded-md">
-                  <p className="text-red-700">
-                    Import failed. Please correct the errors and try again.
-                  </p>
-                  {importResult?.errors && importResult.errors.length > 0 && (
-                    <ul className="list-disc list-inside mt-2 text-sm text-red-700">
-                      {importResult.errors.map((error, index) => (
-                        <li key={index}>
-                          Row {error.row}: {error.message}
-                        </li>
-                      ))}
+                <Alert className="bg-green-50 border-green-200">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-green-700">
+                    <p>Import completed successfully!</p>
+                    <ul className="list-disc list-inside mt-2 text-sm">
+                      <li>Users added: {importResult.usersAdded}</li>
+                      <li>Relationships created: {importResult.relationshipsCreated}</li>
                     </ul>
-                  )}
-                </div>
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    <p>Import failed. Please correct the errors and try again.</p>
+                    {importResult?.errors && importResult.errors.length > 0 && (
+                      <ScrollArea className="h-[150px] mt-2">
+                        <ul className="list-disc list-inside mt-2 text-sm">
+                          {importResult.errors.map((error, index) => (
+                            <li key={index}>
+                              Row {error.row}: {error.message}
+                            </li>
+                          ))}
+                        </ul>
+                      </ScrollArea>
+                    )}
+                  </AlertDescription>
+                </Alert>
               )}
             </div>
           )}
         </div>
         
-        <div className="px-6 py-3 bg-gray-50 flex justify-end space-x-3 rounded-b-lg">
-          <button
-            type="button"
-            className="px-4 py-2 text-gray-700 hover:text-gray-900 bg-white border border-gray-300 rounded-md"
+        <DialogFooter>
+          <Button
+            variant="outline"
             onClick={onClose}
-            disabled={importing}
+            disabled={importing || previewLoading}
           >
             {importComplete ? 'Close' : 'Cancel'}
-          </button>
+          </Button>
           
           {!importComplete && previewed && validationErrors.length === 0 && (
-            <button
-              type="button"
-              className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-md disabled:opacity-50"
+            <Button
               onClick={handleImport}
-              disabled={importing}
+              disabled={importing || previewLoading}
             >
-              {importing ? 'Importing...' : 'Import Data'}
-            </button>
+              {importing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Importing...
+                </>
+              ) : (
+                'Import Data'
+              )}
+            </Button>
           )}
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 

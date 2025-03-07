@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
     
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
     
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
@@ -191,42 +191,56 @@ export async function GET(request: NextRequest) {
     });
     
     // Build the hierarchical organization chart
-    const hierarchical: OrgChartNode[] = [];
-    const processedUsers = new Set<string>();
-    
-    // Helper function to recursively build the org chart
-    const buildOrgChart = (userId: string): OrgChartNode | null => {
-      const user = users.find(u => u.id === userId);
-      if (!user || processedUsers.has(userId)) return null;
-      
-      processedUsers.add(userId);
-      
-      const directReports: OrgChartNode[] = [];
-      const directReportIds = managerMap.get(userId) || [];
-      
-      for (const reportId of directReportIds) {
-        const reportNode = buildOrgChart(reportId);
-        if (reportNode) {
-          directReports.push(reportNode);
-        }
-      }
-      
-      return {
-        user,
-        directReports
-      };
-    };
-    
-    // Build the chart starting from top-level users
-    for (const userId of topLevelUserIds) {
-      const node = buildOrgChart(userId);
-      if (node) {
-        hierarchical.push(node);
-      }
+    // Modify the code that builds the hierarchical organization chart
+const hierarchical: OrgChartNode[] = [];
+const processedUsers = new Set<string>();
+
+// First, identify which top-level users are actually managers (have direct reports)
+const managersWithReports = new Set<string>();
+for (const userId of topLevelUserIds) {
+  // Check if this user has any direct reports
+  const directReportIds = managerMap.get(userId) || [];
+  if (directReportIds.length > 0) {
+    managersWithReports.add(userId);
+  }
+}
+
+// Helper function to recursively build the org chart (unchanged)
+const buildOrgChart = (userId: string): OrgChartNode | null => {
+  const user = users.find(u => u.id === userId);
+  if (!user || processedUsers.has(userId)) return null;
+  
+  processedUsers.add(userId);
+  
+  const directReports: OrgChartNode[] = [];
+  const directReportIds = managerMap.get(userId) || [];
+  
+  for (const reportId of directReportIds) {
+    const reportNode = buildOrgChart(reportId);
+    if (reportNode) {
+      directReports.push(reportNode);
     }
-    
-    // Identify unassigned users (not in the hierarchy)
-    const unassigned = users.filter(user => !processedUsers.has(user.id));
+  }
+  
+  return {
+    user,
+    directReports
+  };
+};
+
+// Build the chart starting ONLY from top-level users that have direct reports
+for (const userId of managersWithReports) {
+  const node = buildOrgChart(userId);
+  if (node) {
+    hierarchical.push(node);
+  }
+}
+
+// Identify unassigned users (not in the hierarchy OR top-level without reports)
+const unassigned = users.filter(user => 
+  !processedUsers.has(user.id) || 
+  (topLevelUserIds.has(user.id) && !managersWithReports.has(user.id))
+);
     
     const orgChartData: OrgChartData = {
       hierarchical,

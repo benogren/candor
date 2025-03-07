@@ -244,13 +244,19 @@ async function processImport(
   // Maps to track email to ID relationships
   const emailToIdMap = new Map<string, { id: string, isInvited: boolean, isPending: boolean }>();
   
-  // console.log("Starting import process for", rows.length, "rows");
+  console.log("Starting import process for", rows.length, "rows");
   
-  // STEP 1: Build a map of user information across all states
-  for (const row of rows) {
-    const email = row.email.toLowerCase();
-    
-    // Check for existing user in all states
+  // STEP 1: Build a map of all unique emails in the CSV
+  const allEmails = new Set<string>();
+  rows.forEach(row => {
+    if (row.email) allEmails.add(row.email.toLowerCase());
+    if (row.managerEmail) allEmails.add(row.managerEmail.toLowerCase());
+  });
+  
+  console.log(`Found ${allEmails.size} unique email addresses in CSV`);
+  
+  // STEP 2: Get information about each email address
+  for (const email of allEmails) {
     const userInfo = await getAllUserRelationships(email);
     
     if (userInfo.registeredId || userInfo.pendingId || userInfo.invitedId) {
@@ -269,7 +275,7 @@ async function processImport(
     }
   }
   
-  // STEP 2: Create invites for users that don't exist
+  // STEP 3: Create or update users in the CSV
   for (const row of rows) {
     const email = row.email.toLowerCase();
     const title = row.title || '';
@@ -279,7 +285,7 @@ async function processImport(
     // Check if user already exists
     if (emailToIdMap.has(email)) {
       const userInfo = emailToIdMap.get(email);
-      // console.log(`User ${email} already exists, updating information`);
+      // console.log(`User ${email} already exists with ID ${userInfo?.id}, updating information`);
       
       // Update the user based on their status
       if (userInfo && userInfo.isInvited) {
@@ -289,7 +295,7 @@ async function processImport(
           .update({
             name: name,
             role: role,
-            job_title: title  // Update job title
+            job_title: title
           })
           .eq('id', userInfo?.id);
           
@@ -310,7 +316,7 @@ async function processImport(
           .from('user_profiles')
           .update({
             name: name,
-            job_title: title  // Update job title
+            job_title: title
           })
           .eq('id', userInfo?.id);
           
@@ -343,42 +349,52 @@ async function processImport(
     }
     
     // Create new invite for users that don't exist
-    const inviteId = crypto.randomUUID();
-    const inviteCode = Math.random().toString(36).substring(2, 10);
-    
-    // console.log(`Creating new invite for ${email} with ID ${inviteId}`);
-    
-    const { error: insertError } = await supabase
-      .from('invited_users')
-      .insert({
-        id: inviteId,
-        email: email,
-        name: name,
-        role: role,
-        job_title: title,
-        company_id: companyId,
-        invite_code: inviteCode,
-        status: 'pending',
-        created_by: userId
-      });
-    
-    if (insertError) {
-      console.error(`Error creating invite for ${email}:`, insertError);
+    try {
+      const inviteId = crypto.randomUUID();
+      const inviteCode = Math.random().toString(36).substring(2, 10);
+      
+      // console.log(`Creating new invite for ${email} with ID ${inviteId}`);
+      
+      const { error: insertError } = await supabase
+        .from('invited_users')
+        .insert({
+          id: inviteId,
+          email: email,
+          name: name,
+          role: role,
+          job_title: title,
+          company_id: companyId,
+          invite_code: inviteCode,
+          status: 'pending',
+          created_by: userId
+        });
+      
+      if (insertError) {
+        console.error(`Error creating invite for ${email}:`, insertError);
+        result.errors.push({
+          row: rows.findIndex(r => r.email.toLowerCase() === email) + 1,
+          email,
+          errorType: 'OTHER',
+          message: `Failed to create invite for ${email}: ${insertError.message}`
+        });
+      } else {
+        emailToIdMap.set(email, { id: inviteId, isInvited: true, isPending: false });
+        result.usersAdded++;
+        // console.log(`Successfully created invite for ${email}`);
+      }
+    } catch (error) {
+      console.error(`Unexpected error creating invite for ${email}:`, error);
       result.errors.push({
         row: rows.findIndex(r => r.email.toLowerCase() === email) + 1,
         email,
         errorType: 'OTHER',
-        message: `Failed to create invite for ${email}: ${insertError.message}`
+        message: `Unexpected error creating invite for ${email}: ${error instanceof Error ? error.message : String(error)}`
       });
-    } else {
-      emailToIdMap.set(email, { id: inviteId, isInvited: true, isPending: false });
-      result.usersAdded++;
-      // console.log(`Successfully created invite for ${email}`);
     }
   }
   
-  // STEP 3: Clear existing manager relationships
-  // console.log("Clearing existing manager relationships for the company");
+  // STEP 4: Clear existing manager relationships
+  console.log("Clearing existing manager relationships for the company");
   
   const { error: deleteError } = await supabase
     .from('manager_relationships')
@@ -395,16 +411,14 @@ async function processImport(
     });
   }
   
-  // STEP 4: Create manager relationships
-  // console.log("Creating manager relationships");
+  // STEP 5: Create manager relationships
+  console.log("Creating manager relationships");
   
   const relationshipsToCreate: ManagerRelationship[] = [];
   
   for (const row of rows) {
     const email = row.email.toLowerCase();
     const managerEmail = row.managerEmail ? row.managerEmail.toLowerCase() : null;
-    
-    // console.log(`Processing manager relationship for ${email}`);
     
     if (!managerEmail || managerEmail === '') {
       // console.log(`No manager specified for ${email}`);
@@ -461,7 +475,7 @@ async function processImport(
     relationshipsToCreate.push(relationship);
   }
   
-  // STEP 5: Batch insert all relationships
+  // STEP 6: Batch insert all relationships
   if (relationshipsToCreate.length > 0) {
     // console.log(`Inserting ${relationshipsToCreate.length} manager relationships`);
     

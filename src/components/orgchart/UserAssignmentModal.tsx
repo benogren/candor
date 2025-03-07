@@ -1,6 +1,25 @@
 // components/orgchart/UserAssignmentModal.tsx
 import React, { useState } from 'react';
 import { User } from '@/app/types/orgChart.types';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogFooter,
+  DialogDescription
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Loader2, UserPlus } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface UserAssignmentModalProps {
   user: User | null;
@@ -17,6 +36,9 @@ const UserAssignmentModal: React.FC<UserAssignmentModalProps> = ({
   onCreateManager,
   onClose,
 }) => {
+  // Define a constant for "no manager" value
+  const NO_MANAGER_VALUE = "none";
+  
   const [selectedManagerId, setSelectedManagerId] = useState<string | null>(user?.managerId || null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -39,96 +61,93 @@ const UserAssignmentModal: React.FC<UserAssignmentModalProps> = ({
     }
   };
 
+  // Handle Select value changes
+  const handleManagerChange = (value: string) => {
+    setSelectedManagerId(value === NO_MANAGER_VALUE ? null : value);
+  };
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-lg max-w-md w-full">
-        <div className="px-6 py-4 border-b">
-          <h3 className="text-lg font-medium">Assign Manager</h3>
-        </div>
+    <Dialog open={true} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Assign Manager</DialogTitle>
+          <DialogDescription>
+            Assign a manager for <span className="font-medium">{user.name}</span>
+            {user.isInvited && ' (Invited)'}
+          </DialogDescription>
+        </DialogHeader>
+        
         {user.isPending && (
-          <div className="px-6 py-4">
-            <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
-              <p className="text-sm text-blue-800">
-                This user has registered but has not verified their email yet.
-              </p>
-            </div>
-          </div>
+          <Alert className="bg-blue-50 border-blue-200">
+            <AlertDescription className="text-blue-800">
+              This user has registered but has not verified their email yet.
+            </AlertDescription>
+          </Alert>
         )}
-        <form onSubmit={handleSubmit}>
-          <div className="px-6 py-4">
-            <div className="mb-4">
-              <p>
-                Assign a manager for{' '}
-                <span className="font-medium">{user.name}</span>
-                {user.isInvited && ' (Invited)'}
-              </p>
-            </div>
-            
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-1">
-                Select Manager
-              </label>
-              <select
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                value={selectedManagerId || ''}
-                onChange={(e) => setSelectedManagerId(e.target.value || null)}
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-4">
+            <div className="grid w-full items-center gap-1.5">
+              <Label htmlFor="manager">Select Manager</Label>
+              <Select
+                value={selectedManagerId || NO_MANAGER_VALUE}
+                onValueChange={handleManagerChange}
               >
-                <option value="">No Manager</option>
-                {managers
-                  .filter((manager) => manager.id !== user.id) // Can't be own manager
-                  .map((manager) => (
-                    <option key={manager.id} value={manager.id}>
-                      {manager.name} {manager.isInvited ? '(Invited)' : ''}
-                    </option>
-                  ))}
-              </select>
+                <SelectTrigger id="manager">
+                  <SelectValue placeholder="Select a manager" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_MANAGER_VALUE}>No Manager</SelectItem>
+                  {managers
+                    .filter((manager) => manager.id !== user.id) // Can't be own manager
+                    .map((manager) => (
+                      <SelectItem key={manager.id} value={manager.id}>
+                        {manager.name} {manager.isInvited ? '(Invited)' : ''}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
             </div>
             
             <div className="flex items-center">
-              <button
+              <Button 
                 type="button"
-                className="text-blue-600 hover:text-blue-800 flex items-center"
+                variant="secondary" 
                 onClick={onCreateManager}
+                className="flex items-center gap-2"
               >
-                <svg
-                  className="w-4 h-4 mr-1"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                  />
-                </svg>
+                <UserPlus className="h-4 w-4" />
                 Create and invite new manager
-              </button>
+              </Button>
             </div>
           </div>
           
-          <div className="px-6 py-3 bg-gray-50 flex justify-end space-x-3 rounded-b-lg">
-            <button
+          <DialogFooter className="sm:justify-end gap-2 pt-4">
+            <Button
               type="button"
-              className="px-4 py-2 text-gray-700 hover:text-gray-900 bg-white border border-gray-300 rounded-md"
+              variant="outline"
               onClick={onClose}
               disabled={isSubmitting}
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-md disabled:opacity-50"
               disabled={isSubmitting}
             >
-              {isSubmitting ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Changes'
+              )}
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

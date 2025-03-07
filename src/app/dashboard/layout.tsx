@@ -102,10 +102,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   // Show loading state while authentication is being checked
   if (authLoading || (user && loadingCompany)) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <LoadingSpinner />
-        <p className="ml-2">{loadingCompany ? "Loading company data..." : "Checking authentication..."}</p>
-      </div>
+      <>
+      <LoadingSpinner />
+      </>
     );
   }
 

@@ -1,71 +1,73 @@
-// src/utils/userRelationships.ts
-import supabase from '@/lib/supabase/client';
+// app/utils/userRelationships.ts
+import { createClient } from '@supabase/supabase-js';
 
-export const getAllUserRelationships = async (email: string) => {
-  const result = {
-    invitedId: null as string | null,
-    pendingId: null as string | null,
-    registeredId: null as string | null,
-    managerId: null as string | null,
-    invitedManagerId: null as string | null
+interface UserRelationship {
+  registeredId: string | null;
+  pendingId: string | null;
+  invitedId: string | null;
+}
+
+/**
+ * Get all possible user relationships for an email address
+ * Checks registered users, pending registrations, and invited users
+ */
+export async function getAllUserRelationships(email: string): Promise<UserRelationship> {
+  const result: UserRelationship = {
+    registeredId: null,
+    pendingId: null,
+    invitedId: null
   };
   
-  // Check for invited user
-  const { data: invitedData } = await supabase
-    .from('invited_users')
-    .select('id')
-    .eq('email', email)
-    .eq('status', 'pending')
-    .maybeSingle();
-    
-  if (invitedData) result.invitedId = invitedData.id;
+  if (!email) return result;
   
-  // Check for pending registration
-  const { data: pendingData } = await supabase
-    .from('pending_registrations')
-    .select('user_id')
-    .eq('email', email)
-    .eq('status', 'pending')
-    .maybeSingle();
-    
-  if (pendingData) result.pendingId = pendingData.user_id;
+  // Normalize the email to lowercase for consistent comparison
+  const normalizedEmail = email.toLowerCase();
+
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
   
-  // Check for registered user
-  const { data: profileData } = await supabase
-    .from('user_profiles')
-    .select('id')
-    .eq('email', email)
-    .maybeSingle();
-    
-  if (profileData) result.registeredId = profileData.id;
-  
-  // Get manager relationship from any of these IDs
-  if (result.invitedId) {
-    const { data: invitedRel } = await supabase
-      .from('manager_relationships')
-      .select('manager_id, invited_manager_id')
-      .eq('invited_member_id', result.invitedId)
+  try {
+    // 1. Check in user_profiles for registered users
+    const { data: userProfile } = await supabase
+      .from('user_profiles')
+      .select('id')
+      .eq('email', normalizedEmail)
       .maybeSingle();
-      
-    if (invitedRel) {
-      result.managerId = invitedRel.manager_id;
-      result.invitedManagerId = invitedRel.invited_manager_id;
+    
+    if (userProfile?.id) {
+      result.registeredId = userProfile.id;
+      return result; // Return early if we found registered user
     }
-  }
-  
-  if (result.pendingId || result.registeredId) {
-    const memberId = result.pendingId || result.registeredId;
-    const { data: memberRel } = await supabase
-      .from('manager_relationships')
-      .select('manager_id, invited_manager_id')
-      .eq('member_id', memberId)
+    
+    // 2. Check pending_registrations
+    const { data: pendingReg } = await supabase
+      .from('pending_registrations')
+      .select('user_id')
+      .eq('email', normalizedEmail)
       .maybeSingle();
-      
-    if (memberRel) {
-      result.managerId = memberRel.manager_id;
-      result.invitedManagerId = memberRel.invited_manager_id;
+    
+    if (pendingReg?.user_id) {
+      result.pendingId = pendingReg.user_id;
+      return result; // Return early if we found pending registration
     }
+    
+    // 3. Check invited_users - Query directly by email for reliability
+    const { data: invitedUser } = await supabase
+      .from('invited_users')
+      .select('id, email')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+    
+    if (invitedUser?.id) {
+      // console.log(`Found invited user: ${normalizedEmail} with ID ${invitedUser.id}`);
+      result.invitedId = invitedUser.id;
+    }
+    
+    return result;
+  } catch (error) {
+    console.error(`Error checking relationships for ${email}:`, error);
+    return result;
   }
-  
-  return result;
-};
+}
