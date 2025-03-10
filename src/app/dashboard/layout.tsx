@@ -2,9 +2,10 @@
 
 import { useEffect, useState, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/context/auth-context';
+import { useAuth, useIsAdmin } from '@/lib/context/auth-context';
 import supabase from '@/lib/supabase/client';
 import Header from '@/components/dashboard/header';
+import Sidebar from '@/components/dashboard/sidebar';
 import { LoadingSpinner } from '@/components/loading-spinner';
 
 interface DashboardLayoutProps {
@@ -23,6 +24,7 @@ interface Company {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, loading: authLoading } = useAuth();
+  const { isAdmin } = useIsAdmin();
   const [company, setCompany] = useState<Company | null>(null);
   const [loadingCompany, setLoadingCompany] = useState(true);
   const router = useRouter();
@@ -102,9 +104,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   // Show loading state while authentication is being checked
   if (authLoading || (user && loadingCompany)) {
     return (
-      <>
-      <LoadingSpinner />
-      </>
+      <div className="flex justify-center items-center min-h-screen">
+        <LoadingSpinner />
+      </div>
     );
   }
 
@@ -125,8 +127,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   // When we have both user and company, render the full layout
   return (
-    <Header user={user} company={company}>
-      {children}
-    </Header>
+    <>
+      <Header user={user} company={company}>
+        <div className="flex">
+          <Sidebar role={isAdmin ? 'admin' : 'member'} />
+          <main className="flex-1 p-6 bg-slate-50 min-h-[calc(100vh-64px)]">
+            {children}
+          </main>
+        </div>
+      </Header>
+    </>
   );
 }

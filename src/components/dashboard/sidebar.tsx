@@ -23,14 +23,29 @@ export default function Sidebar({ role }: SidebarProps) {
       href: '/dashboard/feedback',
       adminOnly: false,
     },
-    {
-      name: 'Team',
-      href: '/dashboard/team',
-      adminOnly: false,
-    },
+    // {
+    //   name: 'Team',
+    //   href: '/dashboard/team',
+    //   adminOnly: false,
+    // },
     {
       name: 'Company Settings',
-      href: '/dashboard/company',
+      href: '/dashboard/admin',
+      adminOnly: true,
+    },
+    {
+      name: 'Org Chart',
+      href: '/dashboard/admin/orgchart',
+      adminOnly: true,
+    },
+    {
+      name: 'Feedback Cycles',
+      href: '/dashboard/admin/feedback/cycles',
+      adminOnly: true,
+    },
+    {
+      name: 'Feedback Questions',
+      href: '/dashboard/admin/feedback/questions',
       adminOnly: true,
     },
   ];

@@ -1,7 +1,7 @@
 // app/page.tsx
 'use client';
-import { Button } from '@/components/ui/button';
-import Link from 'next/link';
+// import { Button } from '@/components/ui/button';
+// import Link from 'next/link';
 import { useAuth } from '@/lib/context/auth-context';
 import { redirect } from "next/navigation";
 import Image from 'next/image';
@@ -22,29 +22,29 @@ export default function Home() {
             <Image src="/logo/candor_cerulean.png" alt="Candor" width={98} height={25} priority={true} />
           </div>
           <div>
-            <Button asChild variant="ghost">
+            {/* <Button asChild variant="ghost">
               <Link href="/auth/login">Login</Link>
             </Button>
             <Button asChild>
               <Link href="/auth/register">Register</Link>
-            </Button>
+            </Button> */}
           </div>
         </div>
       </header>
 
       <main className="flex-1 flex items-center justify-center bg-slate-50">
         <div className="container mx-auto px-4 py-16 flex flex-col items-center text-center">
-          <h1 className="text-4xl font-bold text-slate-900 mb-4">
+          <h1 className='text-6xl font-light text-berkeleyblue max-w-xl'>
             Honest Feedback Made Simple
           </h1>
-          <p className="text-slate-600 max-w-2xl mb-8">
-            An AI-powered 360 feedback app that helps teams collect frequent,
-            high-quality, anonymous feedback. Empower employees and enable managers
+          <p className='text-slate-500 text-base font-light max-w-xl mt-4'>
+            AI-powered 360 feedback that helps your teams collect frequent,
+            high-quality, anonymous feedback. Empower your employees and enable your managers
             to have more effective career conversations.
           </p>
-          <Button asChild size="lg">
+          {/* <Button asChild size="lg">
             <Link href="/auth/register">Get Started</Link>
-          </Button>
+          </Button> */}
         </div>
       </main>
 

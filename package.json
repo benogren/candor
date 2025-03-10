@@ -62,6 +62,7 @@
     "eslint-config-next": "15.2.0",
     "postcss": "^8.5.3",
     "prisma": "^6.4.1",
+    "supabase": "^2.15.8",
     "tailwindcss": "3.0.0",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5"

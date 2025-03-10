@@ -15,45 +15,89 @@ export default function StylePage() {
       </div>
       
       <h3 className="mt-6 text-xl font-bold">Color Variants</h3>
-      <div className="grid grid-cols-6 gap-2">
+      <div className="grid grid-cols-12 gap-2">
         <div className="p-2 text-white text-center bg-pantonered rounded">default</div>
+        <div className="p-2 text-white text-center bg-pantonered-50 rounded">50</div>
         <div className="p-2 text-white text-center bg-pantonered-100 rounded">100</div>
+        <div className="p-2 text-white text-center bg-pantonered-200 rounded">200</div>
         <div className="p-2 text-white text-center bg-pantonered-300 rounded">300</div>
+        <div className="p-2 text-white text-center bg-pantonered-400 rounded">400</div>
         <div className="p-2 text-white text-center bg-pantonered-500 rounded">500</div>
+        <div className="p-2 text-white text-center bg-pantonered-600 rounded">600</div>
         <div className="p-2 text-white text-center bg-pantonered-700 rounded">700</div>
+        <div className="p-2 text-white text-center bg-pantonered-800 rounded">800</div>
         <div className="p-2 text-black text-center bg-pantonered-900 rounded">900</div>
+        <div className="p-2 text-white text-center bg-pantonered-950 rounded">950</div>
       </div>
-      <div className="grid grid-cols-6 gap-2">
+      <div className="grid grid-cols-12 gap-2">
         <div className="p-2 text-white text-center bg-honeydew rounded">default</div>
+        <div className="p-2 text-white text-center bg-honeydew-50 rounded">50</div>
         <div className="p-2 text-white text-center bg-honeydew-100 rounded">100</div>
+        <div className="p-2 text-white text-center bg-honeydew-200 rounded">200</div>
         <div className="p-2 text-white text-center bg-honeydew-300 rounded">300</div>
+        <div className="p-2 text-white text-center bg-honeydew-400 rounded">400</div>
         <div className="p-2 text-white text-center bg-honeydew-500 rounded">500</div>
+        <div className="p-2 text-white text-center bg-honeydew-600 rounded">600</div>
         <div className="p-2 text-white text-center bg-honeydew-700 rounded">700</div>
+        <div className="p-2 text-white text-center bg-honeydew-800 rounded">800</div>
         <div className="p-2 text-black text-center bg-honeydew-900 rounded">900</div>
+        <div className="p-2 text-white text-center bg-honeydew-950 rounded">950</div>
       </div>
-      <div className="grid grid-cols-6 gap-2">
+      <div className="grid grid-cols-12 gap-2">
         <div className="p-2 text-white text-center bg-nonphotoblue rounded">default</div>
+        <div className="p-2 text-white text-center bg-nonphotoblue-50 rounded">50</div>
         <div className="p-2 text-white text-center bg-nonphotoblue-100 rounded">100</div>
+        <div className="p-2 text-white text-center bg-nonphotoblue-200 rounded">200</div>
         <div className="p-2 text-white text-center bg-nonphotoblue-300 rounded">300</div>
+        <div className="p-2 text-white text-center bg-nonphotoblue-400 rounded">400</div>
         <div className="p-2 text-white text-center bg-nonphotoblue-500 rounded">500</div>
+        <div className="p-2 text-white text-center bg-nonphotoblue-600 rounded">600</div>
         <div className="p-2 text-white text-center bg-nonphotoblue-700 rounded">700</div>
+        <div className="p-2 text-white text-center bg-nonphotoblue-800 rounded">800</div>
         <div className="p-2 text-black text-center bg-nonphotoblue-900 rounded">900</div>
+        <div className="p-2 text-white text-center bg-nonphotoblue-950 rounded">950</div>
       </div>
-      <div className="grid grid-cols-6 gap-2">
+      <div className="grid grid-cols-12 gap-2">
         <div className="p-2 text-white text-center bg-cerulean rounded">default</div>
+        <div className="p-2 text-white text-center bg-cerulean-50 rounded">50</div>
         <div className="p-2 text-white text-center bg-cerulean-100 rounded">100</div>
+        <div className="p-2 text-white text-center bg-cerulean-200 rounded">200</div>
         <div className="p-2 text-white text-center bg-cerulean-300 rounded">300</div>
+        <div className="p-2 text-white text-center bg-cerulean-400 rounded">400</div>
         <div className="p-2 text-white text-center bg-cerulean-500 rounded">500</div>
+        <div className="p-2 text-white text-center bg-cerulean-600 rounded">600</div>
         <div className="p-2 text-white text-center bg-cerulean-700 rounded">700</div>
+        <div className="p-2 text-white text-center bg-cerulean-800 rounded">800</div>
         <div className="p-2 text-black text-center bg-cerulean-900 rounded">900</div>
+        <div className="p-2 text-white text-center bg-cerulean-950 rounded">950</div>
       </div>
-      <div className="grid grid-cols-6 gap-2">
+      <div className="grid grid-cols-12 gap-2">
         <div className="p-2 text-white text-center bg-berkeleyblue rounded">default</div>
+        <div className="p-2 text-white text-center bg-berkeleyblue-50 rounded">50</div>
         <div className="p-2 text-white text-center bg-berkeleyblue-100 rounded">100</div>
+        <div className="p-2 text-white text-center bg-berkeleyblue-200 rounded">200</div>
         <div className="p-2 text-white text-center bg-berkeleyblue-300 rounded">300</div>
+        <div className="p-2 text-white text-center bg-berkeleyblue-400 rounded">400</div>
         <div className="p-2 text-white text-center bg-berkeleyblue-500 rounded">500</div>
+        <div className="p-2 text-white text-center bg-berkeleyblue-600 rounded">600</div>
         <div className="p-2 text-white text-center bg-berkeleyblue-700 rounded">700</div>
+        <div className="p-2 text-white text-center bg-berkeleyblue-800 rounded">800</div>
         <div className="p-2 text-black text-center bg-berkeleyblue-900 rounded">900</div>
+        <div className="p-2 text-white text-center bg-berkeleyblue-950 rounded">950</div>
+      </div>
+      <div className="grid grid-cols-12 gap-2">
+        <div className="p-2 text-white text-center bg-slate rounded">default</div>
+        <div className="p-2 text-white text-center bg-slate-50 rounded">50</div>
+        <div className="p-2 text-white text-center bg-slate-100 rounded">100</div>
+        <div className="p-2 text-white text-center bg-slate-200 rounded">200</div>
+        <div className="p-2 text-white text-center bg-slate-300 rounded">300</div>
+        <div className="p-2 text-white text-center bg-slate-400 rounded">400</div>
+        <div className="p-2 text-white text-center bg-slate-500 rounded">500</div>
+        <div className="p-2 text-white text-center bg-slate-600 rounded">600</div>
+        <div className="p-2 text-white text-center bg-slate-700 rounded">700</div>
+        <div className="p-2 text-white text-center bg-slate-800 rounded">800</div>
+        <div className="p-2 text-black text-center bg-slate-900 rounded">900</div>
+        <div className="p-2 text-black text-center bg-slate-950 rounded">950</div>
       </div>
       
       {/* Test text colors */}
@@ -61,6 +105,7 @@ export default function StylePage() {
       <p className="text-pantonered">Text in Pantone Red</p>
       <p className="text-cerulean">Text in Cerulean</p>
       <p className="text-berkeleyblue">Text in Berkeley Blue</p>
+      <p className='text-slate-500'>Text in Slate</p>
 
 
     <h3 className="mt-6 text-xl font-bold">Button Variants</h3> 
@@ -87,6 +132,10 @@ export default function StylePage() {
     <h4 className='text-lg font-light text-berkeleyblue'>What should David Clark keep doing?</h4>
     <br/>
     <p className='text-slate-500 text-base font-light'>
+      I believe that Danni should formulate her own opinions on approaches to problems and challenge solutions that are proposed by his peers more. This will allow Danni to influence project directions more as a leader. I believe that Danni should formulate her own opinions on approaches to problems and challenge solutions that are proposed by his peers more. This will allow Danni to influence project directions more as a leader
+    </p>
+    <br/>
+    <p className='text-slate-500'>
       I believe that Danni should formulate her own opinions on approaches to problems and challenge solutions that are proposed by his peers more. This will allow Danni to influence project directions more as a leader. I believe that Danni should formulate her own opinions on approaches to problems and challenge solutions that are proposed by his peers more. This will allow Danni to influence project directions more as a leader
     </p>
     </div>
