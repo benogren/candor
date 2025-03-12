@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
+import supabase from '@/lib/supabase/client';
 
 export default function FeedbackAuthPageContent() {
   const router = useRouter();
@@ -23,7 +24,18 @@ export default function FeedbackAuthPageContent() {
 
     const authenticateUser = async () => {
       try {
-        const response = await fetch(`/api/feedback/auth?token=${token}`);
+        const { data: { session } } = await supabase.auth.getSession();
+        const bearerToken = session?.access_token;
+        
+        if (!token) {
+          throw new Error('Not authenticated');
+        }
+
+        const response = await fetch(`/api/feedback/auth?token=${token}`, {
+          headers: {
+            'Authorization': `Bearer ${bearerToken}`
+          }
+        });
         const data = await response.json();
 
         if (!response.ok) {

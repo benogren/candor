@@ -1,37 +1,18 @@
 // src/app/feedback/complete/page.tsx
 'use client';
 
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle } from 'lucide-react';
+import Link from 'next/link';
+import FeedbackHeader from '@/components/feedbackHeader';
 
 export default function FeedbackCompletePage() {
   return (
-    <div className="container mx-auto py-12 px-4 max-w-md">
-      <Card>
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <CheckCircle className="h-16 w-16 text-green-500" />
-          </div>
-          <CardTitle className="text-2xl">Feedback Completed</CardTitle>
-        </CardHeader>
-        <CardContent className="text-center">
-          <p className="text-slate-600">
-            Thank you for providing feedback. Your insights help your team grow and improve.
-          </p>
-          <p className="mt-4 text-slate-600">
-            You&apos;ll receive another opportunity to provide feedback in the next cycle.
-          </p>
-        </CardContent>
-        <CardFooter className="flex justify-center">
-          <Button 
-            onClick={() => window.close()}
-            className="mt-2"
-          >
-            Close
-          </Button>
-        </CardFooter>
-      </Card>
-    </div>
+    <>
+    <FeedbackHeader />
+        <div className="container mx-auto py-8 px-4 max-w-xl">
+        <h1 className='text-4xl font-light text-berkeleyblue pb-2'>Thank you for submitting your feedback!</h1>
+        <p className='text-slate-500 text-base font-light pb-4'>Thank you for providing feedback, your insights help your team grow and improve. You&#39;ll receive another opportunity to provide feedback in the next cycle.</p>
+        <Link className='bg-cerulean text-primary-foreground hover:bg-cerulean-600 rounded-md text-sm font-normal h-9 px-4 py-2' href='/dashboard'>Return to dashboard</Link>
+        </div>
+    </>
   );
 }

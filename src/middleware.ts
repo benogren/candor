@@ -109,7 +109,7 @@ export const config = {
   matcher: [
     '/api/:path*',
     '/feedback/select-recipients',
-    '/feedback/questions/:path*',
+    '/feedback/questions/',
     '/feedback/complete'
   ],
 };

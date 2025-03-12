@@ -1,38 +1,115 @@
 // supabase/functions/schedule-feedback-emails/index.ts
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.21.0';
-import { Resend } from 'https://esm.sh/resend@0.15.0';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 const resendApiKey = Deno.env.get('RESEND_API_KEY') || '';
 const frontendUrl = Deno.env.get('FRONTEND_URL') || 'http://localhost:3000';
 
+// Validate required environment variables
+const missingEnvVars = [];
+if (!supabaseUrl) missingEnvVars.push('SUPABASE_URL');
+if (!supabaseServiceKey) missingEnvVars.push('SUPABASE_SERVICE_ROLE_KEY');
+if (!resendApiKey) missingEnvVars.push('RESEND_API_KEY');
+
+// Create clients only if environment variables are available
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
-const resend = new Resend(resendApiKey);
+
+// Direct email sending function using fetch API
+async function sendEmail(from: string, to: string, subject: string, html: string) {
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${resendApiKey}`
+    },
+    body: JSON.stringify({
+      from,
+      to,
+      subject,
+      html
+    })
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`Resend API error (${response.status}):`, errorText);
+    throw new Error(`Failed to send email (${response.status}): ${errorText}`);
+  }
+  
+  return await response.json();
+}
 
 serve(async (req) => {
   try {
-    // This function should be triggered by a Supabase scheduled task
-    
+    // Check for missing environment variables
+    if (missingEnvVars.length > 0) {
+      return new Response(
+        JSON.stringify({ 
+          error: `Missing required environment variables: ${missingEnvVars.join(', ')}`,
+          details: "Please set these variables in your Supabase Edge Function configuration."
+        }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate Resend API key format
+    if (!resendApiKey.startsWith('re_') || resendApiKey.length < 20) {
+      return new Response(
+        JSON.stringify({ 
+          error: "Invalid Resend API key format",
+          details: `API key should start with 're_' and be at least 20 characters (found: ${resendApiKey.length} chars, starts with: ${resendApiKey.substring(0, 3)}...)`
+        }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Try to send a test email to verify the API key works
+    try {
+      // Only test in non-production environments or when debugging
+      if (Deno.env.get('DEBUG') === 'true') {
+        await sendEmail(
+          'Candor <feedback@app.candor.so>',
+          'test@example.com',
+          'Test Email',
+          '<p>Test email to verify Resend API key works.</p>'
+        );
+        console.log('Test email sent successfully');
+      }
+    } catch (testError) {
+      console.error('Test email failed:', testError);
+      return new Response(
+        JSON.stringify({ 
+          error: "Failed to send test email",
+          details: testError instanceof Error ? testError.message : String(testError)
+        }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     // Get today's day of the week (0 = Sunday, 1 = Monday, etc.)
     const today = new Date();
     const dayOfWeek = today.getDay();
     
     // Determine if we're sending initial emails (Friday) or reminders (Monday)
+    // Default to Friday for initial emails
     const isFriday = dayOfWeek === 5;
     const isMonday = dayOfWeek === 1;
     
     // For testing purposes, allow overriding via request body
     let forceFriday = false;
     let forceMonday = false;
+    let targetCycleId: string | null = null;
     
     try {
       const body = await req.json();
       forceFriday = body.forceFriday === true;
       forceMonday = body.forceMonday === true;
+      targetCycleId = body.targetCycleId || null;
     } catch (e) {
       // If not a JSON request or no body, that's fine
+      console.log("No request body or not JSON");
     }
     
     if ((!isFriday && !isMonday) && (!forceFriday && !forceMonday)) {
@@ -42,7 +119,7 @@ serve(async (req) => {
       );
     }
     
-    // Get all active companies with their settings
+    // Get all active companies
     const { data: companies, error: companiesError } = await supabase
       .from('companies')
       .select('id, name');
@@ -58,187 +135,318 @@ serve(async (req) => {
     
     // Process each company
     for (const company of companies) {
-      // Check if any active feedback cycles for this company
-      const { data: activeCycles, error: cyclesError } = await supabase
-        .from('feedback_cycles')
-        .select('id, cycle_name')
-        .eq('company_id', company.id)
-        .eq('status', 'active')
-        .gte('due_date', today.toISOString());
-        
-      if (cyclesError) {
-        results.errors.push(`Error fetching cycles for ${company.name}: ${cyclesError.message}`);
-        continue;
-      }
-      
-      if (!activeCycles || activeCycles.length === 0) {
-        // No active cycles for this company, skip
-        continue;
-      }
-      
-      // Use the most recent cycle
-      const currentCycle = activeCycles[0];
-      
-      // Get all active members for the company
-      const { data: members, error: membersError } = await supabase
-        .from('company_members')
-        .select('id, name, email')
-        .eq('company_id', company.id)
-        .eq('status', 'active');
-        
-      if (membersError) {
-        results.errors.push(`Error fetching members for ${company.name}: ${membersError.message}`);
-        continue;
-      }
-      
-      if (!members || members.length === 0) {
-        // No active members, skip
-        continue;
-      }
-      
-      // For Friday: Send initial emails
-      if (isFriday || forceFriday) {
-        for (const member of members) {
-          try {
-            // Check if already has a session for this cycle
-            const { data: existingSessions } = await supabase
-              .from('feedback_sessions')
-              .select('id')
-              .eq('cycle_id', currentCycle.id)
-              .eq('provider_id', member.id)
-              .limit(1);
-              
-            if (existingSessions && existingSessions.length > 0) {
-              // Already has a session, skip
-              continue;
-            }
-            
-            // Create a new feedback session
-            const { data: session, error: sessionError } = await supabase
-              .from('feedback_sessions')
-              .insert({
-                cycle_id: currentCycle.id,
-                provider_id: member.id,
-                status: 'pending'
-              })
-              .select('id')
-              .single();
-              
-            if (sessionError) {
-              results.errors.push(`Error creating session for ${member.email}: ${sessionError.message}`);
-              continue;
-            }
-            
-            // Generate auth token
-            const token = generateSecureToken();
-            
-            // Store token
-            const { error: tokenError } = await supabase
-              .from('auth_tokens')
-              .insert({
-                token,
-                user_id: member.id,
-                type: 'feedback',
-                expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
-                session_id: session.id
-              });
-              
-            if (tokenError) {
-              results.errors.push(`Error storing token for ${member.email}: ${tokenError.message}`);
-              continue;
-            }
-            
-            // Send email
-            const feedbackUrl = `${frontendUrl}/feedback/auth?token=${token}`;
-            
-            await resend.emails.send({
-              from: 'Candor <feedback@yourcandor.com>',
-              to: member.email,
-              subject: 'Your weekly feedback opportunity is here',
-              html: getEmailTemplate(member.name, feedbackUrl, false)
-            });
-            
-            results.totalEmails++;
-          } catch (error) {
-            results.errors.push(`Error processing ${member.email}: ${error.message}`);
-          }
-        }
-      }
-      
-      // For Monday: Send reminder emails
-      if (isMonday || forceMonday) {
-        // Find incomplete sessions that haven't had a reminder
-        const { data: pendingSessions, error: pendingError } = await supabase
-          .from('feedback_sessions')
-          .select('id, provider_id')
-          .eq('cycle_id', currentCycle.id)
-          .neq('status', 'completed')
-          .is('reminder_sent_at', null);
+      try {
+        // Check if any active feedback cycles for this company
+        const cyclesQuery = supabase
+          .from('feedback_cycles')
+          .select('id, cycle_name, frequency, start_date, due_date')
+          .eq('company_id', company.id)
+          .eq('status', 'active');
           
-        if (pendingError) {
-          results.errors.push(`Error fetching pending sessions: ${pendingError.message}`);
+        // If targeting a specific cycle, add that condition
+        if (targetCycleId) {
+          cyclesQuery.eq('id', targetCycleId);
+        }
+          
+        const { data: activeCycles, error: cyclesError } = await cyclesQuery;
+          
+        if (cyclesError) {
+          results.errors.push(`Error fetching cycles for ${company.name}: ${cyclesError.message}`);
           continue;
         }
         
-        if (!pendingSessions || pendingSessions.length === 0) {
-          // No pending sessions, skip
+        if (!activeCycles || activeCycles.length === 0) {
+          // No active cycles (or no matching target cycle) for this company, skip
           continue;
         }
         
-        for (const session of pendingSessions) {
-          try {
-            // Get member details
-            const { data: member } = await supabase
-              .from('company_members')
-              .select('name, email')
-              .eq('id', session.provider_id)
-              .single();
+        // Filter cycles that need emails today based on frequency
+        // If forcing or targeting a specific cycle, process all active cycles
+        const cyclesToProcess = forceFriday || forceMonday || targetCycleId 
+          ? activeCycles 
+          : activeCycles.filter(cycle => {
+              // If due date is today or in the past, it needs processing
+              const dueDate = new Date(cycle.due_date);
+              const isToday = dueDate.toDateString() === today.toDateString();
+              const isPast = dueDate < today && dueDate.toDateString() !== today.toDateString();
               
-            if (!member) {
-              results.errors.push(`Member not found for session ${session.id}`);
-              continue;
-            }
-            
-            // Generate token
-            const token = generateSecureToken();
-            
-            // Store token
-            const { error: tokenError } = await supabase
-              .from('auth_tokens')
-              .insert({
-                token,
-                user_id: session.provider_id,
-                type: 'feedback',
-                expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
-                session_id: session.id
-              });
-              
-            if (tokenError) {
-              results.errors.push(`Error storing token for ${member.email}: ${tokenError.message}`);
-              continue;
-            }
-            
-            // Update session with reminder timestamp
-            await supabase
-              .from('feedback_sessions')
-              .update({ reminder_sent_at: new Date().toISOString() })
-              .eq('id', session.id);
-            
-            // Send reminder email
-            const feedbackUrl = `${frontendUrl}/feedback/auth?token=${token}`;
-            
-            await resend.emails.send({
-              from: 'Candor <feedback@yourcandor.com>',
-              to: member.email,
-              subject: 'Reminder: Your feedback is still needed',
-              html: getEmailTemplate(member.name, feedbackUrl, true)
+              return isToday || isPast;
             });
+        
+        if (cyclesToProcess.length === 0) {
+          continue;
+        }
+        
+        // Process each active cycle that needs emails
+        for (const currentCycle of cyclesToProcess) {
+          // Calculate next due date based on frequency
+          let nextDueDate = new Date(currentCycle.due_date);
+          switch (currentCycle.frequency?.toLowerCase()) {
+            case 'weekly':
+              nextDueDate.setDate(nextDueDate.getDate() + 7);
+              break;
+            case 'biweekly':
+              nextDueDate.setDate(nextDueDate.getDate() + 14);
+              break;
+            case 'monthly':
+              nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+              break;
+            case 'quarterly':
+              nextDueDate.setMonth(nextDueDate.getMonth() + 3);
+              break;
+            case 'yearly':
+              nextDueDate.setFullYear(nextDueDate.getFullYear() + 1);
+              break;
+            default:
+              // If frequency not recognized, default to weekly
+              nextDueDate.setDate(nextDueDate.getDate() + 7);
+          }
+          
+          // Update the cycle's due date
+          const { error: updateCycleError } = await supabase
+            .from('feedback_cycles')
+            .update({ due_date: nextDueDate.toISOString() })
+            .eq('id', currentCycle.id);
             
-            results.totalEmails++;
-          } catch (error) {
-            results.errors.push(`Error sending reminder: ${error.message}`);
+          if (updateCycleError) {
+            results.errors.push(`Error updating cycle due date: ${updateCycleError.message}`);
+            // Continue anyway to send emails
+          }
+          
+          // For Friday or forced Friday: Send initial emails to members
+          if (isFriday || forceFriday) {
+            // Get active company members (IDs only)
+            const { data: members, error: membersError } = await supabase
+              .from('company_members')
+              .select('id')
+              .eq('company_id', company.id)
+              .eq('status', 'active');
+
+            if (membersError) {
+              results.errors.push(`Error fetching members for ${company.name}: ${membersError.message}`);
+              continue;
+            }
+
+            if (!members || members.length === 0) {
+              // No active members, skip
+              continue;
+            }
+
+            // Process each member
+            for (const member of members) {
+              try {
+                // Get profile data separately
+                const { data: profile, error: profileError } = await supabase
+                  .from('user_profiles')
+                  .select('email, name')
+                  .eq('id', member.id)
+                  .single();
+                  
+                if (profileError) {
+                  results.errors.push(`Error fetching profile for user ${member.id}: ${profileError.message}`);
+                  continue;
+                }
+                
+                if (!profile || !profile.email) {
+                  results.errors.push(`No profile or email found for user ${member.id}`);
+                  continue;
+                }
+                
+                const memberEmail = profile.email;
+                const memberName = profile.name || memberEmail.split('@')[0];
+                
+                // Check if already has a session for this cycle
+                const { data: existingSessions } = await supabase
+                  .from('feedback_sessions')
+                  .select('id')
+                  .eq('cycle_id', currentCycle.id)
+                  .eq('provider_id', member.id)
+                  .limit(1);
+                  
+                if (existingSessions && existingSessions.length > 0) {
+                  // Already has a session, skip
+                  continue;
+                }
+                
+                // Create a new feedback session
+                const { data: session, error: sessionError } = await supabase
+                  .from('feedback_sessions')
+                  .insert({
+                    cycle_id: currentCycle.id,
+                    provider_id: member.id,
+                    status: 'pending'
+                  })
+                  .select('id')
+                  .single();
+                  
+                if (sessionError) {
+                  results.errors.push(`Error creating session for ${memberEmail}: ${sessionError.message}`);
+                  continue;
+                }
+                
+                // Generate auth token
+                const token = generateSecureToken();
+                
+                // Store token
+                const { error: tokenError } = await supabase
+                  .from('auth_tokens')
+                  .insert({
+                    token,
+                    user_id: member.id,
+                    type: 'feedback',
+                    expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+                    session_id: session.id
+                  });
+                  
+                if (tokenError) {
+                  results.errors.push(`Error storing token for ${memberEmail}: ${tokenError.message}`);
+                  continue;
+                }
+                
+                // Send email
+                const feedbackUrl = `${frontendUrl}/feedback/auth?token=${token}`;
+
+                console.log(`Sending email to ${memberEmail}`);
+                
+                try {
+                  await sendEmail(
+                    'Candor <feedback@app.candor.so>',
+                    memberEmail,
+                    `Your feedback is needed`,
+                    getEmailTemplate(memberName, feedbackUrl, false)
+                  );
+                  
+                  results.totalEmails++;
+                } catch (emailError) {
+                  results.errors.push(`Error sending email to ${memberEmail}: ${emailError instanceof Error ? emailError.message : String(emailError)}`);
+                }
+              } catch (error) {
+                results.errors.push(`Error processing user ${member.id}: ${error instanceof Error ? error.message : String(error)}`);
+              }
+            }
+            
+            // Also check for invited users
+            const { data: invitedUsers, error: invitedError } = await supabase
+              .from('invited_users')
+              .select('id, email, name, invite_code')
+              .eq('company_id', company.id)
+              .is('used_at', null);
+              
+            if (!invitedError && invitedUsers && invitedUsers.length > 0) {
+              for (const invitedUser of invitedUsers) {
+                try {
+                  // Send special email to invited users
+                  const signupUrl = `${frontendUrl}/auth/register/invite?code=${invitedUser.invite_code}&email=${encodeURIComponent(invitedUser.email)}`;
+                  
+                  try {
+                    await sendEmail(
+                      'Candor <feedback@app.candor.so>',
+                      invitedUser.email,
+                      `Join ${company.name} to contribute to the feedback cycle`,
+                      getInvitedUserEmailTemplate(invitedUser.name || invitedUser.email.split('@')[0], signupUrl, company.name)
+                    );
+                    
+                    results.totalEmails++;
+                  } catch (emailError) {
+                    results.errors.push(`Error sending invite email to ${invitedUser.email}: ${emailError instanceof Error ? emailError.message : String(emailError)}`);
+                  }
+                } catch (error) {
+                  results.errors.push(`Error processing invite for ${invitedUser.email}: ${error instanceof Error ? error.message : String(error)}`);
+                }
+              }
+            }
+          }
+          
+          // For Monday or forced Monday: Send reminder emails
+          if (isMonday || forceMonday) {
+            // Find incomplete sessions that haven't had a reminder
+            const { data: pendingSessions, error: pendingError } = await supabase
+              .from('feedback_sessions')
+              .select('id, provider_id')
+              .eq('cycle_id', currentCycle.id)
+              .neq('status', 'completed')
+              .is('reminder_sent_at', null);
+              
+            if (pendingError) {
+              results.errors.push(`Error fetching pending sessions: ${pendingError.message}`);
+              continue;
+            }
+            
+            if (!pendingSessions || pendingSessions.length === 0) {
+              // No pending sessions, skip
+              continue;
+            }
+            
+            for (const session of pendingSessions) {
+              try {
+                // Get member details from user_profiles
+                const { data: profile, error: profileError } = await supabase
+                  .from('user_profiles')
+                  .select('name, email')
+                  .eq('id', session.provider_id)
+                  .single();
+                  
+                if (profileError) {
+                  results.errors.push(`Error fetching profile for user ${session.provider_id}: ${profileError.message}`);
+                  continue;
+                }
+                
+                if (!profile || !profile.email) {
+                  results.errors.push(`No profile or email found for user ${session.provider_id}`);
+                  continue;
+                }
+                
+                const memberEmail = profile.email;
+                const memberName = profile.name || memberEmail.split('@')[0];
+                
+                // Generate token
+                const token = generateSecureToken();
+                
+                // Store token
+                const { error: tokenError } = await supabase
+                  .from('auth_tokens')
+                  .insert({
+                    token,
+                    user_id: session.provider_id,
+                    type: 'feedback',
+                    expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+                    session_id: session.id
+                  });
+                  
+                if (tokenError) {
+                  results.errors.push(`Error storing token for ${memberEmail}: ${tokenError.message}`);
+                  continue;
+                }
+                
+                // Update session with reminder timestamp
+                await supabase
+                  .from('feedback_sessions')
+                  .update({ reminder_sent_at: new Date().toISOString() })
+                  .eq('id', session.id);
+                
+                // Send reminder email
+                const feedbackUrl = `${frontendUrl}/feedback/auth?token=${token}`;
+                
+                try {
+                  await sendEmail(
+                    'Candor <feedback@app.candor.so>',
+                    memberEmail,
+                    `Reminder: Your feedback is still needed`,
+                    getEmailTemplate(memberName, feedbackUrl, true)
+                  );
+                  
+                  results.totalEmails++;
+                } catch (emailError) {
+                  results.errors.push(`Error sending reminder email to ${memberEmail}: ${emailError instanceof Error ? emailError.message : String(emailError)}`);
+                }
+              } catch (error) {
+                results.errors.push(`Error sending reminder for session ${session.id}: ${error instanceof Error ? error.message : String(error)}`);
+              }
+            }
           }
         }
+      } catch (companyError) {
+        results.errors.push(`Error processing company ${company.name}: ${companyError instanceof Error ? companyError.message : String(companyError)}`);
       }
     }
     
@@ -252,7 +460,7 @@ serve(async (req) => {
     );
   } catch (error) {
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -265,7 +473,7 @@ function generateSecureToken(): string {
   return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-// Email template function
+// Email template function for registered users
 function getEmailTemplate(name: string, url: string, isReminder: boolean): string {
   return `
     <!DOCTYPE html>
@@ -286,16 +494,53 @@ function getEmailTemplate(name: string, url: string, isReminder: boolean): strin
         ${isReminder 
           ? `<p>This is a friendly reminder that your feedback is still needed. Your insights help your team grow and improve.</p>
              <p>Please take a few minutes to provide feedback for your colleagues.</p>`
-          : `<p>It's time for your weekly feedback opportunity!</p>
-             <p>Providing regular feedback helps your team grow and improve.</p>
-             <p>This should only take a few minutes to complete.</p>`
+          : `<p>It's time to provide feedback for your colleagues!</p>
+             <p>Regular feedback helps your team grow and improve. This should only take a few minutes to complete.</p>`
         }
         
         <p style="margin: 30px 0; text-align: center;">
           <a href="${url}" class="button">Provide Feedback</a>
         </p>
         
-        <p>This link will expire in 48 hours.</p>
+        <p>This link will expire in 7 days.</p>
+        
+        <div class="footer">
+          <p>This email was sent by Candor, your team feedback platform.</p>
+          <p>If you did not expect this email, please contact your administrator.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+// Email template function for invited users
+function getInvitedUserEmailTemplate(name: string, url: string, companyName: string): string {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .button { display: inline-block; background-color: #457B9D; color: white; 
+                 padding: 12px 24px; text-decoration: none; border-radius: 4px; }
+        .footer { margin-top: 40px; font-size: 12px; color: #777; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>Hello ${name},</h1>
+        
+        <p>You've been invited to join <strong>${companyName}</strong> on Candor!</p>
+        <p>Your team is currently participating in a feedback cycle, and they would value your input.</p>
+        <p>Please complete your registration to start participating in the feedback process.</p>
+        
+        <p style="margin: 30px 0; text-align: center;">
+          <a href="${url}" class="button">Complete Registration</a>
+        </p>
+        
+        <p>This invitation link will expire in 7 days.</p>
         
         <div class="footer">
           <p>This email was sent by Candor, your team feedback platform.</p>
