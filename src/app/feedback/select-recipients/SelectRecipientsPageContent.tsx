@@ -34,43 +34,80 @@ export default function SelectRecipientsPageContent() {
   useEffect(() => {
     const checkSession = async () => {
       if (!sessionId) {
+        console.error('No session ID provided');
         setLoading(false);
         return;
       }
-
+  
       try {
+        console.log('Checking session:', sessionId);
         const { data: session, error } = await supabase
           .from('feedback_sessions')
           .select('*')
           .eq('id', sessionId)
           .single();
-
+  
         if (error || !session) {
           toast({
             title: 'Error loading session',
             description: 'Could not find your feedback session',
             variant: 'destructive',
           });
-          router.push('/feedback');
+          router.push('/dashboard');
           return;
         }
-
+  
+        // Fetch previously selected recipients
+        const { data: recipients, error: recipientsError } = await supabase
+          .from('feedback_recipients')
+          .select('recipient_id')
+          .eq('session_id', sessionId);
+  
+        if (!recipientsError && recipients && recipients.length > 0) {
+          // Get the recipient IDs
+          const recipientIds = recipients.map(r => r.recipient_id);
+          
+          console.log('Found previous recipients:', recipientIds.length);
+          
+          // Fetch the identity information for these recipients
+          const { data: identities, error: identitiesError } = await supabase
+            .from('feedback_user_identities')
+            .select('*')
+            .in('id', recipientIds);
+          
+          if (!identitiesError && identities && identities.length > 0) {
+            // Transform the data to match the Colleague type
+            const previouslySelectedColleagues = identities.map(identity => ({
+              id: identity.id,
+              name: identity.name || 'Unknown',
+              email: identity.email,
+              role: '', // No role in feedback_user_identities
+              status: identity.identity_type,
+              companyid: identity.company_id
+            }));
+            
+            // Update the selectedColleagues state
+            setSelectedColleagues(previouslySelectedColleagues);
+            console.log('Loaded previously selected colleagues:', previouslySelectedColleagues);
+          }
+        }
+  
         setLoading(false);
       } catch (error) {
         console.error('Error checking session:', error);
         setLoading(false);
       }
     };
-
+  
     checkSession();
-
+  
     // Add click outside listener to close search results
     const handleClickOutside = (event: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setShowResults(false);
       }
     };
-
+  
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
@@ -87,7 +124,7 @@ export default function SelectRecipientsPageContent() {
     setSearching(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not authenticated');
+      if (!session) throw new Error('** Not authenticated');
 
       const response = await fetch(`/api/colleagues/search?q=${encodeURIComponent(term)}`, {
         headers: {
@@ -149,73 +186,133 @@ export default function SelectRecipientsPageContent() {
       });
       return;
     }
-
+  
     setSubmitting(true);
     try {
+      // Get currently selected colleague IDs
+      const selectedIds = new Set(selectedColleagues.map(c => c.id));
+      
+      // Fetch existing recipients for this session
+      const { data: existingRecipients, error: fetchError } = await supabase
+        .from('feedback_recipients')
+        .select('id, recipient_id')
+        .eq('session_id', sessionId);
+        
+      if (fetchError) throw fetchError;
+      
+      const existingIds = new Set((existingRecipients || []).map(r => r.recipient_id));
+      
+      // Find recipients to remove (existing but not selected anymore)
+      const recipientsToRemove = (existingRecipients || [])
+        .filter(r => !selectedIds.has(r.recipient_id))
+        .map(r => r.id);
+      
+      // Check if any of these recipients have responses that would block deletion
+      if (recipientsToRemove.length > 0) {
+        const { data: checkResponses, error: checkError } = await supabase
+          .from('feedback_responses')
+          .select('recipient_id')
+          .in('recipient_id', recipientsToRemove);
 
-        // const identities = selectedColleagues.map(colleague => ({
-        //     recipient_id: colleague.id,
-        //     identity_type: colleague.status,
-        //     company_id: colleague.companyid,
-        //     recipoent_email: colleague.email,
-        //     recipoent_name: colleague.name
-        // }));
+          if (checkError) throw checkError;
+          
+        if (checkResponses && checkResponses.length > 0) {
+          // We have responses for recipients we're trying to remove
+          // Instead of deleting, we'll keep everyone and just add new ones
+          console.log('Found existing responses, still deleting...');
+          if (recipientsToRemove.length > 0) {
+            const { error: deleteResponsesError } = await supabase
+              .from('feedback_responses')
+              .delete()
+              .in('recipient_id', recipientsToRemove)
+              .eq('session_id', sessionId);
+              
+            if (deleteResponsesError) throw deleteResponsesError;
 
-        const feedbackEmails = selectedColleagues.map(colleague => colleague.email);
-
-        // Step 1: Check if users exist in `feedback_user_identities`
-        const { data: existingIdentities, error: fetchError } = await supabase
-        .from('feedback_user_identities')
-        .select('id, email')
-        .in('email', feedbackEmails);
-
-        if (fetchError) throw fetchError;
-
-        const existingEmails = new Set(existingIdentities.map(identity => identity.email));
-        const missingColleagues = selectedColleagues.filter(colleague => !existingEmails.has(colleague.email));
-
+            const { error: deleteRecipientsError } = await supabase
+              .from('feedback_recipients')
+              .delete()
+              .in('id', recipientsToRemove)
+              .eq('session_id', sessionId);
+              
+            if (deleteRecipientsError) throw deleteRecipientsError;
+          }
+        } else {
+          // Safe to delete these recipients
+          if (recipientsToRemove.length > 0) {
+            const { error: deleteError } = await supabase
+              .from('feedback_recipients')
+              .delete()
+              .in('id', recipientsToRemove)
+              .eq('session_id', sessionId);
+              
+            if (deleteError) throw deleteError;
+          }
+        }
+      }
+      
+      // Find colleagues to add (selected but not existing)
+      const newColleagues = selectedColleagues.filter(c => !existingIds.has(c.id));
+      const feedbackEmails = newColleagues.map(colleague => colleague.email);
+      
+      // Only proceed with insertion if we have new colleagues
+      if (newColleagues.length > 0) {
+        // Step 2: Check which new users exist in `feedback_user_identities`
+        const { data: existingIdentities, error: fetchIdError } = await supabase
+          .from('feedback_user_identities')
+          .select('id, email')
+          .in('email', feedbackEmails);
+  
+        if (fetchIdError) throw fetchIdError;
+  
+        const existingEmails = new Set((existingIdentities || []).map(identity => identity.email));
+        const missingColleagues = newColleagues.filter(colleague => !existingEmails.has(colleague.email));
+  
         let newIdentities: { id: string; email: string }[] = [];
-
-        // Step 2: Insert missing users
+  
+        // Step 3: Insert missing users
         if (missingColleagues.length > 0) {
-        const { data: insertedIdentities, error: insertError } = await supabase
+          const { data: insertedIdentities, error: insertError } = await supabase
             .from('feedback_user_identities')
             .insert(
-            missingColleagues.map(colleague => ({
+              missingColleagues.map(colleague => ({
                 id: colleague.id,
                 email: colleague.email,
                 name: colleague.name,
                 identity_type: colleague.status,
                 company_id: colleague.companyid,
-            }))
+              }))
             )
-            .select('id, email'); // Get IDs of inserted records
-
-        if (insertError) throw insertError;
-        newIdentities = insertedIdentities || [];
+            .select('id, email');
+  
+          if (insertError) throw insertError;
+          newIdentities = insertedIdentities || [];
         }
-
-        // Step 3: Collect all user IDs
-        const allIdentityIds = [
-        ...existingIdentities.map(identity => identity.id),
-        ...newIdentities.map(identity => identity.id),
+  
+        // Step 4: Collect IDs of new users to add
+        const newIdentityIds = [
+          ...existingIdentities?.map(identity => identity.id) || [],
+          ...newIdentities.map(identity => identity.id),
         ];
-
-        // Step 4: Insert into `feedback_recipients`
-        const recipientRecords = allIdentityIds.map(identityId => ({
-        session_id: sessionId,
-        recipient_id: identityId,
-        status: 'pending',
-        }));
-
-        const { error: recipientError } = await supabase
-        .from('feedback_recipients')
-        .insert(recipientRecords);
-
-        if (recipientError) throw recipientError;
-
-    // Navigate to the next step
-    router.push(`/feedback/questions?session=${sessionId}`);
+        
+        // Step 5: Create records only for new recipients
+        if (newIdentityIds.length > 0) {
+          const recipientRecords = newIdentityIds.map(identityId => ({
+            session_id: sessionId,
+            recipient_id: identityId,
+            status: 'pending',
+          }));
+  
+          const { error: recipientError } = await supabase
+            .from('feedback_recipients')
+            .insert(recipientRecords);
+  
+          if (recipientError) throw recipientError;
+        }
+      }
+  
+      // Navigate to the next step
+      router.push(`/feedback/questions?session=${sessionId}`);
     } catch (error) {
       console.error('Error saving recipients:', error);
       toast({

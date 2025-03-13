@@ -14,6 +14,9 @@ importers:
       '@fortawesome/free-brands-svg-icons':
         specifier: ^6.7.2
         version: 6.7.2
+      '@fortawesome/free-regular-svg-icons':
+        specifier: ^6.7.2
+        version: 6.7.2
       '@fortawesome/free-solid-svg-icons':
         specifier: ^6.7.2
         version: 6.7.2
@@ -116,6 +119,9 @@ importers:
       react-hook-form:
         specifier: ^7.54.2
         version: 7.54.2(react@19.0.0)
+      react-timeago:
+        specifier: ^8.0.0
+        version: 8.0.0(react@19.0.0)
       shadcn:
         specifier: 2.4.0-canary.11
         version: 2.4.0-canary.11(@types/node@20.17.19)(typescript@5.8.2)
@@ -527,6 +533,10 @@ packages:
 
   '@fortawesome/free-brands-svg-icons@6.7.2':
     resolution: {integrity: sha512-zu0evbcRTgjKfrr77/2XX+bU+kuGfjm0LbajJHVIgBWNIDzrhpRxiCPNT8DW5AdmSsq7Mcf9D1bH0aSeSUSM+Q==}
+    engines: {node: '>=6'}
+
+  '@fortawesome/free-regular-svg-icons@6.7.2':
+    resolution: {integrity: sha512-7Z/ur0gvCMW8G93dXIQOkQqHo2M5HLhYrRVC0//fakJXxcF1VmMPsxnG6Ee8qEylA8b8Q3peQXWMNZ62lYF28g==}
     engines: {node: '>=6'}
 
   '@fortawesome/free-solid-svg-icons@6.7.2':
@@ -3285,6 +3295,11 @@ packages:
       '@types/react':
         optional: true
 
+  react-timeago@8.0.0:
+    resolution: {integrity: sha512-I/Lsewkw87xryZVXU8mv8o2lsnxTd7uHBJF9fl76vRx/GkAFNctgSg9q0hOKvgv9V6cTXmDiuXJJYyblD4kGRA==}
+    peerDependencies:
+      react: ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
   react@19.0.0:
     resolution: {integrity: sha512-V8AVnmPIICiWpGfm6GLzCR/W5FXLchHop40W4nXBmdlEceh16rCN8O8LNWm5bh5XUX91fh7KpA+W0TgMKmgTpQ==}
     engines: {node: '>=0.10.0'}
@@ -4210,6 +4225,10 @@ snapshots:
       '@fortawesome/fontawesome-common-types': 6.7.2
 
   '@fortawesome/free-brands-svg-icons@6.7.2':
+    dependencies:
+      '@fortawesome/fontawesome-common-types': 6.7.2
+
+  '@fortawesome/free-regular-svg-icons@6.7.2':
     dependencies:
       '@fortawesome/fontawesome-common-types': 6.7.2
 
@@ -7088,6 +7107,10 @@ snapshots:
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 19.0.10
+
+  react-timeago@8.0.0(react@19.0.0):
+    dependencies:
+      react: 19.0.0
 
   react@19.0.0: {}
 

@@ -108,7 +108,7 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     '/api/:path*',
-    '/feedback/select-recipients',
+    '/feedback/:path*',
     '/feedback/questions/',
     '/feedback/complete'
   ],
