@@ -251,7 +251,7 @@ export default function DashboardPage() {
             <p className='text-cerulean-100 text-base font-light mb-4'>
               Feedback is a great way to acknowledge and help a colleague identify their strengths and areas for improvement.
             </p>
-            <Button onClick={handleStartFeedback} variant="outline">Let&#39s get started!</Button>
+            <Button onClick={handleStartFeedback} variant="outline">Let&#39;s get started!</Button>
           </div>
           </>
         ) : (

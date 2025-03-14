@@ -260,13 +260,17 @@ export default function SelectRecipientsPageContent() {
         // Step 2: Check which new users exist in `feedback_user_identities`
         const { data: existingIdentities, error: fetchIdError } = await supabase
           .from('feedback_user_identities')
-          .select('id, email')
+          .select('id, email, company_id')
           .in('email', feedbackEmails);
   
         if (fetchIdError) throw fetchIdError;
   
-        const existingEmails = new Set((existingIdentities || []).map(identity => identity.email));
-        const missingColleagues = newColleagues.filter(colleague => !existingEmails.has(colleague.email));
+        const existingCombos = new Set((existingIdentities || []).map(identity => 
+          `${identity.email}|${identity.company_id}`
+        ));
+        const missingColleagues = newColleagues.filter(colleague => 
+          !existingCombos.has(`${colleague.email}|${colleague.companyid}`)
+        );
   
         let newIdentities: { id: string; email: string }[] = [];
   

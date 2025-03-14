@@ -101,12 +101,14 @@ serve(async (req) => {
     let forceFriday = false;
     let forceMonday = false;
     let targetCycleId: string | null = null;
+    let targetOccurrenceId: string | null = null;
     
     try {
       const body = await req.json();
       forceFriday = body.forceFriday === true;
       forceMonday = body.forceMonday === true;
       targetCycleId = body.targetCycleId || null;
+      targetOccurrenceId = body.targetOccurrenceId || null;
     } catch (e) {
       // If not a JSON request or no body, that's fine
       console.log("No request body or not JSON");
@@ -136,86 +138,91 @@ serve(async (req) => {
     // Process each company
     for (const company of companies) {
       try {
-        // Check if any active feedback cycles for this company
-        const cyclesQuery = supabase
-          .from('feedback_cycles')
-          .select('id, cycle_name, frequency, start_date, due_date')
-          .eq('company_id', company.id)
+        // Get active occurrences instead of cycles directly
+        let occurrencesQuery = supabase
+          .from('feedback_cycle_occurrences')
+          .select(`
+            id, 
+            cycle_id,
+            occurrence_number, 
+            start_date, 
+            end_date, 
+            status,
+            emails_sent_at,
+            reminders_sent_at,
+            emails_sent_count,
+            responses_count,
+            feedback_cycles (
+              id, 
+              cycle_name, 
+              company_id, 
+              frequency, 
+              status
+            )
+          `)
           .eq('status', 'active');
-          
-        // If targeting a specific cycle, add that condition
+        
+        // If targeting a specific occurrence
+        if (targetOccurrenceId) {
+          occurrencesQuery = occurrencesQuery.eq('id', targetOccurrenceId);
+        }
+        // Otherwise get occurrences for active cycles
+        else {
+          occurrencesQuery = occurrencesQuery.eq('feedback_cycles.status', 'active');
+        }
+        
+        // If targeting a specific cycle, add that filter
         if (targetCycleId) {
-          cyclesQuery.eq('id', targetCycleId);
+          occurrencesQuery = occurrencesQuery.eq('cycle_id', targetCycleId);
         }
+        
+        // Execute the query
+        const { data: activeOccurrences, error: occurrencesError } = await occurrencesQuery;
           
-        const { data: activeCycles, error: cyclesError } = await cyclesQuery;
-          
-        if (cyclesError) {
-          results.errors.push(`Error fetching cycles for ${company.name}: ${cyclesError.message}`);
+        if (occurrencesError) {
+          throw new Error(`Error fetching active occurrences: ${occurrencesError.message}`);
+        }
+        
+        if (!activeOccurrences || activeOccurrences.length === 0) {
+          // No active occurrences for this company, skip
           continue;
         }
         
-        if (!activeCycles || activeCycles.length === 0) {
-          // No active cycles (or no matching target cycle) for this company, skip
+        // Filter occurrences for cycles in this company
+        const companyOccurrences = activeOccurrences.filter(
+          occ => occ.feedback_cycles.company_id === company.id
+        );
+        
+        if (companyOccurrences.length === 0) {
           continue;
         }
         
-        // Filter cycles that need emails today based on frequency
-        // If forcing or targeting a specific cycle, process all active cycles
-        const cyclesToProcess = forceFriday || forceMonday || targetCycleId 
-          ? activeCycles 
-          : activeCycles.filter(cycle => {
-              // If due date is today or in the past, it needs processing
-              const dueDate = new Date(cycle.due_date);
-              const isToday = dueDate.toDateString() === today.toDateString();
-              const isPast = dueDate < today && dueDate.toDateString() !== today.toDateString();
+        // Process each active occurrence
+        for (const occurrence of companyOccurrences) {
+          // Check if this occurrence has ended and should be completed
+          const endDate = new Date(occurrence.end_date);
+          const isEndDay = endDate.toDateString() === today.toDateString();
+          const isPast = endDate < today && endDate.toDateString() !== today.toDateString();
+          
+          // If it's the end day or past due, complete the occurrence
+          if ((isEndDay || isPast) && occurrence.feedback_cycles.status === 'active') {
+            // Mark occurrence as completed which will trigger next occurrence creation
+            await supabase
+              .from('feedback_cycle_occurrences')
+              .update({ 
+                status: 'completed'
+              })
+              .eq('id', occurrence.id);
               
-              return isToday || isPast;
-            });
-        
-        if (cyclesToProcess.length === 0) {
-          continue;
-        }
-        
-        // Process each active cycle that needs emails
-        for (const currentCycle of cyclesToProcess) {
-          // Calculate next due date based on frequency
-          let nextDueDate = new Date(currentCycle.due_date);
-          switch (currentCycle.frequency?.toLowerCase()) {
-            case 'weekly':
-              nextDueDate.setDate(nextDueDate.getDate() + 7);
-              break;
-            case 'biweekly':
-              nextDueDate.setDate(nextDueDate.getDate() + 14);
-              break;
-            case 'monthly':
-              nextDueDate.setMonth(nextDueDate.getMonth() + 1);
-              break;
-            case 'quarterly':
-              nextDueDate.setMonth(nextDueDate.getMonth() + 3);
-              break;
-            case 'yearly':
-              nextDueDate.setFullYear(nextDueDate.getFullYear() + 1);
-              break;
-            default:
-              // If frequency not recognized, default to weekly
-              nextDueDate.setDate(nextDueDate.getDate() + 7);
-          }
-          
-          // Update the cycle's due date
-          const { error: updateCycleError } = await supabase
-            .from('feedback_cycles')
-            .update({ due_date: nextDueDate.toISOString() })
-            .eq('id', currentCycle.id);
-            
-          if (updateCycleError) {
-            results.errors.push(`Error updating cycle due date: ${updateCycleError.message}`);
-            // Continue anyway to send emails
+            // Continue to next occurrence - the trigger will create the new one
+            continue;
           }
           
           // For Friday or forced Friday: Send initial emails to members
-          if (isFriday || forceFriday) {
-            // Get active company members (IDs only)
+          if ((isFriday || forceFriday) && 
+              (!occurrence.emails_sent_at || forceFriday)) {
+            
+            // Get active company members
             const { data: members, error: membersError } = await supabase
               .from('company_members')
               .select('id')
@@ -232,6 +239,8 @@ serve(async (req) => {
               continue;
             }
 
+            let emailsSentCount = 0;
+            
             // Process each member
             for (const member of members) {
               try {
@@ -255,11 +264,12 @@ serve(async (req) => {
                 const memberEmail = profile.email;
                 const memberName = profile.name || memberEmail.split('@')[0];
                 
-                // Check if already has a session for this cycle
+                // Check if already has a session for this occurrence
                 const { data: existingSessions } = await supabase
                   .from('feedback_sessions')
                   .select('id')
-                  .eq('cycle_id', currentCycle.id)
+                  .eq('cycle_id', occurrence.cycle_id)
+                  .eq('occurrence_id', occurrence.id)
                   .eq('provider_id', member.id)
                   .limit(1);
                   
@@ -272,7 +282,8 @@ serve(async (req) => {
                 const { data: session, error: sessionError } = await supabase
                   .from('feedback_sessions')
                   .insert({
-                    cycle_id: currentCycle.id,
+                    cycle_id: occurrence.cycle_id,
+                    occurrence_id: occurrence.id, // Link to occurrence
                     provider_id: member.id,
                     status: 'pending'
                   })
@@ -316,6 +327,7 @@ serve(async (req) => {
                     getEmailTemplate(memberName, feedbackUrl, false)
                   );
                   
+                  emailsSentCount++;
                   results.totalEmails++;
                 } catch (emailError) {
                   results.errors.push(`Error sending email to ${memberEmail}: ${emailError instanceof Error ? emailError.message : String(emailError)}`);
@@ -346,6 +358,7 @@ serve(async (req) => {
                       getInvitedUserEmailTemplate(invitedUser.name || invitedUser.email.split('@')[0], signupUrl, company.name)
                     );
                     
+                    emailsSentCount++;
                     results.totalEmails++;
                   } catch (emailError) {
                     results.errors.push(`Error sending invite email to ${invitedUser.email}: ${emailError instanceof Error ? emailError.message : String(emailError)}`);
@@ -355,15 +368,26 @@ serve(async (req) => {
                 }
               }
             }
+            
+            // Update occurrence with email sent info
+            await supabase
+              .from('feedback_cycle_occurrences')
+              .update({ 
+                emails_sent_at: new Date().toISOString(),
+                emails_sent_count: occurrence.emails_sent_count + emailsSentCount
+              })
+              .eq('id', occurrence.id);
           }
           
           // For Monday or forced Monday: Send reminder emails
-          if (isMonday || forceMonday) {
+          if ((isMonday || forceMonday) && 
+              (occurrence.emails_sent_at && !occurrence.reminders_sent_at || forceMonday)) {
+            
             // Find incomplete sessions that haven't had a reminder
             const { data: pendingSessions, error: pendingError } = await supabase
               .from('feedback_sessions')
               .select('id, provider_id')
-              .eq('cycle_id', currentCycle.id)
+              .eq('occurrence_id', occurrence.id)
               .neq('status', 'completed')
               .is('reminder_sent_at', null);
               
@@ -443,6 +467,12 @@ serve(async (req) => {
                 results.errors.push(`Error sending reminder for session ${session.id}: ${error instanceof Error ? error.message : String(error)}`);
               }
             }
+            
+            // Update occurrence with reminder timestamp
+            await supabase
+              .from('feedback_cycle_occurrences')
+              .update({ reminders_sent_at: new Date().toISOString() })
+              .eq('id', occurrence.id);
           }
         }
       } catch (companyError) {

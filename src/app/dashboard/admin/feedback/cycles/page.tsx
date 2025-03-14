@@ -14,7 +14,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toast } from '@/components/ui/use-toast';
-import { Loader2, Plus, CalendarIcon, BarChart, RefreshCw } from 'lucide-react';
+import { Loader2, Plus, CalendarIcon, RefreshCw } from 'lucide-react';
 import supabase from '@/lib/supabase/client';
 import { useAuth, useIsAdmin } from '@/lib/context/auth-context';
 import CreateCycleModal from '@/components/admin/CreateCycleModal';
@@ -36,6 +36,21 @@ export default function FeedbackCyclesPage() {
       completed_sessions: number;
       completion_rate: number;
     };
+    past_occurrences?: {
+      id: string;
+      start_date: string;
+      end_date: string;
+      occurrence_number: number;
+      emails_sent_count: number;
+      responses_count: number;
+    }[];
+    current_occurrence?: {
+      id: string;
+      start_date: string;
+      end_date: string;
+      status: string;
+      occurrence_number: number;
+    } | null;
   }
       
   const router = useRouter();
@@ -72,35 +87,68 @@ export default function FeedbackCyclesPage() {
           .order('created_at', { ascending: false });
 
         if (cyclesError) throw cyclesError;
-        
-        // Fetch stats for each cycle
-        const cyclesWithStats = await Promise.all((cyclesData || []).map(async (cycle) => {
-          // Get session stats
-          const { data: sessions, error: sessionsError } = await supabase
-            .from('feedback_sessions')
-            .select('id, status')
-            .eq('cycle_id', cycle.id);
+
+        // Fetch occurrences for each cycle
+        const cyclesWithOccurrences = await Promise.all((cyclesData || []).map(async (cycle) => {
+          // Get current active occurrence
+          const { data: activeOccurrence, error: activeOccError } = await supabase
+            .from('feedback_cycle_occurrences')
+            .select('*')
+            .eq('cycle_id', cycle.id)
+            .eq('status', 'active')
+            .order('occurrence_number', { ascending: false })
+            .limit(1)
+            .single();
             
-          if (sessionsError) {
-            console.error(`Error fetching sessions for cycle ${cycle.id}:`, sessionsError);
-            return cycle;
-          }
+            if (activeOccError) {
+              console.log('Error fetching active occurrence:', activeOccError);
+            }
           
-          const totalSessions = sessions?.length || 0;
-          const completedSessions = sessions?.filter(s => s.status === 'completed')?.length || 0;
-          const completionRate = totalSessions > 0 ? (completedSessions / totalSessions) * 100 : 0;
+          // Get latest completed occurrence
+          const { data: completedOccurrences, error: compOccError } = await supabase
+            .from('feedback_cycle_occurrences')
+            .select('*')
+            .eq('cycle_id', cycle.id)
+            .eq('status', 'completed')
+            .order('occurrence_number', { ascending: false })
+            .limit(3); // Get last few for history
+
+            if (compOccError) {
+              console.log('Error fetching completed occurrences:', compOccError);
+            }
+          
+          // Get session stats for current occurrence
+          let stats = { total_sessions: 0, completed_sessions: 0, completion_rate: 0 };
+          
+          if (activeOccurrence) {
+            const { data: sessions, error: sessionsError } = await supabase
+              .from('feedback_sessions')
+              .select('id, status')
+              .eq('occurrence_id', activeOccurrence.id);
+              
+            if (!sessionsError && sessions) {
+              const totalSessions = sessions.length;
+              const completedSessions = sessions.filter(s => s.status === 'completed').length;
+              const completionRate = totalSessions > 0 ? (completedSessions / totalSessions) * 100 : 0;
+              
+              stats = {
+                total_sessions: totalSessions,
+                completed_sessions: completedSessions,
+                completion_rate: completionRate
+              };
+            }
+          }
           
           return {
             ...cycle,
-            stats: {
-              total_sessions: totalSessions,
-              completed_sessions: completedSessions,
-              completion_rate: completionRate
-            }
+            current_occurrence: activeOccurrence || null,
+            past_occurrences: completedOccurrences || [],
+            stats
           };
         }));
 
-        setCycles(cyclesWithStats);
+        setCycles(cyclesWithOccurrences);
+
       } catch (error) {
         console.error('Error loading data:', error);
         toast({
@@ -116,39 +164,39 @@ export default function FeedbackCyclesPage() {
     loadCompanyAndCycles();
   }, [user]);
   
-  const handleStatusChange = async (cycleId: string, newStatus: 'active' | 'completed' | 'draft') => {
-    setProcessingCycle(cycleId);
+  // const handleStatusChange = async (cycleId: string, newStatus: 'active' | 'completed' | 'draft') => {
+  //   setProcessingCycle(cycleId);
     
-    try {
-      const { error } = await supabase
-        .from('feedback_cycles')
-        .update({ status: newStatus })
-        .eq('id', cycleId);
+  //   try {
+  //     const { error } = await supabase
+  //       .from('feedback_cycles')
+  //       .update({ status: newStatus })
+  //       .eq('id', cycleId);
         
-      if (error) throw error;
+  //     if (error) throw error;
       
-      // Update the local state
-      setCycles((prev) =>
-        prev.map((cycle) =>
-          cycle.id === cycleId ? { ...cycle, status: newStatus } : cycle
-        )
-      );
+  //     // Update the local state
+  //     setCycles((prev) =>
+  //       prev.map((cycle) =>
+  //         cycle.id === cycleId ? { ...cycle, status: newStatus } : cycle
+  //       )
+  //     );
       
-      toast({
-        title: 'Status updated',
-        description: `Cycle status changed to ${newStatus}.`,
-      });
-    } catch (error) {
-      console.error('Error updating status:', error);
-      toast({
-        title: 'Error updating status',
-        description: 'Failed to update cycle status. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setProcessingCycle(null);
-    }
-  };
+  //     toast({
+  //       title: 'Status updated',
+  //       description: `Cycle status changed to ${newStatus}.`,
+  //     });
+  //   } catch (error) {
+  //     console.error('Error updating status:', error);
+  //     toast({
+  //       title: 'Error updating status',
+  //       description: 'Failed to update cycle status. Please try again.',
+  //       variant: 'destructive',
+  //     });
+  //   } finally {
+  //     setProcessingCycle(null);
+  //   }
+  // };
   
   const handleManualTrigger = async (cycleId: string) => {
     setProcessingCycle(cycleId);
@@ -321,85 +369,96 @@ export default function FeedbackCyclesPage() {
               <TableBody>
                 {cycles.map((cycle) => (
                   <TableRow key={cycle.id}>
-                    <TableCell className="font-medium">{cycle.cycle_name || 'Unnamed Cycle'}</TableCell>
-                    <TableCell>{getFrequencyDisplay(cycle.frequency)}</TableCell>
-                    <TableCell>{formatDate(cycle.start_date)}</TableCell>
-                    <TableCell>{formatDate(cycle.due_date)}</TableCell>
-                    <TableCell>{getStatusBadge(cycle.status)}</TableCell>
-                    <TableCell>
-                      {cycle.stats ? (
-                        <div className="flex items-center">
-                          <span className="text-sm mr-2">
-                            {Math.round(cycle.stats.completion_rate)}%
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            ({cycle.stats.completed_sessions}/{cycle.stats.total_sessions})
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-500">No data</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        {cycle.status === 'draft' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleStatusChange(cycle.id, 'active')}
-                            disabled={processingCycle === cycle.id}
-                          >
-                            {processingCycle === cycle.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Activate'}
-                          </Button>
-                        )}
-                        
-                        {cycle.status === 'active' && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleManualTrigger(cycle.id)}
-                              disabled={processingCycle === cycle.id}
-                              title="Manually trigger feedback emails for this cycle"
-                            >
-                              {processingCycle === cycle.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <>
-                                  <RefreshCw className="h-4 w-4 mr-1" />
-                                  Trigger
-                                </>
-                              )}
-                            </Button>
-                            
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleStatusChange(cycle.id, 'completed')}
-                              disabled={processingCycle === cycle.id}
-                            >
-                              Complete
-                            </Button>
-                          </>
-                        )}
-                        
-                        {cycle.status === 'completed' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => router.push(`/dashboard/admin/feedback/results?cycle=${cycle.id}`)}
-                          >
-                            <BarChart className="h-4 w-4 mr-1" />
-                            Results
-                          </Button>
-                        )}
+                  <TableCell className="font-medium">{cycle.cycle_name || 'Unnamed Cycle'}</TableCell>
+                  <TableCell>{getFrequencyDisplay(cycle.frequency)}</TableCell>
+                  <TableCell>
+                    {cycle.current_occurrence 
+                      ? formatDate(cycle.current_occurrence.start_date) 
+                      : 'Not started'}
+                  </TableCell>
+                  <TableCell>
+                    {cycle.current_occurrence 
+                      ? formatDate(cycle.current_occurrence.end_date) 
+                      : 'N/A'}
+                  </TableCell>
+                  <TableCell>{getStatusBadge(cycle.status)}</TableCell>
+                  <TableCell>
+                    {cycle.stats ? (
+                      <div className="flex items-center">
+                        <span className="text-sm mr-2">
+                          {Math.round(cycle.stats.completion_rate)}%
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          ({cycle.stats.completed_sessions}/{cycle.stats.total_sessions})
+                        </span>
                       </div>
-                    </TableCell>
-                  </TableRow>
+                    ) : (
+                      <span className="text-xs text-gray-500">No data</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex space-x-2">
+                      {/* Action buttons */}
+                      {cycle.status === 'active' && cycle.current_occurrence && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => cycle.current_occurrence && handleManualTrigger(cycle.id)}
+                          disabled={processingCycle === cycle.id}
+                          title="Manually trigger feedback emails for this cycle"
+                        >
+                          {processingCycle === cycle.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <>
+                              <RefreshCw className="h-4 w-4 mr-1" />
+                              Trigger
+                            </>
+                          )}
+                        </Button>
+                      )}
+                      {/* Other buttons */}
+                    </div>
+                  </TableCell>
+                </TableRow>
                 ))}
               </TableBody>
             </Table>
           )}
+          
+          {cycles.map((cycle) => (
+            cycle.past_occurrences && cycle.past_occurrences.length > 0 && (
+              <div key={cycle.id} className="mt-4 pl-8">
+                <h4 className="text-sm font-medium mb-2">Past Occurrences</h4>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Occurrence</TableHead>
+                      <TableHead>Start Date</TableHead>
+                      <TableHead>End Date</TableHead>
+                      <TableHead>Completion Rate</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {cycle.past_occurrences.map((occurrence) => (
+                      <TableRow key={occurrence.id}>
+                        <TableCell>#{occurrence.occurrence_number}</TableCell>
+                        <TableCell>{formatDate(occurrence.start_date)}</TableCell>
+                        <TableCell>{formatDate(occurrence.end_date)}</TableCell>
+                        <TableCell>
+                          {occurrence.emails_sent_count > 0 ? (
+                            `${Math.round((occurrence.responses_count / occurrence.emails_sent_count) * 100)}%`
+                          ) : (
+                            'N/A'
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )
+          ))}
         </CardContent>
       </Card>
       
