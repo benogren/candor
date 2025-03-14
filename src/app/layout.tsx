@@ -20,6 +20,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={roboto.variable}>
+      <head>
+      <meta name="apple-mobile-web-app-title" content="Candor" />
+      </head>
       <body>
         <AuthProvider>
           {children}
