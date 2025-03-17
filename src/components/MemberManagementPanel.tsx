@@ -485,13 +485,13 @@ export default function MemberManagementPanel() {
               <RefreshCw className={`h-4 w-4 mr-1 ${isLoading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button 
+            {/* <Button 
               size="sm" 
               onClick={() => setShowInviteModal(true)}
             >
               <UserPlus className="h-4 w-4 mr-1" />
               Invite Users
-            </Button>
+            </Button> */}
           </div>
         </CardHeader>
         <CardContent>

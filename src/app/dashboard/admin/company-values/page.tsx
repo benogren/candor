@@ -34,7 +34,7 @@ interface CompanyValue {
 
 // Component for icon picker
 const IconPicker = ({ value, onChange }: { value: string | null, onChange: (value: string) => void }) => {
-  const [search, setSearch] = useState('');
+  const [search ] = useState('');
   const [showPicker, setShowPicker] = useState(false);
   
   // Common FontAwesome icons that would be relevant for company values
@@ -42,7 +42,10 @@ const IconPicker = ({ value, onChange }: { value: string | null, onChange: (valu
     'star', 'heart', 'thumbs-up', 'handshake', 'users', 'lightbulb', 
     'medal', 'trophy', 'crown', 'rocket', 'shield', 'brain', 
     'hand-holding-heart', 'hands-helping', 'balance-scale', 'globe',
-    'bullseye', 'chart-line', 'clipboard-check', 'gem', 'leaf', 'seedling'
+    'bullseye', 'chart-line', 'gem', 'leaf', 'seedling', 
+    'bell-concierge', 'gift', 'puzzle-piece', 'ranking-star', 'graduation-cap',
+    'baby', 'code', 'comments', 'face-grin', 'bolt', 'people-group', 'shield-heart',
+    'spa', 'champagne-glasses', 'bullhorn'
   ];
   
   const filteredIcons = search 
@@ -72,12 +75,12 @@ const IconPicker = ({ value, onChange }: { value: string | null, onChange: (valu
         <Card className="absolute z-10 w-full max-w-md">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg">Select an Icon</CardTitle>
-            <Input 
+            {/* <Input 
               placeholder="Search icons..." 
               value={search} 
               onChange={e => setSearch(e.target.value)}
               className="mt-2"
-            />
+            /> */}
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-6 gap-2">
@@ -91,7 +94,7 @@ const IconPicker = ({ value, onChange }: { value: string | null, onChange: (valu
                     setShowPicker(false);
                   }}
                 >
-                  <FontAwesomeIcon icon={['fas', value as IconName]} className="h-5 w-5" />
+                  <FontAwesomeIcon icon={['fas', icon as IconName]} className="h-5 w-5" />
                 </button>
               ))}
             </div>
@@ -472,7 +475,7 @@ export default function CompanyValuesPage() {
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-semibold">Company Values</h1>
+        <h2 className='text-4xl font-light text-berkeleyblue'>Company Values</h2>
         <Button onClick={() => setShowAddDialog(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add New Value

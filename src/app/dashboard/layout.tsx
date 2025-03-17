@@ -2,10 +2,10 @@
 
 import { useEffect, useState, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth, useIsAdmin } from '@/lib/context/auth-context';
+import { useAuth } from '@/lib/context/auth-context';
 import supabase from '@/lib/supabase/client';
 import Header from '@/components/dashboard/header';
-import Sidebar from '@/components/dashboard/sidebar';
+// import Sidebar from '@/components/dashboard/sidebar';
 import { LoadingSpinner } from '@/components/loading-spinner';
 
 interface DashboardLayoutProps {
@@ -24,7 +24,7 @@ interface Company {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, loading: authLoading } = useAuth();
-  const { isAdmin } = useIsAdmin();
+  // const { isAdmin } = useIsAdmin();
   const [company, setCompany] = useState<Company | null>(null);
   const [loadingCompany, setLoadingCompany] = useState(true);
   const router = useRouter();
@@ -129,9 +129,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
     <>
       <Header user={user} company={company}>
-        <div className="flex">
-          <Sidebar role={isAdmin ? 'admin' : 'member'} />
-          <main className="flex-1 p-6 bg-slate-50 min-h-[calc(100vh-64px)]">
+        <div className="">
+          {/* <Sidebar role={isAdmin ? 'admin' : 'member'} /> */}
+          <main className="container mx-auto flex">
             {children}
           </main>
         </div>

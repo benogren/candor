@@ -1,12 +1,12 @@
 // components/FeedbackCard.tsx
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
+// import { useState } from 'react';
+// import { Button } from '@/components/ui/button';
 import { AlertTriangle } from 'lucide-react';
-import { toast } from '@/components/ui/use-toast';
+// import { toast } from '@/components/ui/use-toast';
 import ReactTimeAgo from 'react-timeago';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faStarHalfStroke, faStar, faComments, faAward } from '@fortawesome/free-solid-svg-icons';
-import { faFlag, faMessage } from '@fortawesome/free-regular-svg-icons';
+import { faMessage } from '@fortawesome/free-regular-svg-icons';
 
 
 // Match the feedback question structure from database
@@ -45,7 +45,7 @@ export interface FeedbackCardProps {
 }
 
 export default function FeedbackCard({ 
-  id, 
+  // id, 
   feedback_questions,
   feedback_recipients,
   text_response,
@@ -54,31 +54,31 @@ export default function FeedbackCard({
   created_at, 
   is_flagged,
   nominated_user,
-  onFlag 
+  // onFlag 
 }: FeedbackCardProps) {
-  const [flagging, setFlagging] = useState(false);
+  // const [flagging, setFlagging] = useState(false);
   
-  const handleFlag = async () => {
-    if (is_flagged) return;
+  // const handleFlag = async () => {
+  //   if (is_flagged) return;
     
-    setFlagging(true);
-    try {
-      await onFlag(id);
-      toast({
-        title: 'Feedback flagged',
-        description: 'An administrator will review this feedback.',
-      });
-    } catch (error) {
-      console.error('Error flagging feedback:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to flag feedback. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setFlagging(false);
-    }
-  };
+  //   setFlagging(true);
+  //   try {
+  //     await onFlag(id);
+  //     toast({
+  //       title: 'Feedback flagged',
+  //       description: 'An administrator will review this feedback.',
+  //     });
+  //   } catch (error) {
+  //     console.error('Error flagging feedback:', error);
+  //     toast({
+  //       title: 'Error',
+  //       description: 'Failed to flag feedback. Please try again.',
+  //       variant: 'destructive',
+  //     });
+  //   } finally {
+  //     setFlagging(false);
+  //   }
+  // };
 
   // Helper to render stars based on rating
   const renderStars = (rating: number) => {
@@ -162,7 +162,7 @@ export default function FeedbackCard({
                 <span className='text-xs text-slate-400'>
                     <ReactTimeAgo date={created_at} />
                 </span>
-                {!is_flagged && !isValuesFeedback && (
+                {/* {!is_flagged && !isValuesFeedback && (
                   <Button
                       variant="ghost"
                       size="sm"
@@ -175,7 +175,7 @@ export default function FeedbackCard({
                       className="h-4 w-4 text-berkeleyblue-200"
                       />
                   </Button>
-                )}
+                )} */}
             </div>
         </div>
         

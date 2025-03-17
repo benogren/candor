@@ -173,7 +173,7 @@ export default function QuestionsContent() {
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Feedback Questions</h1>
+        <h2 className='text-4xl font-light text-berkeleyblue'>Feedback Questions</h2>
         <Button onClick={() => setShowCreateModal(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Question

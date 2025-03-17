@@ -12,7 +12,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator
+  DropdownMenuSeparator,
+  DropdownMenuLabel
 } from '@/components/ui/dropdown-menu';
 import { toast } from '@/components/ui/use-toast';
 import { RefreshCw } from 'lucide-react';
@@ -106,8 +107,8 @@ export default function Header({ user, company, children }: HeaderProps) {
     return (
       <>
         <header className="bg-white shadow-sm">
-          <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-            <div className="flex items-center">
+          <div className="container mx-auto flex justify-between items-center">
+            <div className="flex items-center ml-2">
               <Link href="/dashboard" className="text-xl font-bold text-slate-900">
                 <Image src="/logo/candor_cerulean.png" alt="Candor" width={98} height={25} priority />
               </Link>
@@ -132,7 +133,7 @@ export default function Header({ user, company, children }: HeaderProps) {
     <>
       <header className="bg-white shadow-sm">
         <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center">
+          <div className="flex items-center ml-2">
             <Link href="/dashboard" className="text-xl font-bold text-slate-900">
               <Image src="/logo/candor_cerulean.png" alt="Candor" width={98} height={25} />
             </Link>
@@ -150,21 +151,30 @@ export default function Header({ user, company, children }: HeaderProps) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem asChild>
-                  <Link href="/dashboard">Dashboard</Link>
-                </DropdownMenuItem>
                 {isAdmin && (
                   <>
+                    <DropdownMenuLabel>{company.name}</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
-                      <Link href="/dashboard/admin">Admin</Link>
+                      <Link href="/dashboard/admin">Admin Dashboard</Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
-                      <Link href="/dashboard/admin/orgchart">Organization Chart</Link>
+                      <Link href="/dashboard/admin/orgchart">&mdash; Org Chart</Link>
                     </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/dashboard/admin/feedback/cycles">&mdash; Feedback Cycles</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/dashboard/admin/feedback/questions">&mdash; Feedback Questions</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/dashboard/admin/company-values">&mdash; Company Values</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
                   </>
                 )}
                 <DropdownMenuItem asChild>
-                  <Link href="/dashboard/settings">Settings</Link>
+                  <Link href="/dashboard">Dashboard</Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut}>Sign Out</DropdownMenuItem>
