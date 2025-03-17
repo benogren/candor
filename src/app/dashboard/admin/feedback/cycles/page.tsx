@@ -1,4 +1,4 @@
-// src/app/dashboard/admin/feedback/cycles/page.tsx
+// src/app/dashboard/admin/feedback/cycles/page.tsx with updated logic
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -14,7 +14,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toast } from '@/components/ui/use-toast';
-import { Loader2, Plus, CalendarIcon, RefreshCw } from 'lucide-react';
+import { Loader2, Plus, CalendarIcon } from 'lucide-react';
 import supabase from '@/lib/supabase/client';
 import { useAuth, useIsAdmin } from '@/lib/context/auth-context';
 import CreateCycleModal from '@/components/admin/CreateCycleModal';
@@ -30,7 +30,7 @@ export default function FeedbackCyclesPage() {
     due_date: string;
     status: 'active' | 'completed' | 'draft';
     company_id: string;
-    created_at: string; // Ensure this is present
+    created_at: string;
     stats?: {
       total_sessions: number;
       completed_sessions: number;
@@ -100,9 +100,9 @@ export default function FeedbackCyclesPage() {
             .limit(1)
             .single();
             
-            if (activeOccError) {
-              console.log('Error fetching active occurrence:', activeOccError);
-            }
+          if (activeOccError) {
+            console.log('Error fetching active occurrence:', activeOccError);
+          }
           
           // Get latest completed occurrence
           const { data: completedOccurrences, error: compOccError } = await supabase
@@ -113,9 +113,9 @@ export default function FeedbackCyclesPage() {
             .order('occurrence_number', { ascending: false })
             .limit(3); // Get last few for history
 
-            if (compOccError) {
-              console.log('Error fetching completed occurrences:', compOccError);
-            }
+          if (compOccError) {
+            console.log('Error fetching completed occurrences:', compOccError);
+          }
           
           // Get session stats for current occurrence
           let stats = { total_sessions: 0, completed_sessions: 0, completion_rate: 0 };
@@ -164,99 +164,36 @@ export default function FeedbackCyclesPage() {
     loadCompanyAndCycles();
   }, [user]);
   
-  // const handleStatusChange = async (cycleId: string, newStatus: 'active' | 'completed' | 'draft') => {
-  //   setProcessingCycle(cycleId);
-    
-  //   try {
-  //     const { error } = await supabase
-  //       .from('feedback_cycles')
-  //       .update({ status: newStatus })
-  //       .eq('id', cycleId);
-        
-  //     if (error) throw error;
-      
-  //     // Update the local state
-  //     setCycles((prev) =>
-  //       prev.map((cycle) =>
-  //         cycle.id === cycleId ? { ...cycle, status: newStatus } : cycle
-  //       )
-  //     );
-      
-  //     toast({
-  //       title: 'Status updated',
-  //       description: `Cycle status changed to ${newStatus}.`,
-  //     });
-  //   } catch (error) {
-  //     console.error('Error updating status:', error);
-  //     toast({
-  //       title: 'Error updating status',
-  //       description: 'Failed to update cycle status. Please try again.',
-  //       variant: 'destructive',
-  //     });
-  //   } finally {
-  //     setProcessingCycle(null);
-  //   }
-  // };
-  
-  const handleManualTrigger = async (cycleId: string) => {
+  const handleStatusChange = async (cycleId: string, newStatus: 'active' | 'completed' | 'draft') => {
     setProcessingCycle(cycleId);
     
     try {
-      // First, get the cycle details to ensure it's active
-      const { data: cycle, error: cycleError } = await supabase
+      const { error } = await supabase
         .from('feedback_cycles')
-        .select('id, cycle_name, status')
-        .eq('id', cycleId)
-        .single();
+        .update({ status: newStatus })
+        .eq('id', cycleId);
         
-      if (cycleError) throw cycleError;
+      if (error) throw error;
       
-      if (cycle.status !== 'active') {
-        toast({
-          title: 'Cycle not active',
-          description: 'Only active feedback cycles can be triggered manually.',
-          variant: 'destructive',
-        });
-        return;
-      }
-      
-      // Instead of directly calling the edge function, call through a Next.js API route
-      // Create this API route at /app/api/admin/trigger-feedback/route.ts
-
-      const { data: { session } } = await supabase.auth.getSession();
-      const bearerToken = session?.access_token;
-
-      const response = await fetch('/api/trigger-feedback', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${bearerToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          cycleId: cycleId,
-          forceFriday: true
-        }),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to trigger feedback emails');
-      }
-      
-      const result = await response.json();
+      // Update the local state
+      setCycles((prev) =>
+        prev.map((cycle) =>
+          cycle.id === cycleId ? { ...cycle, status: newStatus } : cycle
+        )
+      );
       
       toast({
-        title: 'Feedback emails triggered',
-        description: `Successfully sent ${result.emailsSent || 0} emails for this cycle.`,
+        title: 'Status updated',
+        description: `Cycle status changed to ${newStatus}.`,
       });
       
-      // Refresh the cycles list
+      // Refresh to update occurrences if needed
       router.refresh();
     } catch (error) {
-      console.error('Error triggering feedback emails:', error);
+      console.error('Error updating status:', error);
       toast({
-        title: 'Error triggering emails',
-        description: error instanceof Error ? error.message : 'An unknown error occurred',
+        title: 'Error updating status',
+        description: 'Failed to update cycle status. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -280,7 +217,7 @@ export default function FeedbackCyclesPage() {
       case 'completed':
         return <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-200">Completed</Badge>;
       case 'draft':
-        return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-200">Draft</Badge>;
+        return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-200">Paused</Badge>;
       default:
         return <Badge>{status}</Badge>;
     }
@@ -303,6 +240,11 @@ export default function FeedbackCyclesPage() {
     }
   };
   
+  // Check if there are any active or draft cycles
+  const hasActiveOrDraftCycle = cycles.some(cycle => 
+    cycle.status === 'active' || cycle.status === 'draft'
+  );
+  
   // Redirect if not admin
   if (!isAdminLoading && !isAdmin) {
     router.push('/dashboard');
@@ -321,15 +263,16 @@ export default function FeedbackCyclesPage() {
     <div className="container mx-auto py-8 px-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Feedback Cycles</h1>
-        <Button onClick={() => setShowCreateModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Create New Cycle
-        </Button>
+        {!hasActiveOrDraftCycle && (
+          <Button onClick={() => setShowCreateModal(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create New Cycle
+          </Button>
+        )}
       </div>
       
       {cycles.some(c => c.status === 'active') && (
         <Alert className="mb-6 bg-blue-50 border-blue-200">
-          {/* <AlertCircle className="h-4 w-4 text-blue-600" /> */}
           <AlertDescription className="text-blue-700">
             <strong>Active Cycles:</strong> Each active cycle will automatically send feedback requests according to its frequency. 
             The next emails will be sent on the upcoming Friday.
@@ -369,58 +312,69 @@ export default function FeedbackCyclesPage() {
               <TableBody>
                 {cycles.map((cycle) => (
                   <TableRow key={cycle.id}>
-                  <TableCell className="font-medium">{cycle.cycle_name || 'Unnamed Cycle'}</TableCell>
-                  <TableCell>{getFrequencyDisplay(cycle.frequency)}</TableCell>
-                  <TableCell>
-                    {cycle.current_occurrence 
-                      ? formatDate(cycle.current_occurrence.start_date) 
-                      : 'Not started'}
-                  </TableCell>
-                  <TableCell>
-                    {cycle.current_occurrence 
-                      ? formatDate(cycle.current_occurrence.end_date) 
-                      : 'N/A'}
-                  </TableCell>
-                  <TableCell>{getStatusBadge(cycle.status)}</TableCell>
-                  <TableCell>
-                    {cycle.stats ? (
-                      <div className="flex items-center">
-                        <span className="text-sm mr-2">
-                          {Math.round(cycle.stats.completion_rate)}%
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          ({cycle.stats.completed_sessions}/{cycle.stats.total_sessions})
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-500">No data</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex space-x-2">
-                      {/* Action buttons */}
-                      {cycle.status === 'active' && cycle.current_occurrence && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => cycle.current_occurrence && handleManualTrigger(cycle.id)}
-                          disabled={processingCycle === cycle.id}
-                          title="Manually trigger feedback emails for this cycle"
-                        >
-                          {processingCycle === cycle.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <>
-                              <RefreshCw className="h-4 w-4 mr-1" />
-                              Trigger
-                            </>
-                          )}
-                        </Button>
+                    <TableCell className="font-medium">{cycle.cycle_name || 'Unnamed Cycle'}</TableCell>
+                    <TableCell>{getFrequencyDisplay(cycle.frequency)}</TableCell>
+                    <TableCell>
+                      {cycle.current_occurrence 
+                        ? formatDate(cycle.current_occurrence.start_date) 
+                        : 'Not started'}
+                    </TableCell>
+                    <TableCell>
+                      {cycle.current_occurrence 
+                        ? formatDate(cycle.current_occurrence.end_date) 
+                        : 'N/A'}
+                    </TableCell>
+                    <TableCell>{getStatusBadge(cycle.status)}</TableCell>
+                    <TableCell>
+                      {cycle.stats ? (
+                        <div className="flex items-center">
+                          <span className="text-sm mr-2">
+                            {Math.round(cycle.stats.completion_rate)}%
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            ({cycle.stats.completed_sessions}/{cycle.stats.total_sessions})
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-500">No data</span>
                       )}
-                      {/* Other buttons */}
-                    </div>
-                  </TableCell>
-                </TableRow>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex space-x-2">
+                        {cycle.status === 'active' && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleStatusChange(cycle.id, 'completed')}
+                              disabled={processingCycle === cycle.id}
+                            >
+                              {processingCycle === cycle.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Complete'}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleStatusChange(cycle.id, 'draft')}
+                              disabled={processingCycle === cycle.id}
+                            >
+                              {processingCycle === cycle.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Pause'}
+                            </Button>
+                          </>
+                        )}
+                        
+                        {cycle.status === 'draft' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleStatusChange(cycle.id, 'active')}
+                            disabled={processingCycle === cycle.id}
+                          >
+                            {processingCycle === cycle.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Activate'}
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 ))}
               </TableBody>
             </Table>
@@ -471,16 +425,20 @@ export default function FeedbackCyclesPage() {
             
             // Add the new cycle to the list
             if (newCycle) {
+              // Fix for lines 428-439 where you're adding a new cycle to the state
               setCycles(prev => [
                 {
                   ...newCycle,
-                  created_at: newCycle.created_at || new Date().toISOString(),
+                  created_at: new Date().toISOString(),
                   stats: {
                     total_sessions: 0,
                     completed_sessions: 0, 
                     completion_rate: 0
-                  }
-                },
+                  },
+                  // Add these missing properties to match the FeedbackCycle type
+                  past_occurrences: [],
+                  current_occurrence: null
+                } as FeedbackCycle, // Cast to FeedbackCycle type
                 ...prev
               ]);
             } else {

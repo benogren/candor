@@ -1,4 +1,4 @@
-// src/app/api/feedback/auth/route.ts
+// src/app/api/feedback/check/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
         );
     }
 
-    console.log('*****Session ID:', sessionId);
+    // console.log('*****Session ID:', sessionId);
 
     const authHeader = request.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -76,7 +76,24 @@ export async function GET(request: NextRequest) {
 
                 return response;
             } else {
-                console.log('Token data existed');
+                console.log('Token data existed but resetting it...');
+
+                const feedbackToken = Buffer.from(JSON.stringify({
+                    userId: userId,
+                    email: userEmail,
+                    name: userName,
+                    sessionId: sessionId,
+                    exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
+                })).toString('base64');
+
+                response.cookies.set('feedback_auth', feedbackToken, {
+                    httpOnly: true,
+                    maxAge: 60 * 60 * 24, // 24 hours
+                    path: '/',
+                    sameSite: 'lax',
+                    secure: process.env.NODE_ENV === 'production'
+                });
+
                 return response;
             }
 

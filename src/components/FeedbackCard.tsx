@@ -5,7 +5,7 @@ import { AlertTriangle } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import ReactTimeAgo from 'react-timeago';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faStarHalfStroke, faStar, faComments } from '@fortawesome/free-solid-svg-icons';
+import { faStarHalfStroke, faStar, faComments, faAward } from '@fortawesome/free-solid-svg-icons';
 import { faFlag, faMessage } from '@fortawesome/free-regular-svg-icons';
 
 
@@ -14,6 +14,9 @@ interface FeedbackQuestion {
   id: string;
   question_text: string;
   question_type: string;
+  question_subtype?: string;
+  company_value_id?: string;
+  icon?: string | null;  // Update to match the same type as in other files
 }
 
 interface FeedbackUserIdentity {
@@ -37,6 +40,7 @@ export interface FeedbackCardProps {
   comment_text: string | null;
   created_at: string;
   is_flagged: boolean;
+  nominated_user?: FeedbackUserIdentity | null;
   onFlag: (id: string) => Promise<void>;
 }
 
@@ -48,7 +52,8 @@ export default function FeedbackCard({
   rating_value,
   comment_text,
   created_at, 
-  is_flagged, 
+  is_flagged,
+  nominated_user,
   onFlag 
 }: FeedbackCardProps) {
   const [flagging, setFlagging] = useState(false);
@@ -107,16 +112,48 @@ export default function FeedbackCard({
   const rawQuestionText = feedback_questions?.question_text || 'Feedback';
   const questionText = formatQuestionText(rawQuestionText);
   const questionType = feedback_questions?.question_type || 'text';
+  const isValuesFeedback = questionType === 'values';
+  // const icon = feedback_questions?.icon;
+
+  // For value nominations
+  const renderValueNomination = () => {
+    if (!isValuesFeedback || !nominated_user) return null;
+    
+    return (
+      <>
+      <div className='flex justify-between items-center'>
+        <div className='flex items-center gap-2'>
+          <FontAwesomeIcon 
+            icon={faAward} 
+            className="h-6 w-6 text-pantonered-300"
+          />
+          <h4 className='text-lg font-light text-cerulean'>
+          {nominated_user.name} was recognized for exemplifying this value: <strong>{questionText}</strong>
+          </h4>
+        </div>
+        <span className='text-xs text-slate-400'>
+            <ReactTimeAgo date={created_at} />
+        </span>
+      </div>
+      </>
+    );
+  };
 
   return (
     <>
     <div className='bg-white p-4 rounded-md shadow-md mb-4'>
+        {isValuesFeedback ? (
+          <>
+          {renderValueNomination()}
+          </>
+        ) : (
+          <>
         <div className='flex justify-between items-center'>
             <div className='flex items-center gap-2 pb-4'>
-                <FontAwesomeIcon 
+                  <FontAwesomeIcon 
                     icon={questionType === 'rating' ? faStarHalfStroke : faComments} 
                     className="h-6 w-6 text-berkeleyblue-200"
-                />
+                  />
                 <h4 className='text-lg font-light text-berkeleyblue'>
                     {questionText}
                 </h4>
@@ -125,7 +162,7 @@ export default function FeedbackCard({
                 <span className='text-xs text-slate-400'>
                     <ReactTimeAgo date={created_at} />
                 </span>
-                {!is_flagged && (
+                {!is_flagged && !isValuesFeedback && (
                   <Button
                       variant="ghost"
                       size="sm"
@@ -141,6 +178,7 @@ export default function FeedbackCard({
                 )}
             </div>
         </div>
+        
         {questionType === 'rating' && rating_value ? (
           <div className="mb-4">
             {renderStars(rating_value)}
@@ -171,62 +209,9 @@ export default function FeedbackCard({
             <span>This feedback has been flagged for review</span>
           </div>
         )}
+        </>
+        )}
     </div>
-    
-    {/* <Card className={is_flagged ? 'border-amber-300 bg-amber-50' : ''}>
-      <CardContent className="pt-6">
-        <div className="mb-3">
-          <Badge variant="outline" className="font-normal text-xs">
-            {questionType === 'rating' ? 'Rating' : 'Text'}
-          </Badge>
-        </div>
-        
-        <h4 className="font-medium text-gray-800 mb-3">{questionText}</h4>
-        
-        {questionType === 'rating' && rating_value ? (
-          <div className="mb-4">
-            {renderStars(rating_value)}
-          </div>
-        ) : null}
-        
-        {text_response ? (
-          <div className="mb-4 text-gray-700 bg-gray-50 p-3 rounded-md border border-gray-100">
-            <p>{text_response}</p>
-          </div>
-        ) : null}
-        
-        {comment_text ? (
-          <div className="mb-2 text-gray-700">
-            <div className="flex items-start gap-2">
-              <MessageSquare className="h-4 w-4 mt-1 text-gray-400" />
-              <p className="text-sm">{comment_text}</p>
-            </div>
-          </div>
-        ) : null}
-        
-        {is_flagged && (
-          <div className="mt-4 flex items-center text-amber-700 text-sm bg-amber-100 p-2 rounded-md">
-            <AlertTriangle className="h-4 w-4 mr-2 flex-shrink-0" />
-            <span>This feedback has been flagged for review</span>
-          </div>
-        )}
-      </CardContent>
-      <CardFooter className="flex justify-between border-t pt-4 text-xs text-gray-500">
-        <span>{new Date(created_at).toLocaleString()}</span>
-        {!is_flagged && (
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="text-gray-500 hover:text-red-600"
-            onClick={handleFlag}
-            disabled={flagging}
-          >
-            <Flag className="h-4 w-4 mr-1" />
-            {flagging ? 'Flagging...' : 'Flag as inappropriate'}
-          </Button>
-        )}
-      </CardFooter>
-    </Card> */}
     </>
   );
 }

@@ -7,18 +7,28 @@ import { toast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faComments } from '@fortawesome/free-regular-svg-icons';
+import { library } from '@fortawesome/fontawesome-svg-core';
+import { fas } from '@fortawesome/free-solid-svg-icons';
+
+// Add all FontAwesome solid icons to the library
+library.add(fas);
 
 // Define interfaces that match the database structure exactly
 interface FeedbackQuestion {
   id: string;
   question_text: string;
   question_type: string;
+  question_subtype?: string;
   company_id?: string;
   scope?: string;
   active?: boolean;
   created_at?: string;
   updated_at?: string;
   question_description?: string;
+  company_value_id?: string;
+  company_values?: {
+    icon?: string | null;
+  };
 }
 
 interface FeedbackUserIdentity {
@@ -49,19 +59,27 @@ interface FeedbackResponse {
   is_flagged?: boolean | null;
   flagged_by?: string | null;
   flagged_at?: string | null;
+  nominated_user_id?: string | null;
   feedback_questions?: FeedbackQuestion;
   feedback_recipients?: FeedbackRecipient;
-  // [key: string]: any; // Allow other fields that might be in the database
+  nominated_user?: FeedbackUserIdentity;
 }
 
 interface FeedbackListProps {
   userId?: string;     // For employee viewing their own feedback
   employeeId?: string; // For filtering in manager view (specific employee)
   managerId?: string;  // For manager viewing all their direct reports
+  includeValues?: boolean; // Whether to include value nominations
 }
 
-export default function FeedbackList({ userId, employeeId, managerId }: FeedbackListProps) {
+export default function FeedbackList({ 
+  userId, 
+  employeeId, 
+  managerId, 
+  includeValues = true 
+}: FeedbackListProps) {
   const [feedback, setFeedback] = useState<FeedbackResponse[]>([]);
+  const [valueNominations, setValueNominations] = useState<FeedbackResponse[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Fetch feedback
@@ -104,7 +122,12 @@ export default function FeedbackList({ userId, employeeId, managerId }: Feedback
               feedback_questions!inner(
                 id,
                 question_text,
-                question_type
+                question_type,
+                question_subtype,
+                company_value_id,
+                company_values(
+                  icon
+                )
               ),
               feedback_sessions!inner(
                 id,
@@ -118,17 +141,30 @@ export default function FeedbackList({ userId, employeeId, managerId }: Feedback
                   name,
                   email
                 )
+              ),
+              nominated_user:feedback_user_identities(
+                id,
+                name,
+                email
               )
             `)
             .in('recipient_id', recipientIds)
             .eq('skipped', false)
             .eq('feedback_sessions.status', 'completed') // dont show in progress answers
-            .order('created_at', { ascending: false })
+            .in('feedback_questions.question_type', ['text', 'rating']) // exclude values
+            .order('created_at', { ascending: false });
             
           if (feedbackError) throw feedbackError;
           
           // Set the feedback
           setFeedback(feedbackData || []);
+          
+          // If includeValues is true, also fetch value nominations for this user
+          if (includeValues) {
+            if (targetId) {
+              await fetchValueNominations(targetId);
+            }
+          }
         }
         // CASE 3: Manager viewing all their direct reports' feedback
         else if (managerId) {
@@ -172,7 +208,12 @@ export default function FeedbackList({ userId, employeeId, managerId }: Feedback
               feedback_questions!inner(
                 id,
                 question_text,
-                question_type
+                question_type,
+                question_subtype,
+                company_value_id,
+                company_values(
+                  icon
+                )
               ),
               feedback_sessions!inner(
                 id,
@@ -186,17 +227,28 @@ export default function FeedbackList({ userId, employeeId, managerId }: Feedback
                   name,
                   email
                 )
+              ),
+              nominated_user:feedback_user_identities(
+                id,
+                name,
+                email
               )
             `)
             .in('recipient_id', recipientIds)
             .eq('skipped', false)
+            .in('feedback_questions.question_type', ['text', 'rating']) // exclude values
             .eq('feedback_sessions.status', 'completed') // dont show in progress answers
-            .order('created_at', { ascending: false })
+            .order('created_at', { ascending: false });
             
           if (feedbackError) throw feedbackError;
           
           // Set the feedback
           setFeedback(feedbackData || []);
+          
+          // If includeValues is true, fetch value nominations for all direct reports
+          if (includeValues) {
+            await fetchValueNominationsForTeam(directReportIds);
+          }
         }
       } catch (error) {
         console.error('Error fetching feedback:', error);
@@ -210,8 +262,93 @@ export default function FeedbackList({ userId, employeeId, managerId }: Feedback
       }
     };
     
+    // Fetch value nominations for a specific user
+    const fetchValueNominations = async (userId: string) => {
+      try {
+        // Get value nominations where this user is nominated
+        const { data: nominations, error } = await supabase
+          .from('feedback_responses')
+          .select(`
+            *,
+            feedback_questions!inner(
+              id,
+              question_text,
+              question_type,
+              question_description,
+              company_value_id,
+              company_values(
+                icon
+              )
+            ),
+            feedback_sessions!inner(
+              id,
+              status
+            ),
+            nominated_user:feedback_user_identities!inner(
+              id,
+              name,
+              email
+            )
+          `)
+          .eq('nominated_user_id', userId)
+          .eq('skipped', false)
+          .eq('feedback_sessions.status', 'completed')
+          .in('feedback_questions.question_type', ['values'])
+          .order('created_at', { ascending: false });
+          
+        if (error) throw error;
+        
+        setValueNominations(nominations || []);
+      } catch (error) {
+        console.error('Error fetching value nominations:', error);
+      }
+    };
+    
+    // Fetch value nominations for a team
+    const fetchValueNominationsForTeam = async (teamMemberIds: string[]) => {
+      try {
+        // Get value nominations where any team member is nominated
+        const { data: nominations, error } = await supabase
+          .from('feedback_responses')
+          .select(`
+            *,
+            feedback_questions!inner(
+              id,
+              question_text,
+              question_type,
+              question_subtype,
+              question_description,
+              company_value_id,
+              company_values(
+                icon
+              )
+            ),
+            feedback_sessions!inner(
+              id,
+              status
+            ),
+            nominated_user:feedback_user_identities!inner(
+              id,
+              name,
+              email
+            )
+          `)
+          .in('nominated_user_id', teamMemberIds)
+          .eq('skipped', false)
+          .eq('feedback_sessions.status', 'completed')
+          .in('feedback_questions.question_type', ['values'])
+          .order('created_at', { ascending: false });
+          
+        if (error) throw error;
+        
+        setValueNominations(nominations || []);
+      } catch (error) {
+        console.error('Error fetching value nominations for team:', error);
+      }
+    };
+    
     fetchFeedback();
-  }, [userId, employeeId, managerId]);
+  }, [userId, employeeId, managerId, includeValues]);
   
   // Flag feedback as inappropriate
   const handleFlag = async (feedbackId: string) => {
@@ -239,6 +376,11 @@ export default function FeedbackList({ userId, employeeId, managerId }: Feedback
     }
   };
   
+  // Combine regular feedback and value nominations
+  const combinedFeedback = [...feedback, ...valueNominations].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+  
   if (loading) {
     return (
       <div className="space-y-4">
@@ -257,7 +399,7 @@ export default function FeedbackList({ userId, employeeId, managerId }: Feedback
     );
   }
   
-  if (feedback.length === 0) {
+  if (combinedFeedback.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500 flex flex-col items-center">
         <FontAwesomeIcon 
@@ -277,20 +419,36 @@ export default function FeedbackList({ userId, employeeId, managerId }: Feedback
   
   return (
     <div className="space-y-4">
-      {feedback.map(item => (
-        <FeedbackCard
-          key={item.id}
-          id={item.id}
-          feedback_questions={item.feedback_questions}
-          feedback_recipients={item.feedback_recipients}
-          text_response={item.text_response}
-          rating_value={item.rating_value}
-          comment_text={item.comment_text}
-          created_at={item.created_at}
-          is_flagged={item.is_flagged || false}
-          onFlag={handleFlag}
-        />
-      ))}
+      {combinedFeedback.map(item => {
+        // Extract icon from company_values if it exists
+        const icon = item.feedback_questions?.company_values?.icon || null;
+        // Create a copy of feedback_questions with the icon
+        const questionsWithIcon = item.feedback_questions 
+        ? {
+            ...item.feedback_questions,
+            // Ensure the icon is properly structured according to your interface
+            icon: icon // If FeedbackQuestion has a direct icon property
+            // OR if icon should stay in company_values:
+            // company_values: {...item.feedback_questions.company_values, icon}
+          } 
+        : undefined;
+          
+        return (
+          <FeedbackCard
+            key={item.id}
+            id={item.id}
+            feedback_questions={questionsWithIcon}
+            feedback_recipients={item.feedback_recipients}
+            text_response={item.text_response}
+            rating_value={item.rating_value}
+            comment_text={item.comment_text}
+            created_at={item.created_at}
+            is_flagged={item.is_flagged || false}
+            nominated_user={item.nominated_user}
+            onFlag={handleFlag}
+          />
+        );
+      })}
     </div>
   );
 }
