@@ -397,10 +397,9 @@ export default function InviteUsersModal({ isOpen, onClose, companyId, onSuccess
         </DialogHeader>
         
         <Tabs defaultValue="single" onValueChange={setActiveTab} value={activeTab}>
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="single">Single User</TabsTrigger>
             <TabsTrigger value="bulk">Bulk Invite</TabsTrigger>
-            <TabsTrigger value="csv">CSV Upload</TabsTrigger>
           </TabsList>
           
           <TabsContent value="single">

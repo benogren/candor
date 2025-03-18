@@ -131,7 +131,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       <Header user={user} company={company}>
         <div className="">
           {/* <Sidebar role={isAdmin ? 'admin' : 'member'} /> */}
-          <main className="container mx-auto flex">
+          <main className="container mx-auto">
             {children}
           </main>
         </div>

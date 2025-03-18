@@ -321,10 +321,10 @@ serve(async (req) => {
                 
                 try {
                   await sendEmail(
-                    'Candor <feedback@app.candor.so>',
+                    'Candor <feedbackbot@app.candor.so>',
                     memberEmail,
-                    `Your feedback is needed`,
-                    getEmailTemplate(memberName, feedbackUrl, false)
+                    `Your teammates would appreciate your feedback`,
+                    getEmailTemplate(memberName, feedbackUrl, company.name)
                   );
                   
                   emailsSentCount++;
@@ -352,9 +352,9 @@ serve(async (req) => {
                   
                   try {
                     await sendEmail(
-                      'Candor <feedback@app.candor.so>',
+                      'Candor <feedbackbot@app.candor.so>',
                       invitedUser.email,
-                      `Join ${company.name} to contribute to the feedback cycle`,
+                      `Join Candor: ${company.name}'s New Feedback Platform`,
                       getInvitedUserEmailTemplate(invitedUser.name || invitedUser.email.split('@')[0], signupUrl, company.name)
                     );
                     
@@ -453,10 +453,10 @@ serve(async (req) => {
                 
                 try {
                   await sendEmail(
-                    'Candor <feedback@app.candor.so>',
+                    'Candor <feedbackbot@app.candor.so>',
                     memberEmail,
-                    `Reminder: Your feedback is still needed`,
-                    getEmailTemplate(memberName, feedbackUrl, true)
+                    `A gentle reminder: Your feedback is still needed`,
+                    getReminderEmailTemplate(memberName, feedbackUrl, company.name)
                   );
                   
                   results.totalEmails++;
@@ -504,39 +504,126 @@ function generateSecureToken(): string {
 }
 
 // Email template function for registered users
-function getEmailTemplate(name: string, url: string, isReminder: boolean): string {
+function getEmailTemplate(name: string, url: string, companyName: string): string {
   return `
     <!DOCTYPE html>
     <html>
     <head>
       <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333333; }
         .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .button { display: inline-block; background-color: #457B9D; color: white; 
+        .header { margin-bottom: 40px; }
+        .header img { width: 150px; height: 37px; }
+        .header a.img {text-decoration: none;}
+        h1 { font-size: 24px; margin-bottom: 20px; color: #457b9d; }
+        p { margin-bottom: 20px; color: #333333; }
+        a { text-decoration: none; }
+        .button { display: inline-block; background-color: #457b9d; color: #fefefe!important; 
                  padding: 12px 24px; text-decoration: none; border-radius: 4px; }
-        .footer { margin-top: 40px; font-size: 12px; color: #777; }
+        .footer { margin-top: 40px; font-size: 12px; color: #777777; text-align: center; }
+        hr { border: 0; border-top: 1px solid #eeeeee; }
       </style>
     </head>
     <body>
       <div class="container">
-        <h1>Hello ${name},</h1>
-        
-        ${isReminder 
-          ? `<p>This is a friendly reminder that your feedback is still needed. Your insights help your team grow and improve.</p>
-             <p>Please take a few minutes to provide feedback for your colleagues.</p>`
-          : `<p>It's time to provide feedback for your colleagues!</p>
-             <p>Regular feedback helps your team grow and improve. This should only take a few minutes to complete.</p>`
-        }
-        
-        <p style="margin: 30px 0; text-align: center;">
-          <a href="${url}" class="button">Provide Feedback</a>
+        <div class="header">
+            <a href="${url}"><img src="https://sjxwcwtgahnbooyboeww.supabase.co/storage/v1/object/public/marketing/candor_cerulean.png" width="150" height="37" alt="Candor" /></a>
+        </div>
+        <h1>Your teammates would appreciate your feedback!</h1>
+        <p>
+            Hi ${name}, <br/>Your team would value your perspective on how they&#39;re doing. Your insights can make a real difference in their professional growth.
         </p>
-        
-        <p>This link will expire in 7 days.</p>
-        
+        <p><strong>Why your feedback matters:</strong></p>
+        <p>
+            Your unique perspective helps create a fuller picture of your colleagues&#39; impact. The small things you notice might be exactly what they need to hear.
+        </p>
+        <p><strong>This will be quick and meaningful:</strong></p>
+        <ul>
+            <li>Takes just 3-5 minutes</li>
+            <li>Your feedback remains 100% anonymous</li>
+            <li>Focus on specific examples rather than general impressions</li>
+            <li>Be thoughtful but don&#39;t overthink it &mdash; your honest perspective is what counts</li>
+        </ul>
+        <p><strong>Ready to share your thoughts?</strong></p>
+        <p>
+            <a href="${url}" class="button" style="color: #fefefe!important;">Provide Feedback</a>
+        </p>
+        <p>
+            Remember, the most helpful feedback is specific, balanced, and actionable. Share both strengths you&#39;ve observed and suggestions that could help your teammates grow.
+        </p>
+        <p>
+            Thank you for contributing to our culture of growth and continuous improvement!
+        </p>
+        <p>
+            Best,<br/>
+            The ${companyName} Team
+        </p>
         <div class="footer">
-          <p>This email was sent by Candor, your team feedback platform.</p>
-          <p>If you did not expect this email, please contact your administrator.</p>
+            <hr />
+          <p>${companyName} is powered by Candor</p>
+          <p>You received this email because you are an employee of ${companyName} and subscribed to receive communications from Candor. If you did not expect this email, please contact your company&#39;s administrator.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+// Email template function for registered users
+function getReminderEmailTemplate(name: string, url: string, companyName: string): string {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { margin-bottom: 40px; }
+        .header img { width: 150px; height: 37px; }
+        .header a.img {text-decoration: none;}
+        h1 { font-size: 24px; margin-bottom: 20px; color: #457b9d; }
+        p { margin-bottom: 20px; color: #333333; }
+        a { text-decoration: none; }
+        .button { display: inline-block; background-color: #457b9d; color: #fefefe!important; 
+                 padding: 12px 24px; text-decoration: none; border-radius: 4px; }
+        .footer { margin-top: 40px; font-size: 12px; color: #777777; text-align: center; }
+        hr { border: 0; border-top: 1px solid #eeeeee; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+            <a href="${url}"><img src="https://sjxwcwtgahnbooyboeww.supabase.co/storage/v1/object/public/marketing/candor_cerulean.png" width="150" height="37" alt="Candor" /></a>
+        </div>
+        <p>
+            Hi ${name}, <br/>Just a friendly reminder that your team is still looking forward to your feedback.
+        </p>
+        <p><strong>We know you&#39;re busy:</strong></p>
+        <p>
+            We completely understand that things get hectic, but your perspective is valuable and only takes a few minutes to share.
+        </p>
+        <p><strong>This will be quick and meaningful:</strong></p>
+        <ul>
+            <li>Your feedback helps build a stronger team</li>
+            <li>The feedback window closes soon!</li>
+            <li>Your insights remain 100% anonymous</li>
+        </ul>
+        <p><strong>It&#39;s quick and impactful:</strong></p>
+        <p>Your observations could provide the exact guidance a colleague needs to excel in their role.</p>
+        <p>
+            <a href="${url}" class="button" style="color: #fefefe!important;">Provide Feedback Now</a>
+        </p>
+        <p>
+            If you&#39;ve already submitted your feedback, thank you! You can disregard this reminder.
+        </p>
+        <p>
+            Thanks for being part of our feedback culture,<br/>
+            The ${companyName} Team
+        </p>
+        <div class="footer">
+            <hr />
+          <p>${companyName} is powered by Candor</p>
+          <p>You received this email because you are an employee of ${companyName} and subscribed to receive communications from Candor. If you did not expect this email, please contact your company&#39;s administrator.</p>
         </div>
       </div>
     </body>
@@ -551,30 +638,57 @@ function getInvitedUserEmailTemplate(name: string, url: string, companyName: str
     <html>
     <head>
       <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333333; }
         .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .button { display: inline-block; background-color: #457B9D; color: white; 
+        .header { margin-bottom: 40px; }
+        .header img { display: block; margin: 0 auto; width: 150px; height: 37px; }
+        .header a.img {text-decoration: none;}
+        h1 { font-size: 24px; margin-bottom: 20px; color: #457b9d; }
+        p { margin-bottom: 20px; color: #333333; }
+        a { text-decoration: none; }
+        .button { display: inline-block; background-color: #457b9d; color: #fefefe!important; 
                  padding: 12px 24px; text-decoration: none; border-radius: 4px; }
-        .footer { margin-top: 40px; font-size: 12px; color: #777; }
+        .footer { margin-top: 40px; font-size: 12px; color: #777777; text-align: center; }
+        hr { border: 0; border-top: 1px solid #eeeeee; }
       </style>
     </head>
     <body>
       <div class="container">
-        <h1>Hello ${name},</h1>
-        
-        <p>You've been invited to join <strong>${companyName}</strong> on Candor!</p>
-        <p>Your team is currently participating in a feedback cycle, and they would value your input.</p>
-        <p>Please complete your registration to start participating in the feedback process.</p>
-        
-        <p style="margin: 30px 0; text-align: center;">
-          <a href="${url}" class="button">Complete Registration</a>
+        <div class="header">
+            <a href="${url}"><img src="https://sjxwcwtgahnbooyboeww.supabase.co/storage/v1/object/public/marketing/candor_cerulean.png" width="150" height="37" alt="Candor" /></a>
+        </div>
+        <h1>Join Candor: Your Team&#39;s New Feedback Platform!</h1>
+        <p>
+            Hi ${name}, <br/>Great news! ${companyName} is now using Candor to help us all grow through better feedback.
         </p>
-        
-        <p>This invitation link will expire in 7 days.</p>
-        
+        <p><strong>What is Candor?</strong></p>
+        <p>Candor is a simple platform that makes collecting and receiving honest, anonymous feedback from your colleagues effortless. It integrates with tools you already use and provides insights that can help you develop professionally.</p>
+        <p><strong>Why you&#39;ll love it:</strong></p>
+        <ul>
+            <li>Get a clearer picture of your strengths and growth areas</li>
+            <li>Receive consistent feedback without the awkwardness</li>
+            <li>Spend less time on formal reviews and more time on meaningful conversations</li>
+        </ul>
+        <p><strong>Getting started takes just 60 seconds:</strong></p>
+        <ol>
+            <li>Click the button below to create your account</li>
+            <li>Set up your profile</li>
+            <li>You&#39;re ready to give and receive valuable feedback</li>
+        </ol>
+        <p style="margin: 30px 0; text-align: center;">
+            <a href="${url}" class="button" style="color: #fefefe!important;">Join Candor Now</a>
+        </p>
+        <p>
+            If you have any questions, just reply to this email. We&#39;re excited to build a stronger feedback culture together!
+        </p>
+        <p>
+            Welcome aboard,<br/>
+            The ${companyName} Team
+        </p>
         <div class="footer">
-          <p>This email was sent by Candor, your team feedback platform.</p>
-          <p>If you did not expect this email, please contact your administrator.</p>
+            <hr />
+          <p>${companyName} is powered by Candor</p>
+          <p>You received this email because you are an employee of ${companyName} and subscribed to receive communications from Candor. If you did not expect this email, please contact your company&#39;s administrator.</p>
         </div>
       </div>
     </body>

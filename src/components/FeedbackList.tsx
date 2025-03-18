@@ -151,7 +151,7 @@ export default function FeedbackList({
             .in('recipient_id', recipientIds)
             .eq('skipped', false)
             .eq('feedback_sessions.status', 'completed') // dont show in progress answers
-            .in('feedback_questions.question_type', ['text', 'rating']) // exclude values
+            .in('feedback_questions.question_type', ['text', 'rating', 'ai']) // exclude values
             .order('created_at', { ascending: false });
             
           if (feedbackError) throw feedbackError;
@@ -236,7 +236,7 @@ export default function FeedbackList({
             `)
             .in('recipient_id', recipientIds)
             .eq('skipped', false)
-            .in('feedback_questions.question_type', ['text', 'rating']) // exclude values
+            .in('feedback_questions.question_type', ['text', 'rating', 'ai']) // exclude values
             .eq('feedback_sessions.status', 'completed') // dont show in progress answers
             .order('created_at', { ascending: false });
             

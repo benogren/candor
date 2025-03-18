@@ -5,9 +5,25 @@ import { AlertTriangle } from 'lucide-react';
 // import { toast } from '@/components/ui/use-toast';
 import ReactTimeAgo from 'react-timeago';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faStarHalfStroke, faStar, faComments, faAward } from '@fortawesome/free-solid-svg-icons';
+import { faStarHalfStroke, faStar, faComments, faAward, faMagicWandSparkles } from '@fortawesome/free-solid-svg-icons';
 import { faMessage } from '@fortawesome/free-regular-svg-icons';
 
+interface QuestionTypeIconProps {
+  questionType: string;
+}
+
+const getQuestionTypeIcon = (questionType: QuestionTypeIconProps['questionType']): typeof faStarHalfStroke | typeof faComments | typeof faMagicWandSparkles => {
+  switch (questionType) {
+    case 'rating':
+      return faStarHalfStroke;
+    case 'text':
+      return faComments;
+    case 'ai':
+      return faMagicWandSparkles;
+    default:
+      return faComments; // Default fallback
+  }
+};
 
 // Match the feedback question structure from database
 interface FeedbackQuestion {
@@ -151,7 +167,7 @@ export default function FeedbackCard({
         <div className='flex justify-between items-center'>
             <div className='flex items-center gap-2 pb-4'>
                   <FontAwesomeIcon 
-                    icon={questionType === 'rating' ? faStarHalfStroke : faComments} 
+                    icon={getQuestionTypeIcon(questionType)} 
                     className="h-6 w-6 text-berkeleyblue-200"
                   />
                 <h4 className='text-lg font-light text-berkeleyblue'>

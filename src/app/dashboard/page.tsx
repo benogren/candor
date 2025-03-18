@@ -283,10 +283,12 @@ export default function DashboardPage() {
   return (
     <>
       {memberStatus === 'pending' && (
-        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-md text-sm text-center">
+        <div className='container mx-auto py-8 px-4'>
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-md text-sm text-center">
           <p className="text-amber-700">
             <strong>Account Pending Approval.</strong> Your account is waiting for admin approval. Some features may be limited until your account is approved.
           </p>
+          </div>
         </div>
       )}
       <div className="container mx-auto py-8 px-4">
@@ -321,6 +323,11 @@ export default function DashboardPage() {
             </Button>
           </div>
         )}
+        {/* <div>
+          {user?.id && (
+            <UserRelationship user1Id='a067caca-b442-42a5-b7f6-4c0f09d6930b' user2Id='d78476f8-6b0f-4d92-affa-1b0e697054fe' />
+          )}
+        </div> */}
 
         <div className="flex justify-between items-center mb-6">
           <h2 className='text-4xl font-light text-berkeleyblue'>Your Feedback</h2>
