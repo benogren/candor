@@ -282,6 +282,15 @@ export default function DashboardPage() {
   
   return (
     <>
+      {isAdmin && !activeCycle && (
+        <div className='container mx-auto py-8 px-4'>
+          <div className="mb-6 p-4 bg-cerulean-200 border border-cerulean-500 rounded-md text-sm text-center">
+          <p className="text-cerulean-700">
+            You&#39;re a company admin &mdash; manage your company settings and feedback cycles in your <Link className='text-cerulean-800 underline underline-offset-4 hover:text-cerulean-900' href='/dashboard/admin/'>Admin Dashboard</Link>
+          </p>
+          </div>
+        </div>
+      )}
       {memberStatus === 'pending' && (
         <div className='container mx-auto py-8 px-4'>
           <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-md text-sm text-center">
@@ -323,11 +332,6 @@ export default function DashboardPage() {
             </Button>
           </div>
         )}
-        {/* <div>
-          {user?.id && (
-            <UserRelationship user1Id='a067caca-b442-42a5-b7f6-4c0f09d6930b' user2Id='d78476f8-6b0f-4d92-affa-1b0e697054fe' />
-          )}
-        </div> */}
 
         <div className="flex justify-between items-center mb-6">
           <h2 className='text-4xl font-light text-berkeleyblue'>Your Feedback</h2>

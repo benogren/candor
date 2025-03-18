@@ -140,6 +140,7 @@ export default function CreateCycleModal({ companyId, onClose, onSuccess }: Crea
             <Select
               value={selectedDay}
               onValueChange={setSelectedDay}
+              disabled={true}
             >
               <SelectTrigger className="col-span-3">
                 <SelectValue placeholder="Select day" />
