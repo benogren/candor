@@ -24,6 +24,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 // import {
 //   Select,
 //   SelectContent,
@@ -36,19 +37,25 @@ import { Loader2 } from 'lucide-react';
 import supabase from '@/lib/supabase/client';
 import { FeedbackQuestion } from '@/app/types/feedback';
 
+// Update the type definition if you don't want to modify the original FeedbackQuestion type
+interface ExtendedFeedbackQuestion extends FeedbackQuestion {
+  question_description?: string;
+}
+
 const formSchema = z.object({
   questionText: z.string().min(1, {
     message: 'Question text is required',
   }),
+  questionDescription: z.string().optional(),
   questionType: z.enum(['rating', 'text']),
   active: z.boolean().default(true),
 });
 
 interface CreateQuestionModalProps {
   companyId: string;
-  question?: FeedbackQuestion | null;
+  question?: ExtendedFeedbackQuestion | null;
   onClose: () => void;
-  onSuccess: (question: FeedbackQuestion) => void;
+  onSuccess: (question: ExtendedFeedbackQuestion) => void;
 }
 
 export default function CreateQuestionModal({
@@ -64,6 +71,7 @@ export default function CreateQuestionModal({
     resolver: zodResolver(formSchema),
     defaultValues: {
       questionText: question?.question_text || '',
+      questionDescription: question?.question_description || '',
       questionType: (question?.question_type as 'rating' | 'text') || 'text',
       active: question?.active ?? true,
     },
@@ -79,6 +87,7 @@ export default function CreateQuestionModal({
           .from('feedback_questions')
           .update({
             question_text: values.questionText,
+            question_description: values.questionDescription,
             question_type: values.questionType,
             active: values.active,
           })
@@ -103,6 +112,7 @@ export default function CreateQuestionModal({
           .insert({
             company_id: companyId,
             question_text: values.questionText,
+            question_description: values.questionDescription,
             question_type: values.questionType,
             scope: 'company',
             active: values.active,
@@ -163,6 +173,27 @@ export default function CreateQuestionModal({
                   </FormControl>
                   <FormDescription>
                     Use {'{name}'} to include the recipient&apos;s name in the question
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="questionDescription"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description (Optional)</FormLabel>
+                  <FormControl>
+                    <Textarea 
+                      placeholder="Add additional context or examples for the question..."
+                      className="resize-y min-h-[80px]"
+                      {...field} 
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    You can also use {'{name}'} to include the recipient&apos;s name in the description
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

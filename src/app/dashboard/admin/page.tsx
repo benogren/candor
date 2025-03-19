@@ -5,15 +5,59 @@ import { useAuth } from '@/lib/context/auth-context';
 import supabase from '@/lib/supabase/client'; 
 import MemberManagementPanel from '@/components/MemberManagementPanel';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faSitemap, faComments } from '@fortawesome/free-solid-svg-icons';
+import { faSitemap, faComments, faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
 import { faCircleQuestion } from '@fortawesome/free-regular-svg-icons';
 import Link from 'next/link';
+import { CompanyModal } from '@/components/CompanyModal';
+import { Button } from '@/components/ui/button';
 
 export default function TeamManagementPage() {
   const { user } = useAuth();
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [isIndustrySet, setIsIndustrySet] = useState(false);
+
+  const [companyData, setCompanyData] = useState<{
+    id: string;
+    name: string;
+    industry?: string;
+    domains?: string[];
+  } | null>(null);
+
+  const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false);
+
+  const handleCompanyUpdate = () => {
+    // Refresh company data after update
+    if (user && companyData) {
+      // First get the company_id for the user
+      supabase
+        .from('company_members')
+        .select('company_id')
+        .eq('id', user.id)
+        .single()
+        .then(({ data: memberData, error: memberError }) => {
+          if (!memberError && memberData) {
+            // Then get the updated company details
+            supabase
+              .from('companies')
+              .select('id, name, industry, domains')
+              .eq('id', memberData.company_id)
+              .single()
+              .then(({ data: companyDetails, error: companyError }) => {
+                if (!companyError && companyDetails) {
+                  setCompanyData({
+                    id: companyDetails.id,
+                    name: companyDetails.name,
+                    industry: companyDetails.industry || undefined,
+                    domains: companyDetails.domains
+                  });
+                }
+              });
+          }
+        });
+    }
+  };
 
   useEffect(() => {
     const fetchCompanyId = async () => {
@@ -37,6 +81,15 @@ export default function TeamManagementPage() {
           .single();
 
           setCompanyName(FetchCompanyName.name);
+          setCompanyData({
+            id: FetchCompanyName.id,
+            name: FetchCompanyName.name,
+            industry: FetchCompanyName.industry || undefined,
+            domains: FetchCompanyName.domains
+          });
+          if (FetchCompanyName.industry) {
+            setIsIndustrySet(true);
+          }
           if (error) throw error;
         }
       } catch (error) {
@@ -53,6 +106,25 @@ export default function TeamManagementPage() {
   console.log('check refresh:', handleRefreshMembers);
 
   return (
+    <>
+    {!isIndustrySet && companyData && (
+      <div className='container mx-auto py-8 px-4'>
+        <div className="mb-6 p-4 bg-pantonered-200 border border-pantonered-500 rounded-md text-sm text-center">
+        <p className="text-pantonered-700">
+        <FontAwesomeIcon icon={faTriangleExclamation} className="mr-2" />
+          Please set your company&#39;s industry, this will help us provide better 360&deg; feedback questions. 
+          <Button 
+                variant="link" 
+                size="sm" 
+                className='underline'
+                onClick={() => setIsCompanyModalOpen(true)}
+              >
+                Set my Industry
+              </Button>
+        </p>
+        </div>
+      </div>
+    )}
     <div className="container mx-auto py-8 px-4">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
         <h2 className='text-4xl font-light text-berkeleyblue'>
@@ -107,5 +179,18 @@ export default function TeamManagementPage() {
       <MemberManagementPanel key={refreshKey} />
 
     </div>
+    {/* Company Modal */}
+    {companyData && (
+      <CompanyModal
+        isOpen={isCompanyModalOpen}
+        onClose={() => {
+          setIsCompanyModalOpen(false);
+          handleCompanyUpdate();
+        }}
+        defaultValues={companyData}
+      />
+    )}
+
+    </>
   );
 }

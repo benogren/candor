@@ -7,11 +7,12 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import FeedbackList from '@/components/FeedbackList';
 import { LoadingSpinner } from '@/components/loading-spinner';
+import { ProfileModal } from '@/components/ProfileModal';
 import supabase from '@/lib/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 import { useRouter } from 'next/navigation';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faComments } from '@fortawesome/free-regular-svg-icons';
+import { faComments } from '@fortawesome/free-solid-svg-icons';
 
 export default function DashboardPage() {
   const { user, memberStatus } = useAuth();
@@ -36,6 +37,16 @@ export default function DashboardPage() {
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
   const [cookieIsSet, setCookieIsSet] = useState(false);
 
+  // State for user profile data
+  const [userProfile, setUserProfile] = useState<{
+    name: string;
+    email: string;
+    job_title?: string;
+  } | null>(null);
+  
+  // State for profile modal
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
   // Effect to handle cookie setting and navigation
   useEffect(() => {
     if (pendingNavigation && cookieIsSet) {
@@ -46,6 +57,34 @@ export default function DashboardPage() {
       setCookieIsSet(false);
     }
   }, [pendingNavigation, cookieIsSet, router]);
+
+  // Effect to fetch user profile and check for job title
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!user) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .select('name, email, job_title')
+          .eq('id', user.id)
+          .single();
+          
+        if (error) throw error;
+        
+        setUserProfile(data);
+        
+        // If user doesn't have a job title, show the profile modal
+        if (!data.job_title) {
+          setIsProfileModalOpen(true);
+        }
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+      }
+    };
+    
+    fetchUserProfile();
+  }, [user]);
 
   useEffect(() => {
     const checkFeedbackStatus = async () => {
@@ -160,8 +199,6 @@ export default function DashboardPage() {
 
   // Helper function to set the feedback auth cookie
   const ensureFeedbackAuth = async (sessionId: string) => {
-    // console.log('Setting feedback auth cookie...');
-
     try {
       // Get auth token
       const { data: { session } } = await supabase.auth.getSession();
@@ -172,7 +209,6 @@ export default function DashboardPage() {
       }
       
       // Call the check endpoint to set the feedback_auth cookie
-      // console.log('Calling check endpoint...');
       const response = await fetch(`/api/feedback/check?sessionid=${sessionId}`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -184,8 +220,6 @@ export default function DashboardPage() {
         const data = await response.json();
         throw new Error(data.error || 'Failed to set feedback auth');
       }
-
-      // console.log('Feedback auth cookie set', response);
       
       // Signal that cookie is set
       setCookieIsSet(true);
@@ -267,6 +301,22 @@ export default function DashboardPage() {
       setIsButtonLoading(false);
     }
   };
+
+  const handleProfileUpdate = () => {
+    // Refresh user profile data after update
+    if (user) {
+      supabase
+        .from('user_profiles')
+        .select('name, email, job_title')
+        .eq('id', user.id)
+        .single()
+        .then(({ data, error }) => {
+          if (!error && data) {
+            setUserProfile(data);
+          }
+        });
+    }
+  };
   
   // Show loading state while checking permissions
   if (loading) {
@@ -282,6 +332,18 @@ export default function DashboardPage() {
   
   return (
     <>
+      {/* Profile Modal */}
+      {userProfile && (
+        <ProfileModal
+          isOpen={isProfileModalOpen}
+          onClose={() => {
+            setIsProfileModalOpen(false);
+            handleProfileUpdate();
+          }}
+          defaultValues={userProfile}
+        />
+      )}
+      
       {isAdmin && !activeCycle && (
         <div className='container mx-auto py-8 px-4'>
           <div className="mb-6 p-4 bg-cerulean-200 border border-cerulean-500 rounded-md text-sm text-center">
@@ -335,18 +397,21 @@ export default function DashboardPage() {
 
         <div className="flex justify-between items-center mb-6">
           <h2 className='text-4xl font-light text-berkeleyblue'>Your Feedback</h2>
-          {/* Show team feedback button to managers or admins */}
-          {(isManager || isAdmin) && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              asChild
-            >
-              <Link href="/dashboard/manager/feedback">
-                View Your Team&#39;s Feedback
-              </Link>
-            </Button>
-          )}
+          <div className="flex gap-2">
+            
+            {/* Show team feedback button to managers or admins */}
+            {(isManager || isAdmin) && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                asChild
+              >
+                <Link href="/dashboard/manager/feedback">
+                  View Your Team&#39;s Feedback
+                </Link>
+              </Button>
+            )}
+          </div>
         </div>
         <FeedbackList userId={user?.id} />
       </div>

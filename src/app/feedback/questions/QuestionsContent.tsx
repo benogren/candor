@@ -160,9 +160,11 @@ export default function QuestionsContent() {
     providerId: string, 
     recipientId: string, 
     recipientName: string, 
-    relationship: RelationshipResponse
+    relationship: RelationshipResponse,
+    companyId: string
   ): Promise<string | null> => {
     try {
+      console.log("About to generate AI question with companyId:", companyId);
       // Call your OpenAI API endpoint
       const response = await fetch('/api/generate-question', {
         method: 'POST',
@@ -174,7 +176,8 @@ export default function QuestionsContent() {
           providerId,
           recipientId,
           recipientName,
-          relationship
+          relationship,
+          companyId
         })
       });
       
@@ -751,6 +754,8 @@ export default function QuestionsContent() {
           
           // Get relationship between provider and recipient
           const relationship = await getUserRelationship(providerId, recipientId);
+
+          console.log("Relationship:", relationship); // DEBUGGING
           
           if (relationship) {
             console.log(`Relationship found: ${relationship.relationship.type} - ${relationship.relationship.description}`);
@@ -760,7 +765,8 @@ export default function QuestionsContent() {
               providerId, 
               recipientId,
               recipientName,
-              relationship
+              relationship,
+              companyId
             );
             
             if (generatedQuestion) {

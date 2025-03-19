@@ -56,7 +56,9 @@ export default function QuestionsContent() {
         let query = supabase
           .from('feedback_questions')
           .select('*')
-          .or(`scope.eq.global,and(scope.eq.company,company_id.eq.${userData.company_id})`);
+          .in('question_type', ['rating', 'text'])
+          .or(`scope.eq.global,and(scope.eq.company,company_id.eq.${userData.company_id})`)
+          query.order('question_type', { ascending: false });
         
         // Apply filters if they exist
         if (filterType) {

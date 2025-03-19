@@ -176,6 +176,9 @@ export default function Header({ user, company, children }: HeaderProps) {
                 <DropdownMenuItem asChild>
                   <Link href="/dashboard">Dashboard</Link>
                 </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard/settings">Settings</Link>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut}>Sign Out</DropdownMenuItem>
               </DropdownMenuContent>
