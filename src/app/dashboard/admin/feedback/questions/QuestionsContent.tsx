@@ -58,7 +58,8 @@ export default function QuestionsContent() {
           .select('*')
           .in('question_type', ['rating', 'text'])
           .or(`scope.eq.global,and(scope.eq.company,company_id.eq.${userData.company_id})`)
-          query.order('question_type', { ascending: false });
+          query.order('question_type', { ascending: false })
+          query.order('scope', { ascending: true });
         
         // Apply filters if they exist
         if (filterType) {
@@ -234,16 +235,16 @@ export default function QuestionsContent() {
                     </TableCell>
                     <TableCell>
                       <div className="flex space-x-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleToggleActive(question.id, question.active ?? false)}
-                        >
-                          {question.active ? 'Deactivate' : 'Activate'}
-                        </Button>
                         
                         {question.scope === 'company' && (
                           <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleToggleActive(question.id, question.active ?? false)}
+                            >
+                              {question.active ? 'Deactivate' : 'Activate'}
+                            </Button>
                             <Button
                               size="sm"
                               variant="outline"
