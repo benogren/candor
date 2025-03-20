@@ -101,7 +101,7 @@ export default function OrgChartContainer() {
   }, [justCompletedImport]);
 
   // Assign manager to user
-  const assignManager = useCallback(async (userId: string, managerId: string | null): Promise<boolean> => {
+  const assignManager = useCallback(async (empId: string, managerId: string | null): Promise<boolean> => {
     try {
       // Get the current session token
       const { data: { session } } = await supabase.auth.getSession();
@@ -110,14 +110,25 @@ export default function OrgChartContainer() {
       if (!token) {
         throw new Error('Not authenticated');
       }
-      
+      console.log('Assigning manager:', {empId, managerId});
+
+      // const { data, error } = await supabase.rpc('debug_manager_assignment', { 
+      //   manager_id_param: managerId, 
+      //   member_id_param: empId
+      // });
+      // if (error) {
+      //   console.log('****Error in debug_manager_assignment:', error);
+      // } else {
+      //   console.log("****Debut data:", data);
+      // }
+
       const response = await fetch('/api/org-chart/assign-manager', {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId, managerId }),
+        body: JSON.stringify({ empId, managerId }),
       });
 
       if (!response.ok) {

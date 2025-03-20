@@ -26,7 +26,14 @@ export async function PATCH(request: NextRequest) {
     // Create Supabase client
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
     );
     
     // Get user from token
@@ -34,6 +41,8 @@ export async function PATCH(request: NextRequest) {
     if (userError || !user) {
       return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
     }
+
+    // console.log('User:', user);
     
     // Get company ID for the current user
     const { data: userData, error: companyError } = await supabase
@@ -58,44 +67,70 @@ export async function PATCH(request: NextRequest) {
     const companyId = userData.company_id;
     
     // Parse request body
-    const { userId, managerId } = await request.json();
+    const { empId, managerId } = await request.json();
     
-    if (!userId) {
+    if (!empId) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
+
+    // console.log('******Assigning manager:', managerId, 'to employee:', empId);
+    
+    // const { data, error } = await supabase.rpc('debug_manager_assignment', { 
+    //   manager_id_param: managerId, 
+    //   member_id_param: empId
+    // });
+    // if (error) {
+    //   console.log('****Error in debug_manager_assignment:', error);
+    // } else {
+    //   console.log("****Debut data:", data);
+    // }
+    
     
     // Get the user's email to determine their status across the system
     let memberEmail = '';
     
+    console.log('Looking up user with ID:', empId);
+
     // Try to get email from user_profiles first
     const { data: profileData } = await supabase
       .from('user_profiles')
       .select('email')
-      .eq('id', userId)
+      .eq('id', empId)
       .maybeSingle();
+      
+      console.log('profileData:', profileData);
       
     if (profileData?.email) {
       memberEmail = profileData.email;
+
+      console.log('Found user email in user_profiles:', memberEmail);
     } else {
+
+      console.log('User email not found in user_profiles, trying pending_registrations');
       // Try pending_registrations next
       const { data: pendingData } = await supabase
         .from('pending_registrations')
         .select('email')
-        .eq('user_id', userId)
+        .eq('user_id', empId)
         .maybeSingle();
         
       if (pendingData?.email) {
         memberEmail = pendingData.email;
+
+        console.log('Found user email in pending_registrations:', memberEmail);
       } else {
+        console.log('User email not found in pending_registrations, trying invited_users');
         // Finally try invited_users
         const { data: inviteData } = await supabase
           .from('invited_users')
           .select('email')
-          .eq('id', userId)
+          .eq('id', empId)
           .maybeSingle();
           
         if (inviteData?.email) {
           memberEmail = inviteData.email;
+
+          console.log('Found user email in invited_users:', memberEmail);
         }
       }
     }
@@ -235,6 +270,10 @@ export async function PATCH(request: NextRequest) {
       
       if (insertError) {
         console.error('Error creating manager relationship:', insertError);
+        // Log the specific error code and message
+        console.error('Error code:', insertError.code);
+        console.error('Error message:', insertError.message);
+        console.error('Error details:', insertError.details);
         return NextResponse.json({ 
           error: 'Failed to create manager relationship' 
         }, { status: 500 });
