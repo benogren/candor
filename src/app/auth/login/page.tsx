@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/context/auth-context';
@@ -33,9 +33,19 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
-  const { user, login } = useAuth();
-  // We don't need to read this value, but we need the setter function
-  const [, setRedirectAttempts] = useState(0);
+  const { user, login, isInitialized } = useAuth();
+  
+  // Store the message/error in state to persist even if URL changes
+  const [urlMessage, setUrlMessage] = useState<string | null>(null);
+  const [urlError, setUrlError] = useState<string | null>(null);
+  
+  // Get the redirect parameter if present
+  const redirectParam = searchParams.get('redirect');
+  
+  // Track if we've processed the params
+  const [messageProcessed, setMessageProcessed] = useState(false);
+  // Using useRef instead of useState for redirectAttempts since we don't need it for rendering
+  const redirectAttemptsRef = React.useRef(0);
   
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -45,40 +55,57 @@ function LoginContent() {
     },
   });
 
+  // Store redirect in sessionStorage when it's in the URL
+  useEffect(() => {
+    if (redirectParam) {
+      try {
+        sessionStorage.setItem('redirectPath', redirectParam);
+        console.log('Stored redirect path:', redirectParam);
+      } catch (e) {
+        console.warn('Could not store redirect path in sessionStorage:', e);
+      }
+    }
+  }, [redirectParam]);
+
   // Handle URL message parameters
   useEffect(() => {
+    // Don't process if we've already done so
+    if (messageProcessed) return;
+    
     const message = searchParams.get('message');
     const error = searchParams.get('error');
     
+    // Store in state instead of just showing toast
     if (message) {
+      console.log('Processing URL message parameter:', message);
+      setUrlMessage(message);
+      setMessageProcessed(true);
+      
       toast({
         title: 'Notice',
         description: message,
       });
-      
-      // Remove the message from the URL to prevent showing it again on refresh
-      const newUrl = new URL(window.location.href);
-      newUrl.searchParams.delete('message');
-      window.history.replaceState({}, '', newUrl.toString());
     }
     
     if (error) {
+      console.log('Processing URL error parameter:', error);
+      setUrlError(error);
+      setMessageProcessed(true);
+      
       toast({
         title: 'Error',
         description: error,
         variant: 'destructive',
       });
-      
-      // Remove the error from the URL
-      const newUrl = new URL(window.location.href);
-      newUrl.searchParams.delete('error');
-      window.history.replaceState({}, '', newUrl.toString());
     }
-  }, [searchParams]);
+  }, [searchParams, messageProcessed]);
 
   // Handle redirection in useEffect when user is already logged in
   useEffect(() => {
-    if (!user) return;
+    // Don't redirect during message processing
+    if (!isInitialized || !user || messageProcessed) {
+      return;
+    }
     
     // Get the stored redirect path, defaulting to dashboard
     let redirectPath = '/dashboard';
@@ -87,28 +114,29 @@ function LoginContent() {
       if (storedPath) {
         redirectPath = storedPath;
         sessionStorage.removeItem('redirectPath');
+        console.log('Redirecting to stored path:', redirectPath);
+      } else {
+        console.log('No stored redirect path, using default');
       }
     } catch (e) {
       console.warn('Could not access sessionStorage:', e);
     }
     
     // Prevent infinite redirect loops
-    setRedirectAttempts(prev => {
-      const newCount = prev + 1;
-      if (newCount > 3) {
-        console.warn('Too many redirect attempts, forcing to dashboard');
-        redirectPath = '/dashboard';
-      }
-      return newCount;
-    });
+    redirectAttemptsRef.current += 1;
+    if (redirectAttemptsRef.current > 3) {
+      console.warn('Too many redirect attempts, forcing to dashboard');
+      redirectPath = '/dashboard';
+    }
     
-    // Add a small delay to ensure context is fully updated
+    // Add a delay to ensure all processing is complete
     const redirectTimeout = setTimeout(() => {
+      console.log('Executing redirect to:', redirectPath);
       router.push(redirectPath);
-    }, 100);
+    }, 500);
     
     return () => clearTimeout(redirectTimeout);
-  }, [user, router]);
+  }, [user, isInitialized, messageProcessed, router]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
@@ -146,7 +174,7 @@ function LoginContent() {
   }
 
   // Show loading if already authenticated but waiting for redirect
-  if (user) {
+  if (isInitialized && user) {
     return (
       <div className="flex flex-col justify-center items-center min-h-screen bg-slate-50">
         <LoadingSpinner />
@@ -155,9 +183,20 @@ function LoginContent() {
     );
   }
 
-  // Get message/error from URL params to display inline as well
-  const urlMessage = searchParams.get('message');
-  const urlError = searchParams.get('error');
+  // Show loading if auth state is still initializing
+  if (!isInitialized) {
+    return (
+      <div className="flex flex-col justify-center items-center min-h-screen bg-slate-50">
+        <LoadingSpinner />
+        <p className="mt-4 text-gray-500">Loading...</p>
+      </div>
+    );
+  }
+
+  // Use the state variables instead of reading directly from URL
+  // Fall back to URL parameters if state is not set (first render)
+  const displayMessage = urlMessage || searchParams.get('message');
+  const displayError = urlError || searchParams.get('error');
 
   return (
     <div className="flex justify-center items-center min-h-screen bg-slate-50">
@@ -166,25 +205,30 @@ function LoginContent() {
           <CardTitle className="text-2xl">Sign in to Candor</CardTitle>
           <CardDescription>
             Enter your credentials to access your account
+            {redirectParam && (
+              <p className="mt-2 text-sm text-slate-500">
+                You&#39;ll be redirected after signing in
+              </p>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {/* Show success message if present */}
-          {urlMessage && (
+          {displayMessage && (
             <Alert className="mb-4 bg-green-50 border-green-200">
               <CheckCircle className="h-4 w-4 text-green-600" />
               <AlertDescription className="text-green-700">
-                {urlMessage}
+                {displayMessage}
               </AlertDescription>
             </Alert>
           )}
 
           {/* Show error message if present */}
-          {urlError && (
+          {displayError && (
             <Alert variant="destructive" className="mb-4">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                {urlError}
+                {displayError}
               </AlertDescription>
             </Alert>
           )}

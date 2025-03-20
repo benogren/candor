@@ -3,7 +3,20 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 
+// Helper function to check if URL has message/error parameters
+function hasAuthParams(url: URL): boolean {
+  return url.searchParams.has('message') || url.searchParams.has('error');
+}
+
 export async function middleware(request: NextRequest) {
+  // Preserve query parameters when redirecting to login
+  const loginRedirect = (request: NextRequest): NextResponse => {
+    const redirectUrl = new URL('/auth/login', request.url);
+    // Optionally add a 'from' parameter to indicate where the redirect came from
+    redirectUrl.searchParams.set('from', request.nextUrl.pathname);
+    return NextResponse.redirect(redirectUrl);
+  };
+
   // Path matching for feedback routes that require authentication
   if (
     request.nextUrl.pathname.startsWith('/feedback/select-recipients') ||
@@ -12,12 +25,12 @@ export async function middleware(request: NextRequest) {
   ) {
     // Check for feedback authentication token
     const feedbackAuth = request.cookies.get('feedback_auth');
-
+    
     // console.log('*****Feedback Auth:', feedbackAuth);
     
     if (!feedbackAuth || !feedbackAuth.value) {
       // Redirect to login if no token
-      return NextResponse.redirect(new URL('/auth/login', request.url));
+      return loginRedirect(request);
     }
     
     try {
@@ -29,7 +42,7 @@ export async function middleware(request: NextRequest) {
       // Check if token is expired
       if (tokenData.exp && tokenData.exp < Math.floor(Date.now() / 1000)) {
         // Token expired, redirect to login
-        const response = NextResponse.redirect(new URL('/auth/login', request.url));
+        const response = loginRedirect(request);
         response.cookies.delete('feedback_auth');
         return response;
       }
@@ -39,7 +52,7 @@ export async function middleware(request: NextRequest) {
     } catch (error) {
       // Invalid token, redirect to login
       console.error('Invalid feedback_auth token:', error);
-      const response = NextResponse.redirect(new URL('/auth/login', request.url));
+      const response = loginRedirect(request);
       response.cookies.delete('feedback_auth');
       return response;
     }
@@ -101,7 +114,18 @@ export async function middleware(request: NextRequest) {
 
     return response;
   }
-  
+
+  // For auth routes with query parameters, don't interfere
+  if (
+    (request.nextUrl.pathname.startsWith('/auth/login') ||
+    request.nextUrl.pathname.startsWith('/auth/register')) &&
+    hasAuthParams(request.nextUrl)
+  ) {
+    // Don't interfere with auth routes that have query parameters
+    console.log('Auth route with parameters, proceeding without interference');
+    return NextResponse.next();
+  }
+
   // For all other routes, proceed normally
   return NextResponse.next();
 }
@@ -112,6 +136,8 @@ export const config = {
     '/api/:path*',
     '/feedback/:path*',
     '/feedback/questions/',
-    '/feedback/complete'
+    '/feedback/complete',
+    // Add auth routes to the matcher to ensure the URL param check runs
+    '/auth/:path*'
   ],
 };

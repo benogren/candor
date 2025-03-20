@@ -14,23 +14,43 @@ export default function FeedbackAuthPageContent() {
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [error, setError] = useState<string>('');
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   useEffect(() => {
     if (!token) {
       setStatus('error');
       setError('No authentication token provided');
+      setIsCheckingAuth(false);
       return;
     }
 
-    const authenticateUser = async () => {
+    // First check if the user is authenticated
+    const checkAuthentication = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        const bearerToken = session?.access_token;
         
-        if (!token) {
-          throw new Error('Not authenticated');
+        if (!session) {
+          console.log('No active session, redirecting to login');
+          // User is not authenticated, redirect to login with return path
+          const currentPath = `/feedback/auth?token=${encodeURIComponent(token)}`;
+          const loginPath = `/auth/login?redirect=${encodeURIComponent(currentPath)}`;
+          router.push(loginPath);
+          return;
         }
+        
+        // User is authenticated, continue with token verification
+        setIsCheckingAuth(false);
+        await verifyFeedbackToken(session.access_token);
+      } catch (error) {
+        console.error('Session check error:', error);
+        setStatus('error');
+        setError('Failed to check authentication status');
+        setIsCheckingAuth(false);
+      }
+    };
 
+    const verifyFeedbackToken = async (bearerToken: string) => {
+      try {
         const response = await fetch(`/api/feedback/auth?token=${token}`, {
           headers: {
             'Authorization': `Bearer ${bearerToken}`
@@ -54,8 +74,29 @@ export default function FeedbackAuthPageContent() {
       }
     };
 
-    authenticateUser();
+    checkAuthentication();
   }, [token, router]);
+
+  // Show different loading state when checking auth vs verifying token
+  if (isCheckingAuth) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Checking Authentication</CardTitle>
+            <CardDescription>
+              Verifying your login status...
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex justify-center py-4">
+              <Loader2 className="h-8 w-8 animate-spin text-cerulean" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-slate-50">
