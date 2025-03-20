@@ -60,10 +60,14 @@ export default function ResetPasswordContent() {
       setValidatingToken(true);
       
       try {
-        // Check if we have code and access_token params (Supabase sends these)
+        // Check if we have a code query parameter
         const code = searchParams.get('code');
         
-        if (!code) {
+        // Or check if we have an access_token in the hash fragment
+        const hashParams = window.location.hash;
+        const hasAccessToken = hashParams.includes('access_token=');
+        
+        if (!code && !hasAccessToken) {
           setResetError('Invalid or expired password reset link. Please request a new one.');
           setTokenValid(false);
           return;
