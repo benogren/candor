@@ -22,12 +22,25 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { toast } from '@/components/ui/use-toast';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { CheckCircle, AlertCircle } from 'lucide-react';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid email address' }),
   password: z.string().min(1, { message: 'Password is required' }),
 });
+
+// Function to determine if a message should block redirection
+function shouldBlockRedirect(message: string | null): boolean {
+  if (!message) return false;
+  
+  // Messages that should block redirection
+  const blockingMessages = [
+    'confirm your account',
+    'email verification',
+    'verify your email'
+  ];
+  
+  return blockingMessages.some(phrase => message.toLowerCase().includes(phrase));
+}
 
 export default function LoginContent() {
   const router = useRouter();
@@ -44,8 +57,12 @@ export default function LoginContent() {
   
   // Track if we've processed the params
   const [messageProcessed, setMessageProcessed] = useState(false);
+  const [messageShownToUser, setMessageShownToUser] = useState(false);
+  
   // Using useRef instead of useState for redirectAttempts since we don't need it for rendering
   const redirectAttemptsRef = React.useRef(0);
+  // Timer to track how long a message has been shown
+  const messageTimerRef = React.useRef<NodeJS.Timeout | null>(null);
   
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -80,59 +97,63 @@ export default function LoginContent() {
       console.log('Processing URL message parameter:', message);
       setUrlMessage(message);
       setMessageProcessed(true);
+      setMessageShownToUser(true);
       
       toast({
         title: 'Notice',
         description: message,
       });
       
-      // Don't modify history/URL in development mode - it triggers rebuilds
-      /*
-      const newUrl = new URL(window.location.href);
-      newUrl.searchParams.delete('message');
-      window.history.replaceState({}, '', newUrl.toString());
-      */
+      // For non-blocking messages (like password reset success),
+      // set a timer to allow redirect after showing the message
+      if (!shouldBlockRedirect(message)) {
+        messageTimerRef.current = setTimeout(() => {
+          console.log('Message has been shown, allowing redirect');
+          setMessageShownToUser(false);
+        }, 2500); // Show message for 2.5 seconds before allowing redirect
+      }
     }
     
     if (error) {
       console.log('Processing URL error parameter:', error);
       setUrlError(error);
       setMessageProcessed(true);
+      setMessageShownToUser(true);
       
       toast({
         title: 'Error',
         description: error,
         variant: 'destructive',
       });
-      
-      // Don't modify history/URL in development mode
-      /*
-      const newUrl = new URL(window.location.href);
-      newUrl.searchParams.delete('error');
-      window.history.replaceState({}, '', newUrl.toString());
-      */
     }
+    
+    return () => {
+      // Clean up timer if component unmounts
+      if (messageTimerRef.current) {
+        clearTimeout(messageTimerRef.current);
+      }
+    };
   }, [searchParams, messageProcessed]);
 
   // Handle redirection in useEffect when user is already logged in
   useEffect(() => {
+    const message = searchParams.get('message');
+    
     // Add explicit console logs to debug the flow
     console.log("Auth state check:", {
       isInitialized,
       user: user ? "exists" : "none",
       messageProcessed,
-      emailMessage: searchParams.get('message')?.includes('confirm your account') || false
+      messageShownToUser,
+      message
     });
-    
-    // Check if the message is about email verification
-    const emailVerificationRequired = searchParams.get('message')?.includes('confirm your account') || false;
     
     // Don't redirect if:
     // 1. Auth state isn't initialized yet
     // 2. No user is logged in
-    // 3. We're currently processing a message
-    // 4. There's an email verification message (new condition)
-    if (!isInitialized || !user || messageProcessed || emailVerificationRequired) {
+    // 3. We're currently showing a message to the user
+    // 4. There's a blocking message (like email verification)
+    if (!isInitialized || !user || messageShownToUser || shouldBlockRedirect(message)) {
       return;
     }
     
@@ -165,7 +186,7 @@ export default function LoginContent() {
     }, 500);
     
     return () => clearTimeout(redirectTimeout);
-  }, [user, isInitialized, messageProcessed, router, searchParams]);
+  }, [user, isInitialized, messageShownToUser, messageProcessed, router, searchParams]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
@@ -202,12 +223,12 @@ export default function LoginContent() {
     }
   }
 
-  // Check if the message is about email verification
-  const emailVerificationRequired = searchParams.get('message')?.includes('confirm your account') || false;
+  const message = searchParams.get('message');
+  const blockingMessage = shouldBlockRedirect(message);
 
   // Show loading if already authenticated but waiting for redirect
-  // Don't show loading screen if there's an email verification message
-  if (isInitialized && user && !emailVerificationRequired) {
+  // Don't show loading screen if there's a blocking message or we're showing a message to the user
+  if (isInitialized && user && !blockingMessage && !messageShownToUser) {
     return (
       <div className="flex flex-col justify-center items-center min-h-screen bg-slate-50">
         <LoadingSpinner />
@@ -249,7 +270,6 @@ export default function LoginContent() {
           {/* Show success message if present */}
           {displayMessage && (
             <Alert className="mb-4 bg-green-50 border-green-200">
-              <CheckCircle className="h-4 w-4 text-green-600" />
               <AlertDescription className="text-green-700">
                 {displayMessage}
               </AlertDescription>
@@ -259,7 +279,6 @@ export default function LoginContent() {
           {/* Show error message if present */}
           {displayError && (
             <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
               <AlertDescription>
                 {displayError}
               </AlertDescription>
