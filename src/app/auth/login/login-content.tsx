@@ -47,40 +47,34 @@ export default function LoginContent() {
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const { user, login, isInitialized } = useAuth();
-  
-  // Store the message/error in state to persist even if URL changes
-  const [urlMessage, setUrlMessage] = useState<string | null>(null);
-  const [urlError, setUrlError] = useState<string | null>(null);
-  
-  // Get the redirect parameter if present
-  const redirectParam = searchParams.get('redirect');
-  
-  // Track if we've processed the params
-  const [messageProcessed, setMessageProcessed] = useState(false);
-  const [messageShownToUser, setMessageShownToUser] = useState(false);
-  
-  // Using useRef instead of useState for redirectAttempts since we don't need it for rendering
-  const redirectAttemptsRef = React.useRef(0);
-  // Timer to track how long a message has been shown
-  const messageTimerRef = React.useRef<NodeJS.Timeout | null>(null);
-  
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
       email: '',
       password: '',
     },
   });
-
-  // Store redirect in sessionStorage when it's in the URL
+  
+  // Store the message/error in state to persist even if URL changes
+  const [urlMessage, setUrlMessage] = useState<string | null>(null);
+  const [urlError, setUrlError] = useState<string | null>(null);
+  
+  // Get the redirect parameter directly - store in a ref for durability
+  const redirectParamRef = React.useRef<string | null>(searchParams.get('redirect'));
+  const redirectParam = searchParams.get('redirect');
+  
+  // Track if we've processed the params
+  const [messageProcessed, setMessageProcessed] = useState(false);
+  const [messageShownToUser, setMessageShownToUser] = useState(false);
+  
+  // Log the current URL and redirect parameter when the component mounts
   useEffect(() => {
     if (redirectParam) {
-      try {
-        sessionStorage.setItem('redirectPath', redirectParam);
-        console.log('Stored redirect path:', redirectParam);
-      } catch (e) {
-        console.warn('Could not store redirect path in sessionStorage:', e);
-      }
+      redirectParamRef.current = redirectParam;
+      console.log('Detected redirect parameter:', {
+        raw: redirectParam,
+        decoded: decodeURIComponent(redirectParam)
+      });
     }
   }, [redirectParam]);
 
@@ -107,7 +101,7 @@ export default function LoginContent() {
       // For non-blocking messages (like password reset success),
       // set a timer to allow redirect after showing the message
       if (!shouldBlockRedirect(message)) {
-        messageTimerRef.current = setTimeout(() => {
+        setTimeout(() => {
           console.log('Message has been shown, allowing redirect');
           setMessageShownToUser(false);
         }, 2500); // Show message for 2.5 seconds before allowing redirect
@@ -127,121 +121,70 @@ export default function LoginContent() {
       });
     }
     
-    return () => {
-      // Clean up timer if component unmounts
-      if (messageTimerRef.current) {
-        clearTimeout(messageTimerRef.current);
-      }
-    };
   }, [searchParams, messageProcessed]);
-
-  // Handle redirection in useEffect when user is already logged in
-  useEffect(() => {
-    const message = searchParams.get('message');
-    
-    // Add explicit console logs to debug the flow
-    console.log("Auth state check:", {
-      isInitialized,
-      user: user ? "exists" : "none",
-      messageProcessed,
-      messageShownToUser,
-      message
-    });
-    
-    // Don't redirect if:
-    // 1. Auth state isn't initialized yet
-    // 2. No user is logged in
-    // 3. We're currently showing a message to the user
-    // 4. There's a blocking message (like email verification)
-    if (!isInitialized || !user || messageShownToUser || shouldBlockRedirect(message)) {
-      return;
-    }
-    
-    // Get the stored redirect path, defaulting to dashboard
-    let redirectPath = '/dashboard';
-    try {
-      const storedPath = sessionStorage.getItem('redirectPath');
-      if (storedPath) {
-        redirectPath = storedPath;
-        sessionStorage.removeItem('redirectPath');
-        console.log('Redirecting to stored path:', redirectPath);
-      } else {
-        console.log('No stored path, redirecting to dashboard');
-      }
-    } catch (e) {
-      console.warn('Could not access sessionStorage:', e);
-    }
-    
-    // Prevent infinite redirect loops
-    redirectAttemptsRef.current += 1;
-    if (redirectAttemptsRef.current > 3) {
-      console.warn('Too many redirect attempts, forcing to dashboard');
-      redirectPath = '/dashboard';
-    }
-    
-    // Add a delay to ensure all processing is complete
-    const redirectTimeout = setTimeout(() => {
-      console.log('Executing redirect to:', redirectPath);
-      router.push(redirectPath);
-    }, 500);
-    
-    return () => clearTimeout(redirectTimeout);
-  }, [user, isInitialized, messageShownToUser, messageProcessed, router, searchParams]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
       setIsLoading(true);
+      setUrlError(null); // Clear any previous errors
       
       // Reset message states
       setMessageProcessed(false);
       setMessageShownToUser(false);
       
+      // Capture the redirect parameter before login
+      const redirectPathToUse = redirectParamRef.current;
+      console.log('Captured redirect before login:', redirectPathToUse);
+      
       const { error } = await login(values.email, values.password);
       
       if (error) {
+        console.error('Login error:', error.message);
+        
+        // Set the error in state so it displays in the UI
+        setUrlError(error.message);
+        
+        // Also show a toast for immediate feedback
         toast({
           title: 'Error signing in',
           description: error.message,
           variant: 'destructive',
         });
-        return;
+        
+        return; // Stop execution here
       }
   
+      // If we get here, login was successful
       toast({
         title: 'Signed in successfully',
         description: 'Welcome back to Candor!',
       });
       
-      // Clear URL parameters
-      if (window.history.replaceState) {
-        const newUrl = window.location.pathname;
-        window.history.replaceState(null, '', newUrl);
-      }
-      
-      // Get redirect path
-      let redirectPath = '/dashboard';
-      try {
-        const storedPath = sessionStorage.getItem('redirectPath');
-        if (storedPath) {
-          redirectPath = storedPath;
-          sessionStorage.removeItem('redirectPath');
-        }
-      } catch (e) {
-        console.warn('Could not access sessionStorage:', e);
-      }
-      
-      // Manual redirect after successful login
+      // Set a short delay to ensure the login completes
       setTimeout(() => {
-        console.log('Manual redirect to:', redirectPath);
-        router.push(redirectPath);
-      }, 1000);
+        // Use the captured redirect parameter if available
+        if (redirectPathToUse) {
+          const decodedPath = decodeURIComponent(redirectPathToUse);
+          console.log(`Redirecting to custom path: ${decodedPath}`);
+          router.push(decodedPath);
+        } else {
+          console.log('No redirect parameter, going to dashboard');
+          router.push('/dashboard');
+        }
+      }, 1500);
       
     } catch (error: unknown) {
-      console.error('Login error:', error);
+      console.error('Unexpected login error:', error);
+      
+      // Handle unexpected errors
+      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+      
+      // Set the error in state so it displays in the UI
+      setUrlError(errorMessage);
       
       toast({
         title: 'Something went wrong',
-        description: error instanceof Error ? error.message : 'Please try again later',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
@@ -249,16 +192,17 @@ export default function LoginContent() {
     }
   }
 
+  // Block automatic redirects for clarity - we'll handle redirects only in the form submission
   const message = searchParams.get('message');
   const blockingMessage = shouldBlockRedirect(message);
 
   // Show loading if already authenticated but waiting for redirect
-  // Don't show loading screen if there's a blocking message or we're showing a message to the user
-  if (isInitialized && user && !blockingMessage && !messageShownToUser) {
+  // Only show when there's no message being displayed
+  if (isInitialized && user && !messageShownToUser && !blockingMessage) {
     return (
       <div className="flex flex-col justify-center items-center min-h-screen bg-slate-50">
         <LoadingSpinner />
-        <p className="mt-4 text-gray-500">Redirecting to your dashboard...</p>
+        <p className="mt-4 text-gray-500">Already signed in. Redirecting...</p>
       </div>
     );
   }
