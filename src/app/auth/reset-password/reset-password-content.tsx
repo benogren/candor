@@ -102,6 +102,9 @@ export default function ResetPasswordContent() {
         throw error;
       }
 
+      // Explicitly sign out the user after password reset
+      await supabase.auth.signOut();
+
       setResetComplete(true);
       toast({
         title: 'Password updated',
