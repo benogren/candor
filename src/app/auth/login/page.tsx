@@ -22,7 +22,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { toast } from '@/components/ui/use-toast';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { CheckCircle, AlertCircle } from 'lucide-react';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid email address' }),
@@ -216,7 +215,6 @@ function LoginContent() {
           {/* Show success message if present */}
           {displayMessage && (
             <Alert className="mb-4 bg-green-50 border-green-200">
-              <CheckCircle className="h-4 w-4 text-green-600" />
               <AlertDescription className="text-green-700">
                 {displayMessage}
               </AlertDescription>
@@ -226,7 +224,6 @@ function LoginContent() {
           {/* Show error message if present */}
           {displayError && (
             <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
               <AlertDescription>
                 {displayError}
               </AlertDescription>
@@ -273,6 +270,10 @@ function LoginContent() {
         </CardContent>
         <CardFooter className="flex justify-center">
           <p className="text-sm text-slate-500 font-light">
+            <Link href="/auth/forgot-password" className="text-cerulean hover:underline">
+              Forgot password?
+            </Link>
+            &nbsp;&middot;&nbsp;
             Don&apos;t have an account?{' '}
             <Link href="/auth/register" className="text-cerulean hover:underline">
               Register
