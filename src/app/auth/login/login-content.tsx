@@ -192,6 +192,10 @@ export default function LoginContent() {
     try {
       setIsLoading(true);
       
+      // Reset message states
+      setMessageProcessed(false);
+      setMessageShownToUser(false);
+      
       const { error } = await login(values.email, values.password);
       
       if (error) {
@@ -202,13 +206,35 @@ export default function LoginContent() {
         });
         return;
       }
-
+  
       toast({
         title: 'Signed in successfully',
         description: 'Welcome back to Candor!',
       });
       
-      // UseEffect will handle redirect when user state updates
+      // Clear URL parameters
+      if (window.history.replaceState) {
+        const newUrl = window.location.pathname;
+        window.history.replaceState(null, '', newUrl);
+      }
+      
+      // Get redirect path
+      let redirectPath = '/dashboard';
+      try {
+        const storedPath = sessionStorage.getItem('redirectPath');
+        if (storedPath) {
+          redirectPath = storedPath;
+          sessionStorage.removeItem('redirectPath');
+        }
+      } catch (e) {
+        console.warn('Could not access sessionStorage:', e);
+      }
+      
+      // Manual redirect after successful login
+      setTimeout(() => {
+        console.log('Manual redirect to:', redirectPath);
+        router.push(redirectPath);
+      }, 1000);
       
     } catch (error: unknown) {
       console.error('Login error:', error);
