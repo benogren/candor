@@ -152,7 +152,7 @@ serve(async (req) => {
             reminders_sent_at,
             emails_sent_count,
             responses_count,
-            feedback_cycles (
+            feedback_cycles!inner (
               id, 
               cycle_name, 
               company_id, 
@@ -189,9 +189,9 @@ serve(async (req) => {
         }
         
         // Filter occurrences for cycles in this company
-        const companyOccurrences = activeOccurrences.filter(
-          occ => occ.feedback_cycles.company_id === company.id
-        );
+        const companyOccurrences = activeOccurrences.filter(occ => {
+          return occ.feedback_cycles && occ.feedback_cycles.company_id === company.id;
+        });
         
         if (companyOccurrences.length === 0) {
           continue;

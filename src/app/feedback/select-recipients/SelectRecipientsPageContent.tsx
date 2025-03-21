@@ -29,6 +29,7 @@ export default function SelectRecipientsPageContent() {
   const [searchResults, setSearchResults] = useState<Colleague[]>([]);
   const [searching, setSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [sessionInProgress, setSessionInProgress] = useState(false);
   const [selectedColleagues, setSelectedColleagues] = useState<Colleague[]>([]);
 
   useEffect(() => {
@@ -55,6 +56,11 @@ export default function SelectRecipientsPageContent() {
           });
           router.push('/dashboard');
           return;
+        }
+
+        if (session.status === 'in_progress') {
+          setSessionInProgress(true);
+          console.log('Session in progress:', session);
         }
   
         // Fetch previously selected recipients
@@ -313,6 +319,19 @@ export default function SelectRecipientsPageContent() {
   
           if (recipientError) throw recipientError;
         }
+      }
+
+      if (!sessionInProgress) {
+        //update session to in progress
+        const now = new Date().toISOString();
+        const { error: sessionError } = await supabase
+          .from('feedback_sessions')
+          .update({ status: 'in_progress', started_at: now })
+          .eq('id', sessionId);
+
+          if (sessionError) {
+            console.log('Error updating session:', sessionError);
+          }
       }
   
       // Navigate to the next step

@@ -29,6 +29,7 @@ export default function DashboardPage() {
     cycle_id: string;
   } | null>(null);
   const [needsFeedback, setNeedsFeedback] = useState(false);
+  const [feedbackStarted, setFeedbackStarted] = useState(false);
   const [inProgressSession, setInProgressSession] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isButtonLoading, setIsButtonLoading] = useState(false);
@@ -161,7 +162,9 @@ export default function DashboardPage() {
           setLoading(false);
           return;
         }
-        
+        // console.log('Active cycle:', cycleData);
+        // console.log('Active occurrence:', occurrenceData);
+
         // Check if user has already provided feedback for this occurrence
         const { data: sessionData, error: sessionError } = await supabase
           .from('feedback_sessions')
@@ -171,6 +174,8 @@ export default function DashboardPage() {
           .eq('provider_id', user.id)
           .order('created_at', { ascending: false })
           .limit(1);
+
+          // console.log('sessionData', sessionData);
           
         if (sessionError || !sessionData || sessionData.length === 0) {
           // No session found, user needs to provide feedback
@@ -181,10 +186,15 @@ export default function DashboardPage() {
           if (session.status === 'completed') {
             // User has already completed feedback for this occurrence
             setNeedsFeedback(false);
-          } else {
+          } else if (session.status === 'in_progress') {
             // User has an in-progress session
             setNeedsFeedback(true);
             setInProgressSession(session.id);
+            setFeedbackStarted(true);
+          } else {
+            setNeedsFeedback(true);
+            setInProgressSession(session.id);
+            setFeedbackStarted(false);
           }
         }
       } catch (error) {
@@ -371,13 +381,22 @@ export default function DashboardPage() {
                 className="h-8 w-8"
               />
               <h4 className='text-lg font-light'>
+              {feedbackStarted ? (
+                <>
+                Hey {firstName}, finish your feedback!
+                </>
+              ) : (
+                <>
                 Hey {firstName}, your colleagues are waiting on your feedback!
+                </>
+              )}
               </h4>
             </div>
             <p className='text-cerulean-100 text-base font-light mb-4'>
               Feedback is a great way to acknowledge and help a colleague identify their strengths and areas for improvement.
             </p>
-            <Button 
+            {feedbackStarted ? (
+              <Button 
               onClick={inProgressSession ? handleContinueFeedback : handleStartFeedback} 
               variant={inProgressSession ? "default" : "outline"}
               disabled={isButtonLoading}
@@ -386,12 +405,28 @@ export default function DashboardPage() {
                 <>
                   Loading...
                 </>
-              ) : inProgressSession ? (
-                "Continue your Feedback"
-              ) : (
-                "Let's get started!"
-              )}
+              ) 
+              : "Continue your Feedback"
+              }
             </Button>
+            ) : (
+              <>
+              <Button 
+              onClick={inProgressSession ? handleContinueFeedback : handleStartFeedback} 
+              variant={inProgressSession ? "default" : "outline"}
+              disabled={isButtonLoading}
+            >
+              {isButtonLoading ? (
+                <>
+                  Loading...
+                </>
+              ) 
+              : "Get Started"
+              }
+            </Button>
+              </>
+            )
+          }
           </div>
         )}
 
