@@ -1,4 +1,3 @@
-// src/app/dashboard/admin/feedback/cycles/page.tsx with updated logic
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -14,7 +13,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toast } from '@/components/ui/use-toast';
-import { Loader2, Plus, CalendarIcon } from 'lucide-react';
+import { Loader2, Plus, CalendarIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import supabase from '@/lib/supabase/client';
 import { useAuth, useIsAdmin } from '@/lib/context/auth-context';
 import CreateCycleModal from '@/components/admin/CreateCycleModal';
@@ -22,6 +21,18 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 
 export default function FeedbackCyclesPage() {
+  interface PastOccurrence {
+    id: string;
+    start_date: string;
+    end_date: string;
+    occurrence_number: number;
+    emails_sent_count: number;
+    responses_count: number;
+    total_sessions: number;
+    completed_sessions: number;
+    unique_recipients: number;
+  }
+
   interface FeedbackCycle {
     id: string;
     cycle_name: string;
@@ -36,14 +47,7 @@ export default function FeedbackCyclesPage() {
       completed_sessions: number;
       completion_rate: number;
     };
-    past_occurrences?: {
-      id: string;
-      start_date: string;
-      end_date: string;
-      occurrence_number: number;
-      emails_sent_count: number;
-      responses_count: number;
-    }[];
+    past_occurrences?: PastOccurrence[];
     current_occurrence?: {
       id: string;
       start_date: string;
@@ -51,6 +55,7 @@ export default function FeedbackCyclesPage() {
       status: string;
       occurrence_number: number;
     } | null;
+    expanded?: boolean;
   }
       
   const router = useRouter();
@@ -111,7 +116,7 @@ export default function FeedbackCyclesPage() {
             .eq('cycle_id', cycle.id)
             .eq('status', 'completed')
             .order('occurrence_number', { ascending: false })
-            .limit(3); // Get last few for history
+            .limit(5); // Increased to get more history
 
           if (compOccError) {
             console.log('Error fetching completed occurrences:', compOccError);
@@ -139,11 +144,54 @@ export default function FeedbackCyclesPage() {
             }
           }
           
+          // Enhanced data for past occurrences
+          const enhancedPastOccurrences = await Promise.all((completedOccurrences || []).map(async (occurrence) => {
+            // Get detailed stats for this occurrence
+            const { data: sessions, error: sessionsError } = await supabase
+              .from('feedback_sessions')
+              .select('id, status')
+              .eq('occurrence_id', occurrence.id);
+              
+            if (sessionsError) {
+              console.log('Error fetching sessions for occurrence:', sessionsError);
+              return occurrence;
+            }
+              
+            // Get unique recipients count - we need to fetch all recipients from all sessions for this occurrence
+            const recipientIds = new Set();
+            
+            if (sessions && sessions.length > 0) {
+              // Get all session IDs for this occurrence
+              const sessionIds = sessions.map(s => s.id);
+              
+              // Fetch all recipients across all sessions for this occurrence
+              const { data: recipients, error: recipientsError } = await supabase
+                .from('feedback_recipients')
+                .select('recipient_id')
+                .in('session_id', sessionIds);
+                
+              if (!recipientsError && recipients) {
+                // Add all unique recipient IDs to our Set
+                recipients.forEach(r => recipientIds.add(r.recipient_id));
+              } else {
+                console.log('Error fetching recipients:', recipientsError);
+              }
+            }
+            
+            return {
+              ...occurrence,
+              total_sessions: sessions?.length || 0,
+              completed_sessions: sessions?.filter(s => s.status === 'completed').length || 0,
+              unique_recipients: recipientIds.size
+            };
+          }));
+          
           return {
             ...cycle,
             current_occurrence: activeOccurrence || null,
-            past_occurrences: completedOccurrences || [],
-            stats
+            past_occurrences: enhancedPastOccurrences || [],
+            stats,
+            expanded: false // Add expanded state for UI toggling
           };
         }));
 
@@ -201,6 +249,16 @@ export default function FeedbackCyclesPage() {
     }
   };
   
+  const toggleExpanded = (cycleId: string) => {
+    setCycles(prev => 
+      prev.map(cycle => 
+        cycle.id === cycleId 
+          ? { ...cycle, expanded: !cycle.expanded } 
+          : cycle
+      )
+    );
+  };
+  
   const formatDate = (dateString: string) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString(undefined, {
@@ -244,6 +302,12 @@ export default function FeedbackCyclesPage() {
   const hasActiveOrDraftCycle = cycles.some(cycle => 
     cycle.status === 'active' || cycle.status === 'draft'
   );
+  
+  // Calculate response rate percentage
+  const calculateResponseRate = (completed: number, total: number) => {
+    if (total === 0) return '0%';
+    return `${Math.round((completed / total) * 100)}%`;
+  };
   
   // Redirect if not admin
   if (!isAdminLoading && !isAdmin) {
@@ -310,109 +374,165 @@ export default function FeedbackCyclesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {cycles.map((cycle) => (
-                  <TableRow key={cycle.id}>
-                    <TableCell className="font-medium">{cycle.cycle_name || 'Unnamed Cycle'}</TableCell>
-                    <TableCell>{getFrequencyDisplay(cycle.frequency)}</TableCell>
-                    <TableCell>
-                      {cycle.current_occurrence 
-                        ? formatDate(cycle.current_occurrence.start_date) 
-                        : 'Not started'}
-                    </TableCell>
-                    <TableCell>
-                      {cycle.current_occurrence 
-                        ? formatDate(cycle.current_occurrence.end_date) 
-                        : 'N/A'}
-                    </TableCell>
-                    <TableCell>{getStatusBadge(cycle.status)}</TableCell>
-                    <TableCell>
-                      {cycle.stats ? (
+                {cycles.flatMap((cycle) => {
+                  // Create an array of rows for each cycle
+                  const rows = [
+                    // Main cycle row
+                    <TableRow key={cycle.id} className="border-b">
+                      <TableCell className="font-medium">
                         <div className="flex items-center">
-                          <span className="text-sm mr-2">
-                            {Math.round(cycle.stats.completion_rate)}%
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            ({cycle.stats.completed_sessions}/{cycle.stats.total_sessions})
-                          </span>
+                          {cycle.past_occurrences && cycle.past_occurrences.length > 0 && (
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => toggleExpanded(cycle.id)} 
+                              className="p-0 mr-2">
+                              {cycle.expanded ? 
+                                <ChevronUp className="h-4 w-4" /> : 
+                                <ChevronDown className="h-4 w-4" />
+                              }
+                            </Button>
+                          )}
+                          {cycle.cycle_name || 'Unnamed Cycle'}
                         </div>
-                      ) : (
-                        <span className="text-xs text-gray-500">No data</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        {cycle.status === 'active' && (
-                          <>
+                      </TableCell>
+                      <TableCell>{getFrequencyDisplay(cycle.frequency)}</TableCell>
+                      <TableCell>
+                        {cycle.current_occurrence 
+                          ? formatDate(cycle.current_occurrence.start_date) 
+                          : 'Not started'}
+                      </TableCell>
+                      <TableCell>
+                        {cycle.current_occurrence 
+                          ? formatDate(cycle.current_occurrence.end_date) 
+                          : 'N/A'}
+                      </TableCell>
+                      <TableCell>{getStatusBadge(cycle.status)}</TableCell>
+                      <TableCell>
+                        {cycle.stats ? (
+                          <div className="flex items-center">
+                            <span className="text-sm mr-2">
+                              {Math.round(cycle.stats.completion_rate)}%
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              ({cycle.stats.completed_sessions}/{cycle.stats.total_sessions})
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-500">No data</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          {cycle.status === 'active' && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleStatusChange(cycle.id, 'completed')}
+                                disabled={processingCycle === cycle.id}
+                              >
+                                {processingCycle === cycle.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Complete'}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleStatusChange(cycle.id, 'draft')}
+                                disabled={processingCycle === cycle.id}
+                              >
+                                {processingCycle === cycle.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Pause'}
+                              </Button>
+                            </>
+                          )}
+                          
+                          {cycle.status === 'draft' && (
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleStatusChange(cycle.id, 'completed')}
+                              onClick={() => handleStatusChange(cycle.id, 'active')}
                               disabled={processingCycle === cycle.id}
                             >
-                              {processingCycle === cycle.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Complete'}
+                              {processingCycle === cycle.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Activate'}
                             </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleStatusChange(cycle.id, 'draft')}
-                              disabled={processingCycle === cycle.id}
-                            >
-                              {processingCycle === cycle.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Pause'}
-                            </Button>
-                          </>
-                        )}
-                        
-                        {cycle.status === 'draft' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleStatusChange(cycle.id, 'active')}
-                            disabled={processingCycle === cycle.id}
-                          >
-                            {processingCycle === cycle.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Activate'}
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ];
+                  
+                  // Add occurrences row if expanded
+                  if (cycle.expanded && cycle.past_occurrences && cycle.past_occurrences.length > 0) {
+                    rows.push(
+                      <TableRow key={`${cycle.id}-occurrences`} className="bg-gray-50">
+                        <TableCell colSpan={7} className="p-0">
+                          <Card className="border-0 shadow-none bg-transparent">
+                            <CardHeader className="py-3 px-6">
+                              <CardTitle className="text-lg">Past Occurrences</CardTitle>
+                              <CardDescription>
+                                Historical feedback data for {cycle.cycle_name || 'this cycle'}
+                              </CardDescription>
+                            </CardHeader>
+                            <CardContent className="py-0 px-6 pb-4">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead className="w-16">Cycle #</TableHead>
+                                    <TableHead>Date Range</TableHead>
+                                    <TableHead>Response Rate</TableHead>
+                                    <TableHead>Total Feedback</TableHead>
+                                    <TableHead>Recipients</TableHead>
+                                    <TableHead>Emails Sent</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {cycle.past_occurrences.map((occurrence) => (
+                                    <TableRow key={occurrence.id}>
+                                      <TableCell className="font-medium">#{occurrence.occurrence_number}</TableCell>
+                                      <TableCell>
+                                        <div className="flex flex-col">
+                                          <span>{formatDate(occurrence.start_date)}</span>
+                                          <span className="text-gray-500">to</span>
+                                          <span>{formatDate(occurrence.end_date)}</span>
+                                        </div>
+                                      </TableCell>
+                                      <TableCell>
+                                        <div className="flex flex-col">
+                                          <span className="font-medium">
+                                            {calculateResponseRate(occurrence.completed_sessions, occurrence.total_sessions)}
+                                          </span>
+                                          <span className="text-xs text-gray-500">
+                                            ({occurrence.completed_sessions}/{occurrence.total_sessions} sessions)
+                                          </span>
+                                        </div>
+                                      </TableCell>
+                                      <TableCell>
+                                        <span className="font-medium">{occurrence.responses_count}</span>
+                                        <span className="text-xs text-gray-500 block">responses</span>
+                                      </TableCell>
+                                      <TableCell>
+                                        <span className="font-medium">{occurrence.unique_recipients}</span>
+                                        <span className="text-xs text-gray-500 block">unique recipients</span>
+                                      </TableCell>
+                                      <TableCell>
+                                        <span className="font-medium">{occurrence.emails_sent_count}</span>
+                                        <span className="text-xs text-gray-500 block">emails</span>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </CardContent>
+                          </Card>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  }
+                  
+                  return rows;
+                })}
               </TableBody>
             </Table>
           )}
-          
-          {cycles.map((cycle) => (
-            cycle.past_occurrences && cycle.past_occurrences.length > 0 && (
-              <div key={cycle.id} className="mt-4 pl-8">
-                <h4 className="text-sm font-medium mb-2">Past Occurrences</h4>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Occurrence</TableHead>
-                      <TableHead>Start Date</TableHead>
-                      <TableHead>End Date</TableHead>
-                      <TableHead>Completion Rate</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {cycle.past_occurrences.map((occurrence) => (
-                      <TableRow key={occurrence.id}>
-                        <TableCell>#{occurrence.occurrence_number}</TableCell>
-                        <TableCell>{formatDate(occurrence.start_date)}</TableCell>
-                        <TableCell>{formatDate(occurrence.end_date)}</TableCell>
-                        <TableCell>
-                          {occurrence.emails_sent_count > 0 ? (
-                            `${Math.round((occurrence.responses_count / occurrence.emails_sent_count) * 100)}%`
-                          ) : (
-                            'N/A'
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )
-          ))}
         </CardContent>
       </Card>
       
@@ -425,7 +545,6 @@ export default function FeedbackCyclesPage() {
             
             // Add the new cycle to the list
             if (newCycle) {
-              // Fix for lines 428-439 where you're adding a new cycle to the state
               setCycles(prev => [
                 {
                   ...newCycle,
@@ -435,10 +554,10 @@ export default function FeedbackCyclesPage() {
                     completed_sessions: 0, 
                     completion_rate: 0
                   },
-                  // Add these missing properties to match the FeedbackCycle type
                   past_occurrences: [],
-                  current_occurrence: null
-                } as FeedbackCycle, // Cast to FeedbackCycle type
+                  current_occurrence: null,
+                  expanded: false
+                } as FeedbackCycle,
                 ...prev
               ]);
             } else {

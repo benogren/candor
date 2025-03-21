@@ -23,6 +23,7 @@ serve(async (req) => {
     const stats = {
       completedOccurrences: 0,
       createdOccurrences: 0,
+      totalResponses: 0,
       errors: [] as string[]
     };
     
@@ -57,7 +58,7 @@ serve(async (req) => {
         // 3. Find active occurrences for this cycle
         const { data: activeOccurrences, error: occurrencesError } = await supabase
           .from('feedback_cycle_occurrences')
-          .select('id, cycle_id, occurrence_number, start_date, end_date')
+          .select('id, cycle_id, occurrence_number, start_date, end_date, emails_sent_count')
           .eq('cycle_id', cycle.id)
           .eq('status', 'active');
           
@@ -109,10 +110,36 @@ serve(async (req) => {
           if (endDateFormatted === todayFormatted) {
             console.log(`Occurrence ${occurrence.id} is ending today, marking as completed`);
             
-            // Mark occurrence as completed
+            // Count completed feedback sessions for this occurrence
+            const { data: completedSessions, error: sessionsError } = await supabase
+              .from('feedback_sessions')
+              .select('id')
+              .eq('occurrence_id', occurrence.id)
+              .eq('status', 'completed');
+              
+            if (sessionsError) {
+              console.error(`Error counting completed sessions for occurrence ${occurrence.id}: ${sessionsError.message}`);
+              // Continue with the update even if we can't count sessions
+            }
+            
+            const responsesCount = completedSessions?.length || 0;
+            console.log(`Found ${responsesCount} completed sessions for occurrence ${occurrence.id}`);
+            stats.totalResponses += responsesCount;
+            
+            // Calculate completion rate for logging
+            const completionRate = occurrence.emails_sent_count > 0 
+              ? ((responsesCount / occurrence.emails_sent_count) * 100).toFixed(1)
+              : 'N/A';
+              
+            console.log(`Completion rate: ${completionRate}% (${responsesCount}/${occurrence.emails_sent_count})`);
+            
+            // Mark occurrence as completed with response count
             const { error: updateError } = await supabase
               .from('feedback_cycle_occurrences')
-              .update({ status: 'completed' })
+              .update({ 
+                status: 'completed',
+                responses_count: responsesCount
+              })
               .eq('id', occurrence.id);
               
             if (updateError) {
@@ -165,6 +192,7 @@ serve(async (req) => {
         stats: {
           completedOccurrences: stats.completedOccurrences,
           createdOccurrences: stats.createdOccurrences,
+          totalResponses: stats.totalResponses,
           errors: stats.errors
         }
       }),
