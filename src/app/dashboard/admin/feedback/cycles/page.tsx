@@ -31,6 +31,9 @@ export default function FeedbackCyclesPage() {
     total_sessions: number;
     completed_sessions: number;
     unique_recipients: number;
+    totalResponses: number;
+    skippedResponses: number;
+    skippedRate: number;
   }
 
   interface FeedbackCycle {
@@ -159,6 +162,8 @@ export default function FeedbackCyclesPage() {
               
             // Get unique recipients count - we need to fetch all recipients from all sessions for this occurrence
             const recipientIds = new Set();
+            let totalResponses = 0;
+            let skippedResponses = 0;
             
             if (sessions && sessions.length > 0) {
               // Get all session IDs for this occurrence
@@ -176,13 +181,29 @@ export default function FeedbackCyclesPage() {
               } else {
                 console.log('Error fetching recipients:', recipientsError);
               }
+              
+              // Fetch response data to calculate skipped question rate
+              const { data: responses, error: responsesError } = await supabase
+                .from('feedback_responses')
+                .select('id, skipped')
+                .in('session_id', sessionIds);
+                
+              if (!responsesError && responses) {
+                totalResponses = responses.length;
+                skippedResponses = responses.filter(r => r.skipped).length;
+              } else {
+                console.log('Error fetching responses:', responsesError);
+              }
             }
             
             return {
               ...occurrence,
               total_sessions: sessions?.length || 0,
               completed_sessions: sessions?.filter(s => s.status === 'completed').length || 0,
-              unique_recipients: recipientIds.size
+              unique_recipients: recipientIds.size,
+              totalResponses,
+              skippedResponses,
+              skippedRate: totalResponses > 0 ? (skippedResponses / totalResponses) * 100 : 0
             };
           }));
           
@@ -479,7 +500,8 @@ export default function FeedbackCyclesPage() {
                                     <TableHead className="w-16">Cycle #</TableHead>
                                     <TableHead>Date Range</TableHead>
                                     <TableHead>Response Rate</TableHead>
-                                    <TableHead>Total Feedback</TableHead>
+                                    {/* <TableHead>Total Feedback</TableHead> */}
+                                    <TableHead>Skipped Rate</TableHead>
                                     <TableHead>Recipients</TableHead>
                                     <TableHead>Emails Sent</TableHead>
                                   </TableRow>
@@ -505,9 +527,19 @@ export default function FeedbackCyclesPage() {
                                           </span>
                                         </div>
                                       </TableCell>
-                                      <TableCell>
+                                      {/* <TableCell>
                                         <span className="font-medium">{occurrence.responses_count}</span>
                                         <span className="text-xs text-gray-500 block">responses</span>
+                                      </TableCell> */}
+                                      <TableCell>
+                                        <div className="flex flex-col">
+                                          <span className="font-medium">
+                                            {Math.round(occurrence.skippedRate)}%
+                                          </span>
+                                          <span className="text-xs text-gray-500">
+                                            ({occurrence.skippedResponses}/{occurrence.totalResponses} skipped)
+                                          </span>
+                                        </div>
                                       </TableCell>
                                       <TableCell>
                                         <span className="font-medium">{occurrence.unique_recipients}</span>

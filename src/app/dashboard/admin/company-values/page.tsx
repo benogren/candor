@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Pencil, Plus, Loader2 } from 'lucide-react';
+import { Pencil, Plus, Loader2, TrendingUp, Medal } from 'lucide-react';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { library, IconName } from '@fortawesome/fontawesome-svg-core';
 import { fas } from '@fortawesome/free-solid-svg-icons';
@@ -30,6 +30,20 @@ interface CompanyValue {
   created_at: string;
   updated_at: string;
   company_id: string;
+}
+
+// Interface for top nominees per value
+interface TopNomineesPerValue {
+  value_id: string;
+  value_name: string;
+  icon: string | null; // Added the icon property
+  nominees: Nominee[];
+}
+
+// Interface for a nominee
+interface Nominee {
+  name: string;
+  count: number;
 }
 
 // Component for icon picker
@@ -111,6 +125,63 @@ const IconPicker = ({ value, onChange }: { value: string | null, onChange: (valu
         </Card>
       )}
     </div>
+  );
+};
+
+// Component to display top nominees for each value
+const TopNomineesMetrics = ({ topNominees }: { topNominees: TopNomineesPerValue[] }) => {
+  return (
+    <Card className="mb-6">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-xl flex items-center">
+          <TrendingUp className="h-5 w-5 mr-2 text-cerulean" />
+          Top Value Nominations
+        </CardTitle>
+        <CardDescription>
+          Colleagues who best exemplify each company value
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {topNominees.map((valueData) => (
+            <Card key={valueData.value_id} className="border shadow-sm">
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-2">
+                  {valueData.icon && (
+                    <FontAwesomeIcon 
+                      icon={['fas', valueData.icon as IconName]} 
+                      className="h-5 w-5 text-berkeleyblue" 
+                    />
+                  )}
+                  <CardTitle className="text-lg">{valueData.value_name}</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                {valueData.nominees.length > 0 ? (
+                  <ul className="space-y-3">
+                    {valueData.nominees.map((nominee, index) => (
+                      <li key={index} className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          {index === 0 && <Medal className="h-4 w-4 mr-2 text-yellow-500" />}
+                          {index === 1 && <Medal className="h-4 w-4 mr-2 text-gray-400" />}
+                          {index === 2 && <Medal className="h-4 w-4 mr-2 text-amber-700" />}
+                          <span className="font-medium text-slate-500">{nominee.name}</span>
+                        </div>
+                        <span className="text-xs text-slate-500 px-2 py-1">
+                          {nominee.count} nominations
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-gray-500 italic">No nominations yet</p>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 };
 
@@ -246,6 +317,8 @@ export default function CompanyValuesPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editValue, setEditValue] = useState<CompanyValue | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
+  const [topNomineesState, setTopNomineesState] = useState<TopNomineesPerValue[]>([]);
+  const [loadingNominees, setLoadingNominees] = useState(true);
   
   // Fetch the company ID and values on component mount
   useEffect(() => {
@@ -298,6 +371,13 @@ export default function CompanyValuesPage() {
         }
         
         setValues(valuesData || []);
+        
+        // Once we have values, fetch the top nominations
+        if (valuesData && valuesData.length > 0) {
+          await fetchTopNominations(userData.company_id, valuesData);
+        } else {
+          setLoadingNominees(false);
+        }
       } catch (error) {
         console.error('Error fetching company data:', error);
         toast({
@@ -312,6 +392,176 @@ export default function CompanyValuesPage() {
     
     fetchCompanyData();
   }, [router]);
+  
+  // Fetch top nominations for each value
+  const fetchTopNominations = async (companyId: string, values: CompanyValue[]) => {
+    setLoadingNominees(true);
+    try {
+      // First, fetch all user identities to have a complete mapping
+      const { data: allUserIdentities, error: identitiesError } = await supabase
+        .from('feedback_user_identities')
+        .select('id, identity_type, name, email');
+        
+      if (identitiesError) {
+        console.error("Error fetching user identities:", identitiesError);
+      }
+      
+      // Create a map for quick user identity lookup
+      const userIdentityMap: Record<string, { identity_type: string; name?: string; email?: string }> = {};
+      if (allUserIdentities) {
+        allUserIdentities.forEach(identity => {
+          userIdentityMap[identity.id] = identity;
+        });
+      }
+      
+      // Also fetch all user profiles and invited users upfront to avoid async issues
+      const [userProfilesResult, invitedUsersResult] = await Promise.all([
+        supabase.from('user_profiles').select('id, name, email'),
+        supabase.from('invited_users').select('id, name, email')
+      ]);
+      
+      // Create maps for quick user lookup
+      const userProfileMap: Record<string, { name?: string; email?: string }> = {};
+      const invitedUserMap: Record<string, { name?: string; email?: string }> = {};
+      
+      if (userProfilesResult.data) {
+        userProfilesResult.data.forEach(profile => {
+          userProfileMap[profile.id] = profile;
+        });
+      }
+      
+      if (invitedUsersResult.data) {
+        invitedUsersResult.data.forEach(user => {
+          invitedUserMap[user.id] = user;
+        });
+      }
+      
+      // Helper function to get the best user name
+      const getUserName = (userId: string): string => {
+        // Try identity map first
+        const identity = userIdentityMap[userId];
+        if (identity?.name) return identity.name;
+        
+        // Check appropriate map based on identity type
+        if (identity?.identity_type === 'active') {
+          const profile = userProfileMap[userId];
+          if (profile?.name) return profile.name;
+          if (profile?.email) return profile.email.split('@')[0];
+        } else if (identity?.identity_type === 'invited') {
+          const invitedUser = invitedUserMap[userId];
+          if (invitedUser?.name) return invitedUser.name;
+          if (invitedUser?.email) return invitedUser.email.split('@')[0];
+        }
+        
+        // Check both maps as fallback if identity_type is unknown
+        const profile = userProfileMap[userId];
+        if (profile?.name) return profile.name;
+        if (profile?.email) return profile.email.split('@')[0];
+        
+        const invitedUser = invitedUserMap[userId];
+        if (invitedUser?.name) return invitedUser.name;
+        if (invitedUser?.email) return invitedUser.email.split('@')[0];
+        
+        // Last resort fallback
+        return `User ${userId.substring(0, 8)}`;
+      };
+      
+      const nominationsPromises = values.map(async (value) => {
+        // First, get the question IDs associated with this company value
+        const { data: questions, error: questionsError } = await supabase
+          .from('feedback_questions')
+          .select('id')
+          .eq('company_value_id', value.id);
+          
+        if (questionsError) {
+          console.error(`Error fetching questions for value ${value.name}:`, questionsError);
+          return {
+            value_id: value.id,
+            value_name: value.name,
+            icon: value.icon, // Include the icon even for empty results
+            nominees: []
+          };
+        }
+        
+        // If no questions found for this value, return empty nominees
+        if (!questions || questions.length === 0) {
+          return {
+            value_id: value.id,
+            value_name: value.name,
+            icon: value.icon, // Include the icon even for empty results
+            nominees: []
+          };
+        }
+        
+        // Get the question IDs as an array
+        const questionIds = questions.map(q => q.id);
+        
+        // Now query nominations for these questions
+        const { data: nominationsData, error: nominationsError } = await supabase
+          .from('feedback_responses')
+          .select('nominated_user_id, text_response')
+          .in('question_id', questionIds)
+          .not('nominated_user_id', 'is', null);
+          
+        if (nominationsError) {
+          console.error(`Error fetching nominations for value ${value.name}:`, nominationsError);
+          return {
+            value_id: value.id,
+            value_name: value.name,
+            icon: value.icon, // Include the icon even for error results
+            nominees: []
+          };
+        }
+        
+        // Process nominations to count by user
+        const nomineeCountMap: Record<string, Nominee> = {};
+        
+        if (nominationsData && nominationsData.length > 0) {
+          nominationsData.forEach(nomination => {
+            const userId = nomination.nominated_user_id;
+            // Use our pre-fetched user data for consistent names
+            const userName = getUserName(userId);
+            
+            if (!nomineeCountMap[userId]) {
+              nomineeCountMap[userId] = { name: userName, count: 0 };
+            }
+            
+            nomineeCountMap[userId].count += 1;
+          });
+        }
+        
+        // Convert to array, sort by count, and take top 3
+        const nomineesArray: Nominee[] = Object.values(nomineeCountMap)
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 3);
+          
+        console.log(`Value: ${value.name}, Icon: ${value.icon}`); // Debug log
+          
+        return {
+          value_id: value.id,
+          value_name: value.name,
+          icon: value.icon, // Make sure the icon is included
+          nominees: nomineesArray
+        };
+      });
+      
+      // Wait for all queries to complete
+      const results = await Promise.all(nominationsPromises);
+      
+      // Debug log to check if icons are being passed correctly
+      console.log("Top nominations with icons:", results.map(item => ({
+        value_name: item.value_name,
+        icon: item.icon,
+        has_icon: !!item.icon
+      })));
+      
+      setTopNomineesState(results);
+    } catch (error) {
+      console.error('Error fetching nominations:', error);
+    } finally {
+      setLoadingNominees(false);
+    }
+  };
   
   // Save a new or updated company value
   const handleSaveValue = async (valueData: Partial<CompanyValue>) => {
@@ -348,6 +598,15 @@ export default function CompanyValuesPage() {
           title: 'Value Updated',
           description: `${updatedValue.name} has been updated successfully.`
         });
+        
+        // Update nominations display
+        setTopNomineesState(prev => 
+          prev.map(item => 
+            item.value_id === updatedValue.id 
+              ? { ...item, value_name: updatedValue.name, icon: updatedValue.icon }
+              : item
+          )
+        );
       } 
       // Otherwise create a new value
       else {
@@ -369,6 +628,17 @@ export default function CompanyValuesPage() {
           title: 'Value Created',
           description: `${newValue.name} has been created successfully.`
         });
+        
+        // Add empty nominations for the new value
+        setTopNomineesState(prev => [
+          ...prev,
+          {
+            value_id: newValue.id,
+            value_name: newValue.name,
+            icon: newValue.icon,
+            nominees: []
+          }
+        ]);
       }
       
       // Close any open dialogs
@@ -481,6 +751,18 @@ export default function CompanyValuesPage() {
           Add New Value
         </Button>
       </div>
+      
+      {/* Top Nominations Metrics Section */}
+      {loadingNominees ? (
+        <Card className="mb-6">
+          <CardContent className="flex justify-center items-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-cerulean" />
+            <span className="ml-2">Loading nominations data...</span>
+          </CardContent>
+        </Card>
+      ) : topNomineesState.length > 0 ? (
+        <TopNomineesMetrics topNominees={topNomineesState} />
+      ) : null}
       
       <Tabs defaultValue="active">
         <TabsList className="mb-4">
