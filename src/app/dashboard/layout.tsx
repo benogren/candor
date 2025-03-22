@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState, ReactNode } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/context/auth-context';
 import supabase from '@/lib/supabase/client';
 import Header from '@/components/dashboard/header';
-// import Sidebar from '@/components/dashboard/sidebar';
 import { LoadingSpinner } from '@/components/loading-spinner';
+import Sidebar from '@/components/Sidebar';
+import { SidebarProvider, useSidebar } from '@/lib/context/sidebar-context';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -17,14 +18,48 @@ interface Company {
   id: string;
   name: string;
   domains?: string[];
-  // Define a proper index signature that allows for common property types
-  // while avoiding the 'any' type
   [key: string]: string | string[] | number | boolean | null | undefined;
+}
+
+// Define a proper user type to avoid using 'any'
+interface UserData {
+  id: string;
+  user_metadata?: {
+    name?: string;
+    email?: string;
+  };
+  email?: string;
+  [key: string]: unknown;
+}
+
+// Inner component that uses the sidebar context
+function DashboardContent({ children, user, company }: { children: ReactNode; user: UserData; company: Company }) {
+  const { isSidebarOpen, sidebarContent, sidebarTitle, closeSidebar } = useSidebar();
+  
+  return (
+    <>
+      <Header user={user} company={company}>
+        <div className={`transition-all duration-300 ${isSidebarOpen ? 'mr-[50vw] overscroll-contain' : ''}`}>
+          <main className="container mx-auto">
+            {children}
+          </main>
+        </div>
+      </Header>
+
+      {/* Sidebar */}
+      <Sidebar 
+        isOpen={isSidebarOpen} 
+        onClose={closeSidebar}
+        title={sidebarTitle}
+      >
+        {sidebarContent}
+      </Sidebar>
+    </>
+  );
 }
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, loading: authLoading } = useAuth();
-  // const { isAdmin } = useIsAdmin();
   const [company, setCompany] = useState<Company | null>(null);
   const [loadingCompany, setLoadingCompany] = useState(true);
   const router = useRouter();
@@ -125,17 +160,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     );
   }
 
-  // When we have both user and company, render the full layout
+  // When we have both user and company, render the full layout with SidebarProvider
   return (
-    <>
-      <Header user={user} company={company}>
-        <div className="">
-          {/* <Sidebar role={isAdmin ? 'admin' : 'member'} /> */}
-          <main className="container mx-auto">
-            {children}
-          </main>
-        </div>
-      </Header>
-    </>
+    <SidebarProvider>
+      <DashboardContent user={user as unknown as UserData} company={company}>
+        {children}
+      </DashboardContent>
+    </SidebarProvider>
   );
 }

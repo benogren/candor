@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth, useIsAdmin } from '@/lib/context/auth-context';
+import { useSidebar } from '@/lib/context/sidebar-context';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import FeedbackList from '@/components/FeedbackList';
@@ -13,13 +14,21 @@ import { toast } from '@/components/ui/use-toast';
 import { useRouter } from 'next/navigation';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faComments } from '@fortawesome/free-solid-svg-icons';
+import { PanelRight } from 'lucide-react';
+import { SidebarContent } from '@/components/SidebarContent';
 
-export default function DashboardPage() {
+
+// Separate component for dashboard
+function Dashboard() {
+  // Call hooks at the top level of the component
   const { user, memberStatus } = useAuth();
+  const { isAdmin } = useIsAdmin();
+  const { openSidebar } = useSidebar();
+  const router = useRouter();
+  
   const fullName = user?.user_metadata?.name || '';
   const firstName = fullName.split(' ')[0] || '';
-  const router = useRouter();
-  const { isAdmin } = useIsAdmin();
+  
   const [isManager, setIsManager] = useState(false);
   const [activeCycle, setActiveCycle] = useState<{ id: string; name: string } | null>(null);
   const [activeOccurrence, setActiveOccurrence] = useState<{ 
@@ -47,6 +56,14 @@ export default function DashboardPage() {
   
   // State for profile modal
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
+  // Open sidebar with our sidebar content component
+  const handleOpenSidebar = () => {
+    openSidebar(
+      <SidebarContent />,
+      'Feedback Coach'
+    );
+  };
 
   // Effect to handle cookie setting and navigation
   useEffect(() => {
@@ -162,8 +179,6 @@ export default function DashboardPage() {
           setLoading(false);
           return;
         }
-        // console.log('Active cycle:', cycleData);
-        // console.log('Active occurrence:', occurrenceData);
 
         // Check if user has already provided feedback for this occurrence
         const { data: sessionData, error: sessionError } = await supabase
@@ -174,8 +189,6 @@ export default function DashboardPage() {
           .eq('provider_id', user.id)
           .order('created_at', { ascending: false })
           .limit(1);
-
-          // console.log('sessionData', sessionData);
           
         if (sessionError || !sessionData || sessionData.length === 0) {
           // No session found, user needs to provide feedback
@@ -363,6 +376,7 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+      
       {memberStatus === 'pending' && (
         <div className='container mx-auto py-8 px-4'>
           <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-md text-sm text-center">
@@ -372,6 +386,7 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+      
       <div className="container mx-auto py-8 px-4">
         {needsFeedback && (
           <div className='bg-cerulean-400 p-4 rounded-md gap-4 shadow-md mb-12'>
@@ -425,8 +440,7 @@ export default function DashboardPage() {
               }
             </Button>
               </>
-            )
-          }
+            )}
           </div>
         )}
 
@@ -446,10 +460,43 @@ export default function DashboardPage() {
                 </Link>
               </Button>
             )}
+            
+            {/* Sidebar Toggle Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleOpenSidebar}
+            >
+              <PanelRight className="h-4 w-4 mr-1" />
+              Feedback Coach
+            </Button>
           </div>
         </div>
         <FeedbackList userId={user?.id} />
       </div>
     </>
   );
+}
+
+// Wrapper component that handles potential errors with the sidebar context
+export default function DashboardPage() {
+  // This is the top-level component that wraps the Dashboard
+  // If there's an error with the sidebar context, we can catch it here
+  try {
+    return <Dashboard />;
+  } catch (error) {
+    console.error('Error rendering Dashboard:', error);
+    
+    // Return a fallback UI
+    return (
+      <div className="container mx-auto py-8 px-4">
+        <div className="flex justify-center items-center h-64 flex-col">
+          <p className="mb-4">There was an error loading the dashboard.</p>
+          <Button onClick={() => window.location.reload()}>
+            Refresh Page
+          </Button>
+        </div>
+      </div>
+    );
+  }
 }
