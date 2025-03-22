@@ -134,7 +134,17 @@ export async function POST(request: NextRequest) {
     The question should be under 100 Characters long and end with a question mark.
     ${industrySpecific}
     Don't use generic questions that could apply to anyone - make it specific to their role and your relationship.
-    Don't include any prefacing text or explanation - just provide the question itself.`;
+
+    You must provide TWO separate parts in your response:
+    1. question_text: A concise, direct question that is under 100 characters and ends with a question mark. This is what will be shown as the main question.
+    2. question_description: An explanation under 190 characters that provides more context and guidance on how to answer the question effectively.
+
+    Format your response as JSON like this:
+    {
+      "question_text": "Your concise question here?",
+      "question_description": "More detailed guidance on how to answer the question..."
+    }
+    `;
     
     console.log("Generating question with prompt:", prompt);
     
@@ -155,19 +165,52 @@ export async function POST(request: NextRequest) {
       max_tokens: 150
     });
     
-    const generatedQuestion = completion.choices[0]?.message?.content?.trim();
+    const generatedContent = completion.choices[0]?.message?.content?.trim();
     
-    if (!generatedQuestion) {
+    if (!generatedContent) {
       throw new Error('Failed to generate question');
     }
-    
-    // Clean up the response - remove quotes and any extraneous text
-    const cleanedQuestion = generatedQuestion
+
+    // Parse the JSON response
+    let questionData;
+    try {
+      // Attempt to parse the response as JSON
+      questionData = JSON.parse(generatedContent);
+      
+      // Validate the response format
+      if (!questionData.question_text || !questionData.question_description) {
+        throw new Error('Response missing required fields');
+      }
+    } catch (parseError) {
+      console.error('Error parsing OpenAI response:', parseError);
+      console.log('Raw response:', generatedContent);
+      
+      // Fallback: Try to extract question from non-JSON response
+      const questionMatch = generatedContent.match(/question_text["\s:]+(.*?)(?:"|$|\n)/i);
+      const descriptionMatch = generatedContent.match(/question_description["\s:]+(.*?)(?:"|$|\n)/i);
+      
+      questionData = {
+        question_text: questionMatch ? questionMatch[1].trim().replace(/^["']|["']$/g, '') : generatedContent,
+        question_description: descriptionMatch ? 
+          descriptionMatch[1].trim().replace(/^["']|["']$/g, '') : 
+          'Consider specific examples and provide honest, constructive feedback about {name}.'
+      };
+    }
+
+    // Clean up the response
+    const cleanedQuestion = questionData.question_text
       .replace(/^["']|["']$/g, '') // Remove surrounding quotes
       .replace(/^Question: /i, '') // Remove "Question:" prefix
       .trim();
-    
-    return NextResponse.json({ question: cleanedQuestion });
+
+    const cleanedDescription = questionData.question_description
+      .replace(/^["']|["']$/g, '') // Remove surrounding quotes
+      .trim();
+
+    return NextResponse.json({ 
+      question_text: cleanedQuestion,
+      question_description: cleanedDescription
+    });
   } catch (error) {
     console.error('Error generating question:', error);
     return NextResponse.json(

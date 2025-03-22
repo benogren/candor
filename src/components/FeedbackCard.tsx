@@ -5,7 +5,7 @@ import { AlertTriangle } from 'lucide-react';
 // import { toast } from '@/components/ui/use-toast';
 import ReactTimeAgo from 'react-timeago';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faStarHalfStroke, faStar, faComments, faAward, faMagicWandSparkles } from '@fortawesome/free-solid-svg-icons';
+import { faStarHalfStroke, faStar, faComments, faComment, faAward, faMagicWandSparkles } from '@fortawesome/free-solid-svg-icons';
 import { faMessage } from '@fortawesome/free-regular-svg-icons';
 
 interface QuestionTypeIconProps {
@@ -19,7 +19,7 @@ const getQuestionTypeIcon = (questionType: QuestionTypeIconProps['questionType']
     case 'text':
       return faComments;
     case 'ai':
-      return faMagicWandSparkles;
+      return faComment;
     default:
       return faComments; // Default fallback
   }

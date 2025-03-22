@@ -12,7 +12,8 @@ import FeedbackHeader from '@/components/feedbackHeader';
 import UserSearch from '@/components/UserSearch';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { library, IconName } from '@fortawesome/fontawesome-svg-core';
-import { fas, faMagicWandSparkles } from '@fortawesome/free-solid-svg-icons';
+import { fas, faStarHalfStroke, faComments, faAward, faMagicWandSparkles } from '@fortawesome/free-solid-svg-icons';
+import { Badge } from '@/components/ui/badge';
 
 // Add all FontAwesome solid icons to the library
 library.add(fas);
@@ -82,6 +83,8 @@ type QuestionData = {
   company_value_id?: string | null;
   icon?: string | null;
   nominated_user_id?: string | null;
+  relationship_type?: string;
+  relationship_description?: string;
 };
 
 type Colleague = {
@@ -126,12 +129,36 @@ export default function QuestionsContent() {
   const [valuesQuestion, setValuesQuestion] = useState<Question | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [currentRecipientName, setCurrentRecipientName] = useState('');
+  const [currentRelationship, setCurrentRelationship] = useState<string>('');
   const [showCommentField, setShowCommentField] = useState(false);
   const [currentComment, setCurrentComment] = useState('');
   const [nominatedUser, setNominatedUser] = useState<Colleague | null>(null);
   
   // Use ref to prevent duplicate database operations in React's strict mode
   const processingRef = useRef<{[key: string]: boolean}>({});
+  
+  // Function to get a display-friendly relationship label
+  const getRelationshipLabel = (type: string | undefined): string => {
+    console.log("Relationship:", currentRelationship);
+    if (!type) return '';
+    
+    switch(type) {
+      case 'manager-report':
+        return 'Direct Report';
+      case 'report-manager':
+        return 'Manager';
+      case 'peer':
+        return 'Peer';
+      case 'peer-with-boss':
+        return 'Leader';
+      case 'skip-level-manager':
+        return 'Skip-Level Employee';
+      case 'skip-level-report':
+        return 'Skip-Level Leader';
+      default:
+        return type.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+    }
+  };
   
   // Function to get relationship between two users
   const getUserRelationship = async (user1Id: string, user2Id: string): Promise<RelationshipResponse | null> => {
@@ -162,7 +189,7 @@ export default function QuestionsContent() {
     recipientName: string, 
     relationship: RelationshipResponse,
     companyId: string
-  ): Promise<string | null> => {
+  ): Promise<{ questionText: string, questionDescription: string } | null> => {
     try {
       console.log("About to generate AI question with companyId:", companyId);
       // Call your OpenAI API endpoint
@@ -188,7 +215,10 @@ export default function QuestionsContent() {
       }
       
       const data = await response.json();
-      return data.question;
+      return { 
+        questionText: data.question_text, 
+        questionDescription: data.question_description 
+      };
     } catch (error) {
       console.error('Error generating question with OpenAI:', error);
       return null;
@@ -201,7 +231,9 @@ export default function QuestionsContent() {
     sessionId: string,
     providerId: string,
     recipientId: string,
-    generatedQuestion: string
+    generatedQuestion: { questionText: string, questionDescription: string },
+    relationshipType?: string,
+    relationshipDescription?: string
   ): Promise<QuestionData | null> => {
     try {
       console.log(`Creating AI question for recipient user ID: ${recipientId}`);
@@ -226,8 +258,8 @@ export default function QuestionsContent() {
         .from('feedback_questions')
         .insert({
           company_id: companyId,
-          question_text: generatedQuestion,
-          question_description: 'AI-generated question based on your relationship with {name}.',
+          question_text: generatedQuestion.questionText,
+          question_description: generatedQuestion.questionDescription,
           question_type: 'ai',
           active: true,
           scope: 'company',
@@ -276,7 +308,9 @@ export default function QuestionsContent() {
         comment_text: null,
         has_comment: false,
         skipped: false,
-        recipient_name: recipientName
+        recipient_name: recipientName,
+        relationship_type: relationshipType,
+        relationship_description: relationshipDescription
       };
     } catch (error) {
       console.error('Error creating AI question and response:', error);
@@ -412,6 +446,34 @@ export default function QuestionsContent() {
         
         const companyId = providerData.company_id;
         console.log("Company ID:", companyId, "Provider ID:", providerId);
+        
+        // Create a map to store relationship information by recipient ID
+        const relationshipMap = new Map<string, { type: string, description: string }>();
+
+        // Fetch relationships for all recipients
+        if (recipients && recipients.length > 0) {
+          console.log("Fetching relationships for all recipients");
+          
+          for (const recipient of recipients) {
+            try {
+              // Get relationship between provider and recipient
+              const relationship = await getUserRelationship(providerId, recipient.recipient_id);
+              
+              if (relationship) {
+                relationshipMap.set(
+                  recipient.recipient_id, 
+                  { 
+                    type: relationship.relationship.type,
+                    description: relationship.relationship.description
+                  }
+                );
+                console.log(`Found relationship for ${recipient.recipient_id}: ${relationship.relationship.type}`);
+              }
+            } catch (error) {
+              console.error(`Error fetching relationship for recipient ${recipient.recipient_id}:`, error);
+            }
+          }
+        }
         
         // Step 5: Get active standard questions (rating and text)
         const { data: standardQuestionsData, error: questionsError } = await supabase
@@ -760,6 +822,10 @@ export default function QuestionsContent() {
           if (relationship) {
             console.log(`Relationship found: ${relationship.relationship.type} - ${relationship.relationship.description}`);
             
+            // Get relationship details
+            const relationshipType = relationship.relationship.type;
+            const relationshipDescription = relationship.relationship.description;
+            
             // Generate AI question
             const generatedQuestion = await generateAIQuestion(
               providerId, 
@@ -770,7 +836,8 @@ export default function QuestionsContent() {
             );
             
             if (generatedQuestion) {
-              console.log(`Generated question: ${generatedQuestion}`);
+              console.log(`Generated question: ${generatedQuestion.questionText}`);
+              console.log(`Generated description: ${generatedQuestion.questionDescription}`);
               
               // Create question and response records
               const aiQuestion = await createAIQuestionAndResponse(
@@ -778,7 +845,9 @@ export default function QuestionsContent() {
                 sessionId,
                 providerId,
                 recipientId,
-                generatedQuestion
+                generatedQuestion,
+                relationshipType,
+                relationshipDescription
               );
               
               if (aiQuestion) {
@@ -859,6 +928,9 @@ export default function QuestionsContent() {
             recipientName = singleProfile.name || singleProfile.email || 'Unknown';
           }
           
+          // Get relationship info for this recipient
+          const relationship = relationshipMap.get(recipient.recipient_id);
+          
           console.log(`  Adding ${question.question_type} question for ${recipientName} (${recipient.id})`);
           
           finalQuestions.push({
@@ -874,7 +946,9 @@ export default function QuestionsContent() {
             comment_text: response.comment_text,
             has_comment: response.has_comment || false,
             skipped: response.skipped || false,
-            recipient_name: recipientName
+            recipient_name: recipientName,
+            relationship_type: relationship?.type,
+            relationship_description: relationship?.description
           });
         }
         
@@ -900,6 +974,7 @@ export default function QuestionsContent() {
         setStandardQuestions(finalQuestions);
         if (finalQuestions.length > 0) {
           setCurrentRecipientName(finalQuestions[0].recipient_name);
+          setCurrentRelationship(finalQuestions[0].relationship_type || '');
           
           // Initialize comment state if applicable
           if (finalQuestions[0].has_comment && finalQuestions[0].comment_text) {
@@ -1180,6 +1255,7 @@ export default function QuestionsContent() {
       // Update recipient name if we're moving to a different recipient
       if (standardQuestions[nextIndex].recipient_name !== currentRecipientName) {
         setCurrentRecipientName(standardQuestions[nextIndex].recipient_name);
+        setCurrentRelationship(standardQuestions[nextIndex].relationship_type || '');
       }
       
       return;
@@ -1275,7 +1351,51 @@ export default function QuestionsContent() {
             </div>
             <span className='text-xs text-slate-500 w-40 text-right'>Question {currentQuestionIndex + 1} of {totalQuestions}</span>
         </div>
-
+        {/* Badges */}
+        <div className="flex flex-wrap gap-2 mb-2">
+          {isOnValuesQuestion && (
+            <Badge variant="secondary" className="text-slate-500 font-light uppercase items-center">
+              <FontAwesomeIcon 
+                icon={faAward} 
+                className="h-3 w-3 text-slate-400 mr-2" 
+              />
+              Company Values
+            </Badge>
+          )}
+          {(currentStandardQuestion?.question_type === 'text') && (
+            <Badge variant="secondary" className="text-slate-500 font-light uppercase items-center">
+              <FontAwesomeIcon 
+                icon={faComments} 
+                className="h-3 w-3 text-slate-400 mr-2" 
+              />
+              Open-Ended
+            </Badge>
+          )}
+          {(currentStandardQuestion?.question_type === 'rating') && (
+            <Badge variant="secondary" className="text-slate-500 font-light uppercase items-center">
+              <FontAwesomeIcon 
+                icon={faStarHalfStroke} 
+                className="h-3 w-3 text-slate-400 mr-2" 
+              />
+              Closed-Ended
+            </Badge>
+          )}
+          {(currentStandardQuestion?.question_type === 'ai') && (
+            <Badge variant="secondary" className="text-slate-500 font-light uppercase items-center">
+              <FontAwesomeIcon 
+                icon={faMagicWandSparkles} 
+                className="h-3 w-3 text-slate-400 mr-2" 
+              />
+              AI Generated
+            </Badge>
+          )}
+          {!isOnValuesQuestion && currentStandardQuestion?.relationship_type && currentStandardQuestion.relationship_type !== 'unrelated' && (
+            <Badge variant="secondary" className="text-slate-500 font-light uppercase items-center">
+              {getRelationshipLabel(currentStandardQuestion.relationship_type)}
+            </Badge>
+          )}
+        </div>
+        
         {isOnValuesQuestion && valuesQuestion ? (
           // Values question UI
           <>
@@ -1329,14 +1449,6 @@ export default function QuestionsContent() {
             ))}
             </h1>
             <p className='text-slate-500 text-base font-light pb-4'>
-              {(currentStandardQuestion?.question_type === 'ai') && (
-                <>
-                <FontAwesomeIcon 
-                  icon={faMagicWandSparkles} 
-                  className="h-4 w-4 text-slate-500 mr-2" 
-                />
-                </>
-              )}
             {(currentStandardQuestion?.question_description || '').split(/\{name\}/g).map((part, i, arr) => (
                 <React.Fragment key={i}>
                 {part}
