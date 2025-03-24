@@ -4,7 +4,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
 import { Loader2, MessageSquare } from 'lucide-react';
 import supabase from '@/lib/supabase/client';
@@ -14,6 +13,8 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { library, IconName } from '@fortawesome/fontawesome-svg-core';
 import { fas, faStarHalfStroke, faComments, faAward, faMagicWandSparkles } from '@fortawesome/free-solid-svg-icons';
 import { Badge } from '@/components/ui/badge';
+// Import our new FeedbackTextarea component
+import { FeedbackTextarea } from '@/components/FeedbackTextarea';
 
 // Add all FontAwesome solid icons to the library
 library.add(fas);
@@ -85,6 +86,8 @@ type QuestionData = {
   nominated_user_id?: string | null;
   relationship_type?: string;
   relationship_description?: string;
+  // Add tone score for tracking
+  toneScore?: number | null;
 };
 
 type Colleague = {
@@ -134,12 +137,12 @@ export default function QuestionsContent() {
   const [currentComment, setCurrentComment] = useState('');
   const [nominatedUser, setNominatedUser] = useState<Colleague | null>(null);
   
+  console.log("debug: ", currentRelationship)
   // Use ref to prevent duplicate database operations in React's strict mode
   const processingRef = useRef<{[key: string]: boolean}>({});
   
   // Function to get a display-friendly relationship label
   const getRelationshipLabel = (type: string | undefined): string => {
-    console.log("Relationship:", currentRelationship);
     if (!type) return '';
     
     switch(type) {
@@ -191,7 +194,6 @@ export default function QuestionsContent() {
     companyId: string
   ): Promise<{ questionText: string, questionDescription: string } | null> => {
     try {
-      console.log("About to generate AI question with companyId:", companyId);
       // Call your OpenAI API endpoint
       const response = await fetch('/api/generate-question', {
         method: 'POST',
@@ -236,8 +238,6 @@ export default function QuestionsContent() {
     relationshipDescription?: string
   ): Promise<QuestionData | null> => {
     try {
-      console.log(`Creating AI question for recipient user ID: ${recipientId}`);
-      
       // First, find the feedback_recipients entry that links this session with this recipient
       const { data: recipientEntry, error: recipientError } = await supabase
         .from('feedback_recipients')
@@ -250,8 +250,6 @@ export default function QuestionsContent() {
         console.error('Error finding recipient entry:', recipientError);
         throw new Error(`Recipient entry not found for user ${recipientId} in session ${sessionId}`);
       }
-      
-      console.log(`Found recipient entry: ${recipientEntry.id} for user ${recipientId}`);
       
       // Create the question record
       const { data: questionData, error: questionError } = await supabase
@@ -816,8 +814,6 @@ export default function QuestionsContent() {
           
           // Get relationship between provider and recipient
           const relationship = await getUserRelationship(providerId, recipientId);
-
-          console.log("Relationship:", relationship); // DEBUGGING
           
           if (relationship) {
             console.log(`Relationship found: ${relationship.relationship.type} - ${relationship.relationship.description}`);
@@ -1471,10 +1467,12 @@ export default function QuestionsContent() {
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Additional comments (optional)
                       </label>
-                      <Textarea
+                      <FeedbackTextarea
                         placeholder="Add additional context to your rating..."
                         value={currentComment}
                         onChange={(e) => handleCommentChange(e.target.value)}
+                        data-question-text={currentStandardQuestion.question_text}
+                        data-question-description={currentStandardQuestion.question_description || ''}
                         className="min-h-[100px]"
                       />
                     </div>
@@ -1505,10 +1503,12 @@ export default function QuestionsContent() {
                 <>
                   {currentStandardQuestion && (currentStandardQuestion.question_type === 'text' || currentStandardQuestion.question_type === 'ai') && (
                     <div>
-                      <Textarea
+                      <FeedbackTextarea
                         placeholder="Enter your response..."
                         value={currentStandardQuestion.text_response || ''}
                         onChange={(e) => handleTextAnswer(e.target.value)}
+                        data-question-text={currentStandardQuestion.question_text}
+                        data-question-description={currentStandardQuestion.question_description || ''}
                         className="min-h-[150px] mb-4"
                       />
                     </div>

@@ -17,7 +17,7 @@ if (!resendApiKey) missingEnvVars.push('RESEND_API_KEY');
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Direct email sending function using fetch API
-async function sendEmail(from: string, to: string, subject: string, html: string) {
+async function sendEmail(from: string, to: string, subject: string, html: string, text: string) {
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -28,7 +28,8 @@ async function sendEmail(from: string, to: string, subject: string, html: string
       from,
       to,
       subject,
-      html
+      html,
+      text
     })
   });
   
@@ -66,27 +67,27 @@ serve(async (req) => {
     }
 
     // Try to send a test email to verify the API key works
-    try {
-      // Only test in non-production environments or when debugging
-      if (Deno.env.get('DEBUG') === 'true') {
-        await sendEmail(
-          'Candor <feedback@app.candor.so>',
-          'test@example.com',
-          'Test Email',
-          '<p>Test email to verify Resend API key works.</p>'
-        );
-        console.log('Test email sent successfully');
-      }
-    } catch (testError) {
-      console.error('Test email failed:', testError);
-      return new Response(
-        JSON.stringify({ 
-          error: "Failed to send test email",
-          details: testError instanceof Error ? testError.message : String(testError)
-        }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
-    }
+    // try {
+    //   // Only test in non-production environments or when debugging
+    //   if (Deno.env.get('DEBUG') === 'true') {
+    //     await sendEmail(
+    //       'Candor <feedback@app.candor.so>',
+    //       'test@example.com',
+    //       'Test Email',
+    //       '<p>Test email to verify Resend API key works.</p>'
+    //     );
+    //     console.log('Test email sent successfully');
+    //   }
+    // } catch (testError) {
+    //   console.error('Test email failed:', testError);
+    //   return new Response(
+    //     JSON.stringify({ 
+    //       error: "Failed to send test email",
+    //       details: testError instanceof Error ? testError.message : String(testError)
+    //     }),
+    //     { status: 500, headers: { "Content-Type": "application/json" } }
+    //   );
+    // }
 
     // Get today's day of the week (0 = Sunday, 1 = Monday, etc.)
     const today = new Date();
@@ -324,7 +325,8 @@ serve(async (req) => {
                     'Candor <feedbackbot@app.candor.so>',
                     memberEmail,
                     `Your teammates would appreciate your feedback`,
-                    getEmailTemplate(memberName, feedbackUrl, company.name)
+                    getEmailTemplate(memberName, feedbackUrl, company.name),
+                    getEmailText(memberName, feedbackUrl, company.name)
                   );
                   
                   emailsSentCount++;
@@ -355,7 +357,8 @@ serve(async (req) => {
                       'Candor <feedbackbot@app.candor.so>',
                       invitedUser.email,
                       `Join Candor: ${company.name}'s New Feedback Platform`,
-                      getInvitedUserEmailTemplate(invitedUser.name || invitedUser.email.split('@')[0], signupUrl, company.name)
+                      getInvitedUserEmailTemplate(invitedUser.name || invitedUser.email.split('@')[0], signupUrl, company.name),
+                      getInvitedUserEmailText(invitedUser.name || invitedUser.email.split('@')[0], signupUrl, company.name)
                     );
                     
                     emailsSentCount++;
@@ -456,7 +459,8 @@ serve(async (req) => {
                     'Candor <feedbackbot@app.candor.so>',
                     memberEmail,
                     `A gentle reminder: Your feedback is still needed`,
-                    getReminderEmailTemplate(memberName, feedbackUrl, company.name)
+                    getReminderEmailTemplate(memberName, feedbackUrl, company.name),
+                    getReminderEmailText(memberName, feedbackUrl, company.name)
                   );
                   
                   results.totalEmails++;
@@ -569,6 +573,30 @@ function getEmailTemplate(name: string, url: string, companyName: string): strin
   `;
 }
 
+function getEmailText(name: string, url: string, companyName: string): string {
+  return `
+  Your teammates would appreciate your feedback!
+
+  Hi ${name},
+  Your team would value your perspective on how they're doing. Your insights can make a real difference in their professional growth.
+  Why your feedback matters: Your unique perspective helps create a fuller picture of your colleagues' impact. The small things you notice might be exactly what they need to hear.
+  
+  Provide Feedback: ${url}
+
+  Remember, the most helpful feedback is specific, balanced, and actionable. Share both strengths you&#39;ve observed and suggestions that could help your teammates grow.
+  
+  Thank you for contributing to our culture of growth and continuous improvement!
+  Best,<br/>
+  The ${companyName} Team
+
+
+  ---
+  ${companyName} is powered by Candor
+  You received this email because you are an employee of ${companyName} and subscribed to receive communications from Candor. If you did not expect this email, please contact your company&#39;s administrator.
+  `
+}
+
+
 // Email template function for registered users
 function getReminderEmailTemplate(name: string, url: string, companyName: string): string {
   return `
@@ -631,6 +659,26 @@ function getReminderEmailTemplate(name: string, url: string, companyName: string
   `;
 }
 
+function getReminderEmailText(name: string, url: string, companyName: string): string {
+  return `
+  Hi ${name},
+  Just a friendly reminder that your team is still looking forward to your feedback.
+  We know you're busy: We completely understand that things get hectic, but your perspective is valuable and only takes a few minutes to share.
+
+  It's quick and impactful: Your observations could provide the exact guidance a colleague needs to excel in their role.
+  ${url}
+
+  If you've already submitted your feedback, thank you! You can disregard this reminder.
+
+  Thanks for being part of our feedback culture,
+  The ${companyName} Team
+
+  ---
+  ${companyName} is powered by Candor
+  You received this email because you are an employee of ${companyName} and subscribed to receive communications from Candor. If you did not expect this email, please contact your company&#39;s administrator.
+  `
+}
+
 // Email template function for invited users
 function getInvitedUserEmailTemplate(name: string, url: string, companyName: string): string {
   return `
@@ -679,9 +727,6 @@ function getInvitedUserEmailTemplate(name: string, url: string, companyName: str
             <a href="${url}" class="button" style="color: #fefefe!important;">Join Candor Now</a>
         </p>
         <p>
-            If you have any questions, just reply to this email. We&#39;re excited to build a stronger feedback culture together!
-        </p>
-        <p>
             Welcome aboard,<br/>
             The ${companyName} Team
         </p>
@@ -694,4 +739,32 @@ function getInvitedUserEmailTemplate(name: string, url: string, companyName: str
     </body>
     </html>
   `;
+}
+
+function getInvitedUserEmailText(name: string, url: string, companyName: string): string {
+  return `
+  Join Candor: Your Team's New Feedback Platform!
+
+  Hi ${name},
+  Great news! ${companyName} is now using Candor to help us all grow through better feedback.
+
+  What is Candor?
+  Candor is a simple platform that makes collecting and receiving honest, anonymous feedback from your colleagues effortless. It integrates with tools you already use and provides insights that can help you develop professionally.
+
+  Why you'll love it:
+  - Get a clearer picture of your strengths and growth areas
+  - Receive consistent feedback without the awkwardness
+  - Spend less time on formal reviews and more time on meaningful conversations
+
+  Getting started takes just 60 seconds:
+  ${url}
+
+
+  Welcome aboard,
+  The ${companyName} Team
+
+  ---
+  ${companyName} is powered by Candor
+  You received this email because you are an employee of ${companyName} and subscribed to receive communications from Candor. If you did not expect this email, please contact your company&#39;s administrator.
+  `
 }

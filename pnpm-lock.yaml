@@ -111,8 +111,8 @@ importers:
         specifier: ^4.24.11
         version: 4.24.11(next@15.2.0(@babel/core@7.26.9)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       openai:
-        specifier: ^4.87.3
-        version: 4.87.3(ws@8.18.1)(zod@3.24.2)
+        specifier: ^4.89.0
+        version: 4.89.0(ws@8.18.1)(zod@3.24.2)
       papaparse:
         specifier: ^5.5.2
         version: 5.5.2
@@ -3289,8 +3289,8 @@ packages:
     resolution: {integrity: sha512-1FlR+gjXK7X+AsAHso35MnyN5KqGwJRi/31ft6x0M194ht7S+rWAvd7PHss9xSKMzE0asv1pyIHaJYq+BbacAQ==}
     engines: {node: '>=12'}
 
-  openai@4.87.3:
-    resolution: {integrity: sha512-d2D54fzMuBYTxMW8wcNmhT1rYKcTfMJ8t+4KjH2KtvYenygITiGBgHoIrzHwnDQWW+C5oCA+ikIR2jgPCFqcKQ==}
+  openai@4.89.0:
+    resolution: {integrity: sha512-XNI0q2l8/Os6jmojxaID5EhyQjxZgzR2gWcpEjYWK5hGKwE7AcifxEY7UNwFDDHJQXqeiosQ0CJwQN+rvnwdjA==}
     hasBin: true
     peerDependencies:
       ws: ^8.18.0
@@ -7375,7 +7375,7 @@ snapshots:
     dependencies:
       mimic-fn: 4.0.0
 
-  openai@4.87.3(ws@8.18.1)(zod@3.24.2):
+  openai@4.89.0(ws@8.18.1)(zod@3.24.2):
     dependencies:
       '@types/node': 18.19.80
       '@types/node-fetch': 2.6.12
