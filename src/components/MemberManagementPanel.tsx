@@ -339,37 +339,37 @@ export default function MemberManagementPanel() {
     }
   }
 
-  async function resendInvite(memberId: string, email: string) {
-    setIsProcessing(prev => ({ ...prev, [memberId]: true }));
+  // async function resendInvite(memberId: string, email: string) {
+  //   setIsProcessing(prev => ({ ...prev, [memberId]: true }));
     
-    try {
-      // This would call your backend API to resend the invite
-      // For now, we'll just show a success message
-      toast({
-        title: 'Invitation resent',
-        description: `The invitation has been resent to ${email}.`,
-      });
+  //   try {
+  //     // This would call your backend API to resend the invite
+  //     // For now, we'll just show a success message
+  //     toast({
+  //       title: 'Invitation resent',
+  //       description: `The invitation has been resent to ${email}.`,
+  //     });
       
-      // In a real implementation, you would call an API endpoint
-      // const response = await fetch('/api/team/resend-invite', {
-      //   method: 'POST',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify({ inviteId: memberId }),
-      // });
+  //     // In a real implementation, you would call an API endpoint
+  //     // const response = await fetch('/api/team/resend-invite', {
+  //     //   method: 'POST',
+  //     //   headers: {
+  //     //     'Content-Type': 'application/json',
+  //     //   },
+  //     //   body: JSON.stringify({ inviteId: memberId }),
+  //     // });
       
-    } catch (error) {
-      console.error('Error resending invite:', error);
-      toast({
-        title: 'Failed to resend invitation',
-        description: 'There was a problem resending the invitation.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsProcessing(prev => ({ ...prev, [memberId]: false }));
-    }
-  }
+  //   } catch (error) {
+  //     console.error('Error resending invite:', error);
+  //     toast({
+  //       title: 'Failed to resend invitation',
+  //       description: 'There was a problem resending the invitation.',
+  //       variant: 'destructive',
+  //     });
+  //   } finally {
+  //     setIsProcessing(prev => ({ ...prev, [memberId]: false }));
+  //   }
+  // }
 
   async function cancelInvite(memberId: string) {
     setIsProcessing(prev => ({ ...prev, [memberId]: true }));
@@ -549,14 +549,14 @@ export default function MemberManagementPanel() {
                     <TableCell>
                       {member.source === 'invited' ? (
                         <div className="flex space-x-2">
-                          <Button
+                          {/* <Button
                             size="sm"
                             variant="outline"
                             onClick={() => resendInvite(member.id, member.email)}
                             disabled={isProcessing[member.id]}
                           >
                             {isProcessing[member.id] ? 'Sending...' : 'Resend'}
-                          </Button>
+                          </Button> */}
                           <Button
                             size="sm"
                             variant="outline"

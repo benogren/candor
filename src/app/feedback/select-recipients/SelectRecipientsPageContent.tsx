@@ -360,11 +360,12 @@ export default function SelectRecipientsPageContent() {
     <div className="container mx-auto py-8 px-4 max-w-xl">
       <h1 className='text-4xl font-light text-berkeleyblue pb-2'>Give Feedback</h1>
       <p className='text-slate-500 text-base font-light pb-4'>
-        Here are a few colleagues who you have been in contact with a lot lately. Select who you would like to provide feedback to.
+        {/* Here are a few colleagues who you have been in contact with a lot lately.  */}
+        Select colleagues you&#39;ve worked with this week and can provide meaningful insights about. Consider people you&#39;ve collaborated with on projects, attended meetings with, or interacted with regularly.
       </p>
       
       <p className='text-slate-500 text-sm font-light'>
-        Select at least two colleagues ({selectedColleagues.length}/2 selected)
+        Select at least two colleagues ({selectedColleagues.length}/2 selected):
       </p>
       
       {/* Selected colleagues tags */}
@@ -387,7 +388,8 @@ export default function SelectRecipientsPageContent() {
       </div>
       
       <p className='text-slate-500 text-sm font-light pt-4'>
-        Missing anyone? Search and add them:
+        {/* Missing anyone? Search and add them: */}
+        Search and add your colleagues:
       </p>
       
       {/* Search input with dropdown */}
