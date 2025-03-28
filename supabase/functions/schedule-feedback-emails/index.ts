@@ -566,6 +566,7 @@ function getEmailTemplate(name: string, url: string, companyName: string): strin
             <hr />
           <p>${companyName} is powered by Candor</p>
           <p>You received this email because you are an employee of ${companyName} and subscribed to receive communications from Candor. If you did not expect this email, please contact your company&#39;s administrator.</p>
+          <p>Copyright &copy; 2025 Candor - All rights reserved</p>
         </div>
       </div>
     </body>
@@ -652,6 +653,7 @@ function getReminderEmailTemplate(name: string, url: string, companyName: string
             <hr />
           <p>${companyName} is powered by Candor</p>
           <p>You received this email because you are an employee of ${companyName} and subscribed to receive communications from Candor. If you did not expect this email, please contact your company&#39;s administrator.</p>
+          <p>Copyright &copy; 2025 Candor - All rights reserved</p>
         </div>
       </div>
     </body>
@@ -734,6 +736,7 @@ function getInvitedUserEmailTemplate(name: string, url: string, companyName: str
             <hr />
           <p>${companyName} is powered by Candor</p>
           <p>You received this email because you are an employee of ${companyName} and subscribed to receive communications from Candor. If you did not expect this email, please contact your company&#39;s administrator.</p>
+          <p>Copyright &copy; 2025 Candor - All rights reserved</p>
         </div>
       </div>
     </body>

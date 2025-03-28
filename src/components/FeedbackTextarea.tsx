@@ -510,11 +510,11 @@ const FeedbackTextarea = React.forwardRef<HTMLTextAreaElement, FeedbackTextareaP
     }, [selectedTone]);
     
     // Calculate tone indicator position
-    const getToneIndicatorPosition = useCallback((score: number | null) => {
-      // console.log(`Calculating position for score: ${score}`);
-      if (score === null) return '50%'; // Center by default
-      return `${score}%`;
-    }, []);
+    // const getToneIndicatorPosition = useCallback((score: number | null) => {
+    //   // console.log(`Calculating position for score: ${score}`);
+    //   if (score === null) return '50%'; // Center by default
+    //   return `${score}%`;
+    // }, []);
     
     // Get tone label based on score
     const getToneLabel = useCallback((score: number | null) => {
@@ -587,7 +587,7 @@ const FeedbackTextarea = React.forwardRef<HTMLTextAreaElement, FeedbackTextareaP
         </Button>
         
         {/* Tone Indicator (only show if we have a score) */}
-        {toneScore !== null && (
+        {/* {toneScore !== null && (
           <div className="mt-2 relative items-center">
             <div className="h-2 w-full bg-gradient-to-r from-green-500 via-yellow-500 to-red-500 rounded-full"></div>
             <div 
@@ -600,7 +600,7 @@ const FeedbackTextarea = React.forwardRef<HTMLTextAreaElement, FeedbackTextareaP
               <span>Aggressive</span>
             </div>
           </div>
-        )}
+        )} */}
         
         {/* Tone Adjustment Modal */}
         <Dialog open={isModalOpen} onOpenChange={(open) => {
