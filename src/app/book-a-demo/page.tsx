@@ -1,0 +1,243 @@
+'use client';
+
+import { useAuth } from '@/lib/context/auth-context';
+import { redirect } from "next/navigation";
+import Image from 'next/image';
+import { radley } from '../fonts';
+import React, { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
+import supabase from '@/lib/supabase/client';
+
+export default function DemoPage() {
+  const { user } = useAuth();
+
+  // Redirect if user is already logged in
+  if (user) {
+    console.log('Demo Page: User is logged in, redirecting to dashboard');
+    redirect('/dashboard');
+  }
+
+  // Form state
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    company: '',
+    companySize: '1-50 employees'
+  });
+  
+  // Submission states
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Handle form input changes
+interface FormData {
+    name: string;
+    email: string;
+    company: string;
+    companySize: string;
+}
+
+const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev: FormData) => ({
+        ...prev,
+        [name]: value
+    }));
+};
+
+  // Handle form submission
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setError(null);
+    
+    try {
+      // Insert data into demo_leads table
+      const { error } = await supabase
+        .from('demo_leads')
+        .insert([
+          { 
+            name: formData.name, 
+            email: formData.email, 
+            company: formData.company, 
+            company_size: formData.companySize,
+            created_at: new Date()
+          }
+        ]);
+        
+      if (error) throw error;
+      
+      // Set submission success
+      setSubmitted(true);
+    } catch (err) {
+      console.error('Error submitting demo request:', err);
+      setError('There was an error submitting your request. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col min-h-screen">
+      <header className="bg-white shadow-sm sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-3 flex justify-between items-center">
+          <div className="text-xl font-bold text-slate-900">
+            <Link href="/">
+              <Image src="/logo/candor_cerulean.png" alt="Candor" width={98} height={24} priority={true} />
+            </Link>
+          </div>
+          <div className="hidden md:flex space-x-6 items-center text-slate-500 text-base font-light">
+            <Link href="/#features" className="">Features</Link>
+            <Link href="/#use-cases" className="">Use Cases</Link>
+            <Link className='bg-cerulean text-primary-foreground hover:bg-cerulean-600 rounded-md text-sm font-normal h-9 px-4 py-2' href='/book-a-demo'>Book a Demo</Link>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="flex-1 flex items-center justify-center bg-slate-50">
+        <div className="container mx-auto px-16 py-16 flex flex-col items-center">
+          {!submitted ? (
+            <>
+            <h1 className={`text-6xl font-light text-cerulean max-w-xl text-center ${radley.className}`}>
+            Request a demo
+            </h1>
+            <p className={`text-slate-500 text-base font-light max-w-xl mt-4 text-center`}>
+            Schedule a personalized consultation with a real, live product expert to see if Candor is a fit for your business.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
+                <div>
+                    <Image
+                    src="https://cdn.loom.com/sessions/thumbnails/855231ae63dd480483c0ec48b8aeccc7-9468043881ce5100-full-play.gif"
+                    alt="Candor"
+                    width={576}
+                    height={360}
+                    className="rounded-lg shadow-lg mb-4"
+                    />
+                    <span className="text-slate-500 text-sm font-light">
+                        While you wait for your scheduled consultation watch a recorded demo of Candor, showcasing our features and benefits. Please fill out the form to unlock the recorded demo.
+                    </span>
+                </div>
+            <div className="">
+              {error && (
+                <div className="bg-red-50 text-red-600 p-4 rounded-md mb-6">
+                  {error}
+                </div>
+              )}
+              
+              <form onSubmit={handleSubmit} className="space-y-4 bg-white p-6 rounded-lg shadow-md">
+                <div>
+                  <label htmlFor="name" className="block text-slate-700 mb-1 font-medium">Name</label>
+                  <input 
+                    id="name"
+                    name="name"
+                    type="text" 
+                    value={formData.name}
+                    onChange={handleChange}
+                    className="w-full p-2 border border-slate-300 rounded" 
+                    placeholder="Your name" 
+                    required 
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="email" className="block text-slate-700 mb-1 font-medium">Work Email</label>
+                  <input 
+                    id="email"
+                    name="email"
+                    type="email" 
+                    value={formData.email}
+                    onChange={handleChange}
+                    className="w-full p-2 border border-slate-300 rounded" 
+                    placeholder="your@email.com" 
+                    required 
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="company" className="block text-slate-700 mb-1 font-medium">Company</label>
+                  <input 
+                    id="company"
+                    name="company"
+                    type="text" 
+                    value={formData.company}
+                    onChange={handleChange}
+                    className="w-full p-2 border border-slate-300 rounded" 
+                    placeholder="Your company" 
+                    required 
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="companySize" className="block text-slate-700 mb-1 font-medium">Company Size</label>
+                  <select 
+                    id="companySize"
+                    name="companySize"
+                    value={formData.companySize}
+                    onChange={handleChange}
+                    className="w-full p-2 border border-slate-300 rounded"
+                    required
+                  >
+                    <option value="1-50 employees">1-50 employees</option>
+                    <option value="51-200 employees">51-200 employees</option>
+                    <option value="201-500 employees">201-500 employees</option>
+                    <option value="501-1000 employees">501-1000 employees</option>
+                    <option value="1000+ employees">1000+ employees</option>
+                  </select>
+                </div>
+                
+                <div className="pt-4">
+                  <p className="text-xs text-slate-500 mb-4">
+                    By clicking the &quot;Book My Demo&quot; button, you are agreeing to Candor&apos;s <a href="/terms" className="text-cerulean hover:underline">Terms of Use</a> and <a href="/privacy" className="text-cerulean hover:underline">Privacy Policy</a>.
+                  </p>
+                  
+                  <Button 
+                    type="submit"
+                    className="w-full"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? 'Submitting...' : 'Book My Demo'}
+                  </Button>
+                </div>
+              </form>
+            </div>
+            </div>
+            </>
+          ) : (
+            <>
+            <div className="container mx-auto px-16 py-16 flex flex-col items-center">
+            <h1 className={`text-6xl font-light text-cerulean max-w-xl text-center ${radley.className}`}>
+                Thank You!
+            </h1>
+            <p className={`text-slate-500 text-base font-light max-w-xl mt-4 text-center`}>
+                We&apos;ve received your demo request and will be in touch shortly to schedule your personalized demo of Candor &mdash; within 24 hours. In the meantime, please watch a recorded demo of Candor below, showcasing our features and benefits.
+            </p>
+            <div className="rounded-lg shadow-lg mb-4 w-full mt-12" style={{ position: 'relative', paddingBottom: '62.5%', height: 0 }}>
+                <iframe 
+                src="https://www.loom.com/embed/cb8ee8bf59884a9895b1d75356b9b52b?sid=eea983a0-f3ee-4fef-8159-5128377f5abe?hide_owner=true&hide_title=true&hide_share=true&hide_controls=true&hideEmbedTopBar=true&hideEmbedFooter=true"
+                allowFullScreen 
+                frameBorder="0" 
+                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
+                ></iframe>
+            </div>
+            </div>
+            </>
+          )}
+        </div>
+      </main>
+
+      <footer className="bg-white py-8">
+        <div className="container mx-auto px-4 text-center text-berkeleyblue text-sm">
+          <Image src="/logo/candor_berkeleyblue.png" alt="Candor" width={75} height={18} priority={true} className='mx-auto mb-4' />
+          <div className="flex justify-center space-x-4 mb-4">
+            <Link href="/terms" className="text-slate-500 hover:text-cerulean">Terms of Use</Link>
+            <Link href="/privacy" className="text-slate-500 hover:text-cerulean">Privacy Policy</Link>
+          </div>
+          &copy; {new Date().getFullYear()} Candor. All rights reserved.
+        </div>
+      </footer>
+    </div>
+  );
+}

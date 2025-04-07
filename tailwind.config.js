@@ -17,7 +17,7 @@ module.exports = {
     },
     extend: {
       fontFamily: {
-        sans: ['var(--font-roboto)', 'sans-serif'], // Set Roboto as default
+        sans: ['var(--font-overpass)', 'sans-serif'], // Set Roboto as default
       },
       colors: {
         pantonered: {

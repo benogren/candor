@@ -135,7 +135,7 @@ export default function Header({ user, company, children }: HeaderProps) {
         <div className="container mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center ml-2">
             <Link href="/dashboard" className="text-xl font-bold text-slate-900">
-              <Image src="/logo/candor_cerulean.png" alt="Candor" width={98} height={25} />
+              <Image src="/logo/candor_cerulean.png" alt="Candor" width={98} height={24} />
             </Link>
             {company?.name && (
               <span className="ml-4 mt-2 text-sm text-slate-500">{company.name}</span>

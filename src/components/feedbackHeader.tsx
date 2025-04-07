@@ -24,7 +24,7 @@ export default function FeedbackHeader() {
         <div className="container mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center">
             <Link href="/dashboard" className="text-xl font-bold text-slate-900">
-              <Image src="/logo/candor_cerulean.png" alt="Candor" width={98} height={25} />
+              <Image src="/logo/candor_cerulean.png" alt="Candor" width={98} height={24} />
             </Link>
           </div>
           <div className="flex items-center gap-4">
