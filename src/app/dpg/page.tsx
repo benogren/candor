@@ -103,13 +103,13 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement 
           <div className="hidden md:flex space-x-6 items-center text-slate-500 text-base font-light">
             {/* <Link href="/#features" className="">Features</Link>
             <Link href="/#use-cases" className="">Use Cases</Link> */}
-            <Link className='bg-cerulean text-primary-foreground hover:bg-cerulean-600 rounded-md text-sm font-normal h-9 px-4 py-2' href='/book-a-demo'>Book a Demo</Link>
+            <Link className='bg-nonphotoblue-200 text-cerulean hover:bg-nonphotoblue-300 rounded-md text-sm font-normal h-9 px-4 py-2' href='/dpg#apply'>Apply Now</Link>
           </div>
         </div>
       </header>
 
       {/* Hero Section */}
-      <main className="flex-1 flex items-center justify-center bg-slate-50">
+      <main className="flex-1 flex items-center justify-center bg-nonphotoblue-100">
         <div className="container mx-auto px-4 py-16 flex flex-col items-center text-center">
           <h1 className={`text-6xl font-light text-cerulean max-w-xl ${radley.className}`}>
             Join Candor&apos;s Exclusive Design Partnership Program
@@ -152,8 +152,8 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement 
           <p className={`text-slate-500 text-base font-light max-w-3xl mt-4`}>
           Unlike traditional feedback systems, Candor works in the background, automatically capturing valuable perspectives throughout the year without creating additional work. Our calendar intelligence suggests optimal feedback moments based on interactions, while our AI analyzes patterns to deliver actionable insights for employees, managers, and HR leaders.
           </p>
-          <Link className='mt-8 border border-cerulean text-cerulean bg-background shadow-xs hover:bg-cerulean-100 h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/'>
-            Learn more about Candor&apos;s full platform
+          <Link className='mt-8 border border-cerulean text-cerulean bg-background shadow-xs hover:bg-cerulean-100 h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/' target='_blank'>
+            Learn more about Candor
           </Link>
         </div>
       </div>
