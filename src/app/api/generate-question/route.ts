@@ -55,10 +55,11 @@ export async function POST(request: NextRequest) {
 
       let industrySpecific = "";
       let jobTitle = "";
+      let industry = "";
       if (companyError || !companyData || companyData.length === 0) {
         industrySpecific = "Don't focus heavily on projects since not all companies use projects, try to focus on their personal growth and development. ";
       } else {
-
+        industry = companyData[0].industry;
         industrySpecific = `
         The question should be industry specific, ${companyData[0].name} is in ${companyData[0].industry}. 
         Ask questions that are specific to how ${companyData[0].industry} businesses operate and the skills needed in their workforce. 
@@ -161,6 +162,15 @@ export async function POST(request: NextRequest) {
           content: prompt 
         }
       ],
+      store: true,
+      metadata: {
+        providerId,
+        recipientId,
+        relationship: type,
+        companyId,
+        industry,
+        jobTitle,
+      },
       temperature: 0.7,
       max_tokens: 150
     });

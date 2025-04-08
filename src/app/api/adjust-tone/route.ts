@@ -84,6 +84,12 @@ export async function POST(request: Request) {
             content: text
           }
         ],
+        store: true,
+        metadata: {
+          tone,
+          questionContext: questionData,
+          originalText: text,
+        },
         temperature: 0.7,
         max_tokens: 1000,
       });
