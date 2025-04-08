@@ -101,8 +101,8 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement 
             </Link>
           </div>
           <div className="hidden md:flex space-x-6 items-center text-slate-500 text-base font-light">
-            <Link href="/#features" className="">Features</Link>
-            <Link href="/#use-cases" className="">Use Cases</Link>
+            {/* <Link href="/#features" className="">Features</Link>
+            <Link href="/#use-cases" className="">Use Cases</Link> */}
             <Link className='bg-cerulean text-primary-foreground hover:bg-cerulean-600 rounded-md text-sm font-normal h-9 px-4 py-2' href='/book-a-demo'>Book a Demo</Link>
           </div>
         </div>
