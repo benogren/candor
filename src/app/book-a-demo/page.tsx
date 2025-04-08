@@ -110,14 +110,14 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
                 <div>
                     <Image
-                    src="https://cdn.loom.com/sessions/thumbnails/855231ae63dd480483c0ec48b8aeccc7-9468043881ce5100-full-play.gif"
+                    src="https://cdn.loom.com/sessions/thumbnails/60982c715e26453eb38866457a48ab1a-ec353aa4ccd8f060-full-play.gif"
                     alt="Candor"
                     width={576}
-                    height={360}
+                    height={324}
                     className="rounded-lg shadow-lg mb-4"
                     />
                     <span className="text-slate-500 text-sm font-light">
-                        While you wait for your scheduled consultation watch a recorded demo of Candor, showcasing our features and benefits. Please fill out the form to unlock the recorded demo.
+                        Not ready to book a demo? <Link href="/demo" className="text-cerulean hover:underline">Watch a recorded demo</Link> of Candor to see how it works.
                     </span>
                 </div>
             <div className="">
