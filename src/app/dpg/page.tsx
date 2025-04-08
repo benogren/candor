@@ -152,9 +152,14 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement 
           <p className={`text-slate-500 text-base font-light max-w-3xl mt-4`}>
           Unlike traditional feedback systems, Candor works in the background, automatically capturing valuable perspectives throughout the year without creating additional work. Our calendar intelligence suggests optimal feedback moments based on interactions, while our AI analyzes patterns to deliver actionable insights for employees, managers, and HR leaders.
           </p>
-          <Link className='mt-8 border border-cerulean text-cerulean bg-background shadow-xs hover:bg-cerulean-100 h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/' target='_blank'>
-            Learn more about Candor
+          <div className='mt-8 flex flex-col md:flex-row items-center justify-center gap-4'>
+          <Link className='bg-cerulean text-primary-foreground hover:bg-cerulean-600 rounded-md text-sm font-normal h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/' target='_blank'>
+            Learn More
           </Link>
+          <Link className='border border-cerulean text-cerulean bg-background shadow-xs hover:bg-cerulean-100 h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/demo' target='_blank'>
+            Watch a Demo
+          </Link>
+          </div>
         </div>
       </div>
 
