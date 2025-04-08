@@ -102,13 +102,14 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
           {!submitted ? (
             <>
             <h1 className={`text-6xl font-light text-cerulean max-w-xl text-center ${radley.className}`}>
-            Request a demo
+            Request a Demo
             </h1>
             <p className={`text-slate-500 text-base font-light max-w-xl mt-4 text-center`}>
             Schedule a personalized consultation with a real, live product expert to see if Candor is a fit for your business.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
                 <div>
+                    <Link href="/demo">
                     <Image
                     src="https://cdn.loom.com/sessions/thumbnails/60982c715e26453eb38866457a48ab1a-ec353aa4ccd8f060-full-play.gif"
                     alt="Candor"
@@ -116,6 +117,7 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
                     height={324}
                     className="rounded-lg shadow-lg mb-4"
                     />
+                    </Link>
                     <span className="text-slate-500 text-sm font-light">
                         Not ready to book a demo? <Link href="/demo" className="text-cerulean hover:underline">Watch a recorded demo</Link> of Candor to see how it works.
                     </span>
@@ -189,10 +191,6 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
                 </div>
                 
                 <div className="pt-4">
-                  <p className="text-xs text-slate-500 mb-4">
-                    By clicking the &quot;Book My Demo&quot; button, you are agreeing to Candor&apos;s <a href="/terms" className="text-cerulean hover:underline">Terms of Use</a> and <a href="/privacy" className="text-cerulean hover:underline">Privacy Policy</a>.
-                  </p>
-                  
                   <Button 
                     type="submit"
                     className="w-full"
@@ -200,6 +198,9 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
                   >
                     {isSubmitting ? 'Submitting...' : 'Book My Demo'}
                   </Button>
+                  <p className="text-xs text-slate-500 mt-4 text-center">
+                    By clicking the &quot;Book My Demo&quot; button, you are agreeing to Candor&apos;s <a href="/terms" className="text-cerulean hover:underline">Terms of Use</a> and <a href="/privacy" className="text-cerulean hover:underline">Privacy Policy</a>.
+                  </p>
                 </div>
               </form>
             </div>
