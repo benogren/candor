@@ -5,16 +5,16 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/components/ui/use-toast';
-import { Loader2, MessageSquare } from 'lucide-react';
 import supabase from '@/lib/supabase/client';
 import FeedbackHeader from '@/components/feedbackHeader';
 import UserSearch from '@/components/UserSearch';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { library, IconName } from '@fortawesome/fontawesome-svg-core';
-import { fas, faStarHalfStroke, faComments, faAward, faMagicWandSparkles } from '@fortawesome/free-solid-svg-icons';
+import { fas } from '@fortawesome/free-solid-svg-icons';
 import { Badge } from '@/components/ui/badge';
 // Import our new FeedbackTextarea component
 import { FeedbackTextarea } from '@/components/FeedbackTextarea';
+import { Loader2, MessageSquare, Sparkles, Star, MessageCircle, Trophy } from "lucide-react";
 
 // Add all FontAwesome solid icons to the library
 library.add(fas);
@@ -1405,38 +1405,27 @@ export default function QuestionsContent() {
         <div className="flex flex-wrap gap-2 mb-2">
           {isOnValuesQuestion && (
             <Badge variant="secondary" className="text-slate-500 font-light uppercase items-center">
-              <FontAwesomeIcon 
-                icon={faAward} 
-                className="h-3 w-3 text-slate-400 mr-2" 
-              />
+              <Trophy className="h-3 w-3 text-slate-400 mr-2" />
               Company Values
             </Badge>
           )}
           {(currentStandardQuestion?.question_type === 'text') && (
             <Badge variant="secondary" className="text-slate-500 font-light uppercase items-center">
-              <FontAwesomeIcon 
-                icon={faComments} 
-                className="h-3 w-3 text-slate-400 mr-2" 
-              />
-              Open-Ended
+              <MessageCircle className="h-3 w-3 text-slate-400" />
+              {/* Open-Ended */}
             </Badge>
           )}
           {(currentStandardQuestion?.question_type === 'rating') && (
             <Badge variant="secondary" className="text-slate-500 font-light uppercase items-center">
-              <FontAwesomeIcon 
-                icon={faStarHalfStroke} 
-                className="h-3 w-3 text-slate-400 mr-2" 
-              />
-              Closed-Ended
+              <Star className="h-3 w-3 text-slate-400" />
+              {/* Closed-Ended */}
+              {/* Rating */}
             </Badge>
           )}
           {(currentStandardQuestion?.question_type === 'ai') && (
             <Badge variant="secondary" className="text-slate-500 font-light uppercase items-center">
-              <FontAwesomeIcon 
-                icon={faMagicWandSparkles} 
-                className="h-3 w-3 text-slate-400 mr-2" 
-              />
-              AI Generated
+              <Sparkles className="h-3 w-3 text-slate-400" />
+              {/* AI Generated */}
             </Badge>
           )}
           {!isOnValuesQuestion && currentStandardQuestion?.relationship_type && currentStandardQuestion.relationship_type !== 'unrelated' && (

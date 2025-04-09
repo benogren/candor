@@ -1,27 +1,27 @@
 // components/FeedbackCard.tsx
 // import { useState } from 'react';
 // import { Button } from '@/components/ui/button';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Star, Trophy, MessageCircle } from 'lucide-react';
 // import { toast } from '@/components/ui/use-toast';
 import ReactTimeAgo from 'react-timeago';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faStarHalfStroke, faStar, faComments, faComment, faAward, faMagicWandSparkles } from '@fortawesome/free-solid-svg-icons';
+import { faStar } from '@fortawesome/free-solid-svg-icons';
 import { faMessage } from '@fortawesome/free-regular-svg-icons';
 
 interface QuestionTypeIconProps {
   questionType: string;
 }
 
-const getQuestionTypeIcon = (questionType: QuestionTypeIconProps['questionType']): typeof faStarHalfStroke | typeof faComments | typeof faMagicWandSparkles => {
+const getQuestionTypeIcon = (questionType: QuestionTypeIconProps['questionType']): React.ReactElement => {
   switch (questionType) {
     case 'rating':
-      return faStarHalfStroke;
+      return <Star className="h-6 w-6 text-berkeleyblue-200" />;
     case 'text':
-      return faComments;
+      return <MessageCircle className="h-6 w-6 text-berkeleyblue-200" />;
     case 'ai':
-      return faComment;
+      return <MessageCircle className="h-6 w-6 text-berkeleyblue-200" />; // For now show AI as text
     default:
-      return faComments; // Default fallback
+      return <MessageCircle className="h-6 w-6 text-berkeleyblue-200" />; // Default fallback
   }
 };
 
@@ -139,10 +139,7 @@ export default function FeedbackCard({
       <>
       <div className='flex justify-between items-center'>
         <div className='flex items-center gap-2'>
-          <FontAwesomeIcon 
-            icon={faAward} 
-            className="h-6 w-6 text-pantonered-300"
-          />
+          <Trophy className="h-6 w-6 text-pantonered-300" />
           <h4 className='text-lg font-light text-cerulean'>
           {nominated_user.name} was recognized for exemplifying this value: <strong>{questionText}</strong>
           </h4>
@@ -166,10 +163,7 @@ export default function FeedbackCard({
           <>
         <div className='flex justify-between items-center'>
             <div className='flex items-center gap-2 pb-4'>
-                  <FontAwesomeIcon 
-                    icon={getQuestionTypeIcon(questionType)} 
-                    className="h-6 w-6 text-berkeleyblue-200"
-                  />
+                  {getQuestionTypeIcon(questionType)} 
                 <h4 className='text-lg font-light text-berkeleyblue'>
                     {questionText}
                 </h4>

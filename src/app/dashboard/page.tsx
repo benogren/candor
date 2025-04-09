@@ -11,8 +11,7 @@ import { ProfileModal } from '@/components/ProfileModal';
 import supabase from '@/lib/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 import { useRouter } from 'next/navigation';
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faComments } from '@fortawesome/free-solid-svg-icons';
+import { MessagesSquare } from 'lucide-react';
 
 export default function DashboardPage() {
   const { user, memberStatus } = useAuth();
@@ -376,10 +375,7 @@ export default function DashboardPage() {
         {needsFeedback && (
           <div className='bg-cerulean-400 p-4 rounded-md gap-4 shadow-md mb-12'>
             <div className='flex items-center gap-4 mb-2 text-white'>
-              <FontAwesomeIcon 
-                icon={faComments} 
-                className="h-8 w-8"
-              />
+              <MessagesSquare className="h-8 w-8" />
               <h4 className='text-lg font-light'>
               {feedbackStarted ? (
                 <>
