@@ -29,7 +29,7 @@ type ToneOption = "friendly" | "assertive" | "formal" | "informal";
 const FeedbackTextarea = React.forwardRef<HTMLTextAreaElement, FeedbackTextareaProps>(
   ({ className, value, onChange, onToneChange, onContentChange, ...props }, ref) => {
     // State for tone analysis
-    console.log(onContentChange);
+    console.log("Content Change", onContentChange);
     const [toneScore, setToneScore] = useState<number | null>(null); // 0-100, 0 being friendly, 100 being aggressive
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     
@@ -121,6 +121,7 @@ const FeedbackTextarea = React.forwardRef<HTMLTextAreaElement, FeedbackTextareaP
       
       setIsAnalyzing(true);
       try {
+        console.log("**Making API Call to Analyze Tone**");
         // API call for tone analysis
         const response = await fetch('/api/analyze-tone', {
           method: 'POST',
@@ -206,6 +207,7 @@ const FeedbackTextarea = React.forwardRef<HTMLTextAreaElement, FeedbackTextareaP
         }
       }, 3000); // Shorter timeout for better UX
       
+      console.log("**Making API Call to Analyze Tone (2)**");
       // Make the API request
       fetch('/api/analyze-tone', {
         method: 'POST',
@@ -465,6 +467,7 @@ const FeedbackTextarea = React.forwardRef<HTMLTextAreaElement, FeedbackTextareaP
         setGeneratedText(textToTransform || "");
       }, 8000);
       
+      console.log("**Making API Call for Tone Adjustment**");
       // Directly start the API request
       fetch('/api/adjust-tone', {
         method: 'POST',
@@ -582,6 +585,7 @@ const FeedbackTextarea = React.forwardRef<HTMLTextAreaElement, FeedbackTextareaP
             setIsModalOpen(true);
           }}
           title="Adjust tone"
+          disabled={!currentValue.current || currentValue.current.trim() === ''}
         >
           <Wand2 className="h-4 w-4" />
         </Button>

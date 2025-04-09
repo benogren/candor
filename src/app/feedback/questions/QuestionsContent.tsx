@@ -587,12 +587,66 @@ export default function QuestionsContent() {
               }
             }
           } else {
-            // Otherwise, randomly select a values question
-            const randomIndex = Math.floor(Math.random() * valuesQuestionsData.length);
-            selectedValuesQuestion = {
-              ...valuesQuestionsData[randomIndex],
-              icon: valuesQuestionsData[randomIndex].company_values?.icon || null
-            };
+            // Select a values question with weighted random selection based on response count
+            try {
+              // 1. Get all responses for values questions
+              const { data: valueResponses } = await supabase
+                .from('feedback_responses')
+                .select('question_id')
+                .in('question_id', valuesQuestionsData.map(q => q.id));
+              
+              // 2. Count occurrences of each question_id
+              const countMap = new Map();
+              
+              // Initialize all questions with count 0
+              valuesQuestionsData.forEach(q => countMap.set(q.id, 0));
+              
+              // Count actual responses
+              if (valueResponses && valueResponses.length > 0) {
+                valueResponses.forEach(response => {
+                  countMap.set(response.question_id, (countMap.get(response.question_id) || 0) + 1);
+                });
+              }
+              
+              // Log the counts for debugging
+              console.log("Values question usage counts:");
+              valuesQuestionsData.forEach(q => {
+                console.log(`  ${q.question_text.substring(0, 30)}... (${q.id}): ${countMap.get(q.id) || 0}`);
+              });
+              
+              // 3. Calculate weights (inverse of counts - fewer responses = higher weight)
+              const maxCount = Math.max(...countMap.values());
+              const weights = valuesQuestionsData.map(q => (maxCount + 1) / (countMap.get(q.id) + 1));
+              const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+              
+              // 4. Weighted random selection
+              let random = Math.random() * totalWeight;
+              let selectedIndex = 0;
+              
+              for (let i = 0; i < weights.length; i++) {
+                random -= weights[i];
+                if (random <= 0) {
+                  selectedIndex = i;
+                  break;
+                }
+              }
+              
+              selectedValuesQuestion = {
+                ...valuesQuestionsData[selectedIndex],
+                icon: valuesQuestionsData[selectedIndex].company_values?.icon || null
+              };
+              
+              console.log(`Selected value question: "${selectedValuesQuestion.question_text.substring(0, 30)}..." with weight ${weights[selectedIndex].toFixed(2)}/${totalWeight.toFixed(2)} (count: ${countMap.get(selectedValuesQuestion.id)}/${maxCount})`);
+            } catch (error) {
+              // Fall back to simple random selection on error
+              console.error("Error in weighted question selection:", error);
+              const randomIndex = Math.floor(Math.random() * valuesQuestionsData.length);
+              selectedValuesQuestion = {
+                ...valuesQuestionsData[randomIndex],
+                icon: valuesQuestionsData[randomIndex].company_values?.icon || null
+              };
+              console.log(`Fallback - randomly selected value question: "${selectedValuesQuestion.question_text.substring(0, 30)}..."`);
+            }
           }
         }
         
