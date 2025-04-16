@@ -93,19 +93,18 @@ export default function Home() {
             <div className="mt-8">
               
               <div className='grid grid-cols-1 md:grid-cols-2 gap-8 items-center'>
-                <div className="mt-10 lg:mt-0 relative mx-auto ">
-                  <div className="rounded-xl shadow-lg transform hover:-translate-y-1 transition-transform duration-300">
-                    <div className="relative rounded-lg overflow-hidden">
+                <div className="mt-10 lg:mt-0 relative mx-auto w-full">
+                  <div className="rounded-xl shadow-lg transform hover:-translate-y-1 transition-transform duration-300 bg-gradient-to-tl from-berkeleyblue to-cerulean">
+                    <div className="relative rounded-lg overflow-hidden w-full">
                     {showDashboardScreen && (
                         <Image 
                         onClick={() => setShowDashboardScreen(false)}
-                        src="/candor-give-feedback-demo.gif" 
+                        src="/candor-give-feedback-demo.gif"
                         alt="Candor Give Feedback Demo" 
                         width={640} 
                         height={375}
                         className="w-full object-cover rounded-lg hover:cursor-pointer" 
-                        placeholder="blur"
-                        blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+                        priority={true}
                       />
                       )}
                       {!showDashboardScreen && (
@@ -118,8 +117,7 @@ export default function Home() {
                         width={640} 
                         height={375}
                         className="w-full object-cover rounded-lg hover:cursor-pointer" 
-                        placeholder="blur"
-                        blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+                        priority={true}
                       />
                       </>
                       )}
@@ -170,8 +168,8 @@ export default function Home() {
                   <i>Development Tracking</i> &mdash; Monitor growth trends without manual tracking
                 </p>
                 </div>
-                <div className="mt-10 lg:mt-0 relative mx-auto">
-                  <div className="rounded-xl shadow-lg transform hover:-translate-y-1 transition-transform duration-300">
+                <div className="mt-10 lg:mt-0 relative mx-auto w-full">
+                  <div className="rounded-xl shadow-lg transform hover:-translate-y-1 transition-transform duration-300 bg-gradient-to-tl from-berkeleyblue to-cerulean">
                     <div className="relative rounded-lg overflow-hidden">
                       {showFeedbackScreen && (
                         <Image 
@@ -181,8 +179,7 @@ export default function Home() {
                         width={640} 
                         height={375}
                         className="w-full object-cover rounded-lg hover:cursor-pointer" 
-                        placeholder="blur"
-                        blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+                        priority={true}
                       />
                       )}
                       {!showFeedbackScreen && (
@@ -195,8 +192,7 @@ export default function Home() {
                         width={640} 
                         height={375}
                         className="w-full object-cover rounded-lg hover:cursor-pointer" 
-                        placeholder="blur"
-                        blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+                        priority={true}
                       />
                       </>
                       )}
