@@ -5,12 +5,14 @@ import { redirect } from "next/navigation";
 import Image from 'next/image';
 import { radley } from './fonts';
 import React from 'react';
-import { Sparkles, Calendar, Zap, LineChart } from 'lucide-react';
+import { CirclePlay } from 'lucide-react';
 import Link from 'next/link';
 
 
 export default function Home() {
   const { user } = useAuth();
+  const [showFeedbackScreen, setShowFeedbackScreen] = React.useState(false);
+  const [showDashboardScreen, setShowDashboardScreen] = React.useState(false);
 
   if (user) {
     console.log('Landing Page: User is logged in, redirecting to dashboard');
@@ -88,46 +90,68 @@ export default function Home() {
           </p>
 
           <div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
-
-              <div className="p-4 text-left">
-                <div className="h-12 w-12 rounded-md bg-gradient-to-bl from-berkeleyblue-400 to-berkeleyblue-600 flex items-center justify-center mb-2">
-                  <Sparkles
-                    className="h-6 w-6 text-slate-50"
-                  />
+            <div className="mt-8">
+              
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-8 items-center'>
+                <div className="mt-10 lg:mt-0 relative mx-auto ">
+                  <div className="rounded-xl shadow-lg transform hover:-translate-y-1 transition-transform duration-300">
+                    <div className="relative rounded-lg overflow-hidden">
+                    {showDashboardScreen && (
+                        <Image 
+                        onClick={() => setShowDashboardScreen(false)}
+                        src="/candor-give-feedback-demo.gif" 
+                        alt="Candor Give Feedback Demo" 
+                        width={640} 
+                        height={375}
+                        className="w-full object-cover rounded-lg hover:cursor-pointer" 
+                        placeholder="blur"
+                        blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+                      />
+                      )}
+                      {!showDashboardScreen && (
+                        <>
+                        <CirclePlay className='absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-berkeleyblue w-16 h-16'  />
+                        <Image 
+                        onClick={() => setShowDashboardScreen(true)}
+                        src="/candor-give-feedback-demo.png" 
+                        alt="Candor Give Feedback Demo" 
+                        width={640} 
+                        height={375}
+                        className="w-full object-cover rounded-lg hover:cursor-pointer" 
+                        placeholder="blur"
+                        blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+                      />
+                      </>
+                      )}
+                    </div>
+                  </div>
                 </div>
+                <div className='text-left'>
                 <h3 className={`text-xl font-light text-berkeleyblue max-w-xl ${radley.className}`}>
                   Zero-Touch Administration
                 </h3>
+                
                 <p className="text-slate-500 text-base font-light mt-2">
                   <i>One-Time Setup</i> &mdash; No costly implementations, get set up in minutes<br />
                   <i>Smart Scheduling</i> &mdash; Our system automatically determines the optimal cadence for feedback<br />
                   <i>Automated Follow-ups</i> &mdash; Our system automatically manages feedback reminders
                 </p>
-              </div>
 
-              <div className="p-4 text-left">
-                <div className="h-12 w-12 rounded-md bg-gradient-to-bl from-berkeleyblue-400 to-berkeleyblue-600 flex items-center justify-center mb-2">
-                  <Zap
-                    className="h-6 w-6 text-slate-50"
-                  />
-                </div>
-                <h3 className={`text-xl font-light text-berkeleyblue max-w-xl ${radley.className}`}>
+                <h3 className={`text-xl font-light text-berkeleyblue max-w-xl mt-8 ${radley.className}`}>
                   Frictionless Feedback Collection
                 </h3>
+
                 <p className="text-slate-500 text-base font-light mt-2">
                   <i>AI-Generated Questions</i> &mdash; Tailored automatically based on role, relationships, and industry<br />
                   <i>No Survey Creation</i> &mdash; Forget building questionnaires &ndash; our AI handles it all<br />
                   <i>No Feedback Requests</i> &mdash; No more awkward feedback requests &ndash; our system automatically collects feedback from the right people at the right time
                 </p>
+                </div>
               </div>
 
-              <div className="p-4 text-left">
-                <div className="h-12 w-12 rounded-md bg-gradient-to-bl from-berkeleyblue-400 to-berkeleyblue-600 flex items-center justify-center mb-2">
-                  <LineChart
-                    className="h-6 w-6 text-slate-50"
-                  />
-                </div>
+
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-8 mt-12 items-center'>
+              <div className='text-left'>
                 <h3 className={`text-xl font-light text-berkeleyblue max-w-xl ${radley.className}`}>
                   Powerful Insights
                 </h3>
@@ -136,15 +160,8 @@ export default function Home() {
                   <i>Bias Detection</i> &mdash; AI identifies and neutralize potential unconscious bias<br />
                   <i>Actionable Recommendations</i> &mdash; Concrete development suggestions delivered automatically
                 </p>
-              </div>
 
-              <div className="p-4 text-left">
-                <div className="h-12 w-12 rounded-md bg-gradient-to-bl from-berkeleyblue-400 to-berkeleyblue-600 flex items-center justify-center mb-2">
-                  <Calendar
-                    className="h-6 w-6 text-slate-50"
-                  />
-                </div>
-                <h3 className={`text-xl font-light text-berkeleyblue max-w-xl ${radley.className}`}>
+                <h3 className={`text-xl font-light text-berkeleyblue max-w-xl mt-8 ${radley.className}`}>
                   Effortless Performance Evolution
                 </h3>
                 <p className="text-slate-500 text-base font-light mt-2">
@@ -152,6 +169,40 @@ export default function Home() {
                   <i>Review Acceleration</i> &mdash; Transform months of review preparation into minutes<br />
                   <i>Development Tracking</i> &mdash; Monitor growth trends without manual tracking
                 </p>
+                </div>
+                <div className="mt-10 lg:mt-0 relative mx-auto">
+                  <div className="rounded-xl shadow-lg transform hover:-translate-y-1 transition-transform duration-300">
+                    <div className="relative rounded-lg overflow-hidden">
+                      {showFeedbackScreen && (
+                        <Image 
+                        onClick={() => setShowFeedbackScreen(false)}
+                        src="/candor-feedback-demo.gif" 
+                        alt="Candor Feedback Demo" 
+                        width={640} 
+                        height={375}
+                        className="w-full object-cover rounded-lg hover:cursor-pointer" 
+                        placeholder="blur"
+                        blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+                      />
+                      )}
+                      {!showFeedbackScreen && (
+                        <>
+                        <CirclePlay className='absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-berkeleyblue w-16 h-16'  />
+                        <Image 
+                        onClick={() => setShowFeedbackScreen(true)}
+                        src="/candor-feedback-screen.png" 
+                        alt="Candor Feedback Screen" 
+                        width={640} 
+                        height={375}
+                        className="w-full object-cover rounded-lg hover:cursor-pointer" 
+                        placeholder="blur"
+                        blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+                      />
+                      </>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
 
             </div>
