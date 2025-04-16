@@ -38,13 +38,13 @@ export default function WatchDemoPage() {
         <div className="container mx-auto px-16 py-16 flex flex-col items-center">
             <div className='w-[750px] h-[422px] rounded-lg shadow-lg bg-white'>
             <div className="w-full rounded-lg" style={{ position: 'relative', paddingBottom: '62.5%', height: 0 }}>
-                <iframe 
-                src="https://www.loom.com/embed/60982c715e26453eb38866457a48ab1a?sid=394b32bf-8008-4855-934d-2aea6e0fdca7?hide_owner=true&hide_title=true&hide_share=true&hide_controls=true&hideEmbedTopBar=true&hideEmbedFooter=true"
-                allowFullScreen 
+                <iframe width="750" height="421.875" src="https://www.youtube.com/embed/7PvnP_GMIg4?si=lR56Ix5rclAs1KXQ&rel=0" 
+                title="YouTube video player" 
                 frameBorder="0" 
-                style={{ position: 'absolute', top: 0, left: 0, width: '750px', height: '422px' }}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                referrerPolicy="strict-origin-when-cross-origin" 
                 className='rounded-lg'
-                ></iframe>
+                allowFullScreen></iframe>
             </div>
             </div>
             <p className={`text-slate-500 text-base font-light max-w-3xl mt-8 text-center`}>
