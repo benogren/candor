@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/context/auth-context';
 import { redirect } from "next/navigation";
 import Image from 'next/image';
 import { radley } from '../fonts';
-import { ChartLine, Rocket, Handshake, CirclePercent, Gift, MessageCircleQuestion, MessageCircleHeart } from 'lucide-react';
+import { ChartLine, Rocket, Handshake, CirclePercent, Gift, MessageCircleQuestion, MessageCircleHeart, PlayCircleIcon } from 'lucide-react';
 import Link from 'next/link';
 import React, { useState } from 'react';
 import supabase from '@/lib/supabase/client';
@@ -158,6 +158,7 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement 
           </Link>
           <Link className='border border-cerulean text-cerulean bg-background shadow-xs hover:bg-cerulean-100 h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/demo' target='_blank'>
             Watch a Demo
+            <PlayCircleIcon className="h-4 w-4 text-cerulean" />
           </Link>
           </div>
         </div>

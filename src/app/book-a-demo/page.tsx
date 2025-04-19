@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import supabase from '@/lib/supabase/client';
+import { PlayCircleIcon } from 'lucide-react';
 
 export default function DemoPage() {
   const { user } = useAuth();
@@ -213,16 +214,13 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
                 Thank You!
             </h1>
             <p className={`text-slate-500 text-base font-light max-w-xl mt-4 text-center`}>
-                We&apos;ve received your demo request and will be in touch shortly to schedule your personalized demo of Candor &mdash; within 24 hours. In the meantime, please watch a recorded demo of Candor below, showcasing our features and benefits.
-            </p>
-            <div className="rounded-lg shadow-lg mb-4 w-full mt-12" style={{ position: 'relative', paddingBottom: '62.5%', height: 0 }}>
-                <iframe 
-                src="https://www.loom.com/embed/cb8ee8bf59884a9895b1d75356b9b52b?sid=eea983a0-f3ee-4fef-8159-5128377f5abe?hide_owner=true&hide_title=true&hide_share=true&hide_controls=true&hideEmbedTopBar=true&hideEmbedFooter=true"
-                allowFullScreen 
-                frameBorder="0" 
-                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
-                ></iframe>
-            </div>
+                We&apos;ve received your demo request and will be in touch shortly to schedule your personalized demo of Candor &mdash; within 24 hours.
+                  In the meantime, please watch a recorded demo of Candor to see how it works.
+                  </p>
+                  <Link className='mt-8 border border-cerulean text-cerulean bg-background shadow-xs hover:bg-cerulean-100 h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/demo'>
+                    View Recorded Demo
+                    <PlayCircleIcon className='w-4 h-4 mr-2' />
+                  </Link>
             </div>
             </>
           )}
