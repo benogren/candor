@@ -47,6 +47,25 @@ export default function DashboardPage() {
   // State for profile modal
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
+  async function handleAdminPending() {
+    if (isAdmin && memberStatus === 'pending' && user) {
+      console.log('***User is admin and pending');
+      try {
+        const { error } = await supabase.rpc('approve_team_member', {
+          member_id: user.id
+        });
+        if (error) {
+          console.error('Error approving team member:', error);
+          return false;
+        }
+      } catch (error) {
+        console.error('Error updating user status:', error);
+        return false;
+      }
+    }
+    return false;
+  }
+
   // Effect to handle cookie setting and navigation
   useEffect(() => {
     if (pendingNavigation && cookieIsSet) {
@@ -202,7 +221,6 @@ export default function DashboardPage() {
         setLoading(false);
       }
     };
-    
     checkFeedbackStatus();
   }, [user]);
 
@@ -327,6 +345,7 @@ export default function DashboardPage() {
     }
   };
   
+  
   // Show loading state while checking permissions
   if (loading) {
     return (
@@ -347,6 +366,7 @@ export default function DashboardPage() {
           isOpen={isProfileModalOpen}
           onClose={() => {
             setIsProfileModalOpen(false);
+            handleAdminPending();
             handleProfileUpdate();
           }}
           defaultValues={userProfile}
@@ -362,7 +382,7 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-      {memberStatus === 'pending' && (
+      {memberStatus === 'pending' && !isAdmin && (
         <div className='container mx-auto py-8 px-4'>
           <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-md text-sm text-center">
           <p className="text-amber-700">

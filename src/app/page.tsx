@@ -7,6 +7,8 @@ import { radley } from './fonts';
 import React from 'react';
 import { CirclePlay } from 'lucide-react';
 import Link from 'next/link';
+import Header from '@/components/marketing/Header';
+import Footer from '@/components/marketing/Footer';
 
 
 export default function Home() {
@@ -21,20 +23,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <header className="bg-white shadow-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="text-xl font-bold text-slate-900">
-            <Link href="/">
-              <Image src="/logo/candor_cerulean.png" alt="Candor" width={98} height={24} priority={true} />
-            </Link>
-          </div>
-          <div className="hidden md:flex space-x-6 items-center text-slate-500 text-base font-light">
-            <Link href="/#features" className="">Features</Link>
-            <Link href="/#use-cases" className="">Use Cases</Link>
-            <Link className='bg-cerulean text-primary-foreground hover:bg-cerulean-600 rounded-md text-sm font-normal h-9 px-4 py-2' href='/book-a-demo'>Book a Demo</Link>
-          </div>
-        </div>
-      </header>
+      <Header />
 
       {/* Hero Section */}
       <main className="flex-1 flex items-center justify-center bg-slate-50">
@@ -45,7 +34,16 @@ export default function Home() {
           <p className={`text-slate-500 text-base font-light max-w-xl mt-4`}>
           Our AI-powered platform seamlessly collects, analyzes, and delivers actionable 360-degree feedback that empowers employees, equips managers, and gives you the insights you need to build high-performing teams.
           </p>
-          <Link className='mt-8 border border-cerulean text-cerulean bg-background shadow-xs hover:bg-cerulean-100 h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/book-a-demo'>Book a Demo</Link>
+
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link className='mt-8 border border-cerulean text-background bg-cerulean shadow-xs hover:bg-cerulean-600 h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/auth/register'>
+            Start Free Trial
+            </Link>
+            
+            <Link className='mt-8 border border-cerulean text-cerulean bg-background shadow-xs hover:bg-cerulean-100 h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/book-a-demo'>
+            Book a Demo
+            </Link>
+          </div>
         </div>
       </main>
 
@@ -379,24 +377,18 @@ export default function Home() {
           <p className={`text-white text-base font-light max-w-xl mt-4`}>
           Join organizations that are transforming their feedback culture from a burdensome annual event to an ongoing conversation that drives growth and improvement.
           </p>
-
-          <Link className='mt-8 border border-berkeleyblue-200 text-berkeleyblue bg-background shadow-xs hover:bg-cerulean-100 h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/book-a-demo'>Book a Demo</Link>
+          <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+            <Link className='border border-berkeleyblue-200 text-berkeleyblue bg-background shadow-xs hover:bg-cerulean-100 h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/auth/register'>
+              Start Free Trial
+            </Link>
+            <Link className='border border-white text-white hover:bg-berkeleyblue-700 h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/book-a-demo'>
+              Book a Demo
+            </Link>
+          </div>
         </div>
       </div>
 
-      <footer className="bg-white py-8">
-        <div className="container mx-auto px-4 text-center text-berkeleyblue text-sm">
-          <Image src="/logo/candor_berkeleyblue.png" alt="Candor" width={75} height={18} priority={true} className='mx-auto mb-4' />
-          <div className="flex justify-center space-x-4 mb-4">
-            <Link href="/terms" className="text-slate-500 hover:text-cerulean">Terms of Use</Link>
-            <Link href="/privacy" className="text-slate-500 hover:text-cerulean">Privacy Policy</Link>
-          </div>
-          &copy; {new Date().getFullYear()} Candor. All rights reserved.
-        </div>
-      </footer>
-
-
-      
+      <Footer />
     </div>
   );
 }
