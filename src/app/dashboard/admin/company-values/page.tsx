@@ -142,7 +142,7 @@ const TopNomineesMetrics = ({ topNominees }: { topNominees: TopNomineesPerValue[
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
           {topNominees.map((valueData) => (
             <Card key={valueData.value_id} className="border shadow-sm">
               <CardHeader className="pb-2">
@@ -150,10 +150,10 @@ const TopNomineesMetrics = ({ topNominees }: { topNominees: TopNomineesPerValue[
                   {valueData.icon && (
                     <FontAwesomeIcon 
                       icon={['fas', valueData.icon as IconName]} 
-                      className="h-5 w-5 text-berkeleyblue" 
+                      className="h-5 w-5 text-cerulean" 
                     />
                   )}
-                  <CardTitle className="text-lg">{valueData.value_name}</CardTitle>
+                  <CardTitle className="text-lg text-cerulean">{valueData.value_name}</CardTitle>
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
