@@ -40,10 +40,44 @@ const PRICE_KEYS = {
   QUARTERLY: 'candor_quarterly'
 };
 
+const PUBLIC_EMAIL_DOMAINS = [
+  'gmail.com',
+  'yahoo.com',
+  'hotmail.com',
+  'outlook.com',
+  'aol.com',
+  'icloud.com',
+  'protonmail.com',
+  'mail.com',
+  'zoho.com',
+  'yandex.com',
+  'gmx.com',
+  'live.com',
+  'msn.com',
+  'me.com',
+  'comcast.net',
+  'verizon.net',
+  'att.net',
+  'inbox.com',
+  'test.com',
+  'testing.com',
+  'example.com',
+  'demo.com',
+  'sample.com',
+  'fake.com',
+  'fakemail.com',
+  'tempmail.com'
+];
+
 // Define form schema
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters' }),
-  email: z.string().email({ message: 'Please enter a valid email address' }),
+  email: z.string()
+    .email({ message: 'Please enter a valid email address' })
+    .refine(email => {
+      const domain = email.split('@')[1]?.toLowerCase();
+      return !PUBLIC_EMAIL_DOMAINS.includes(domain);
+    }, { message: 'Please use your work email address instead of a personal email provider' }),
   password: z.string().min(8, { message: 'Password must be at least 8 characters' }),
 });
 

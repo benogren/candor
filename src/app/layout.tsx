@@ -6,6 +6,8 @@ import { Analytics } from "@vercel/analytics/react"
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import { pt_sans } from './fonts';
 import './globals.css';
+import { GoogleTagManager } from '@next/third-parties/google'
+
 
 export const metadata = {
   metadataBase: new URL('https://candor.so'),
@@ -52,6 +54,7 @@ export default function RootLayout({
     <html lang="en" className={pt_sans.className}>
       <head>
       <meta name="apple-mobile-web-app-title" content="Candor" />
+      <GoogleTagManager gtmId="AW-17027457476" />
       </head>
       <body>
         <AuthProvider>
