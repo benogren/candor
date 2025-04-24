@@ -116,6 +116,9 @@ importers:
       formidable:
         specifier: ^3.5.2
         version: 3.5.2
+      google:
+        specifier: link:@next/third-parties/google
+        version: link:@next/third-parties/google
       google-auth-library:
         specifier: ^9.15.1
         version: 9.15.1

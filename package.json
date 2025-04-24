@@ -46,6 +46,7 @@
     "cmdk": "1.0.0",
     "date-fns": "^4.1.0",
     "formidable": "^3.5.2",
+    "google": "link:@next/third-parties/google",
     "google-auth-library": "^9.15.1",
     "googleapis": "^146.0.0",
     "lucide-react": "^0.476.0",
