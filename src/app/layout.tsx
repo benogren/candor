@@ -54,7 +54,6 @@ export default function RootLayout({
     <html lang="en" className={pt_sans.className}>
       <head>
       <meta name="apple-mobile-web-app-title" content="Candor" />
-      <GoogleTagManager gtmId="AW-17027457476" />
       </head>
       <body>
         <AuthProvider>
@@ -62,6 +61,8 @@ export default function RootLayout({
           <Analytics />
           <SpeedInsights />
         </AuthProvider>
+
+        <GoogleTagManager gtmId="AW-17027457476" />
       </body>
     </html>
   );
