@@ -30,6 +30,8 @@ import { Separator } from '@/components/ui/separator';
 import { Slider } from '@/components/ui/slider';
 import Header from '@/components/marketing/Header';
 import Footer from '@/components/marketing/Footer';
+import { useAnalytics } from '@/hooks/useAnalytics';
+
 
 // Load Stripe outside of component
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
@@ -382,7 +384,8 @@ export default function RegisterPage() {
   const [existingCompanyName, setExistingCompanyName] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState('');
   const [industry, setIndustry] = useState('');
-  
+  const { trackRegistrationConversion } = useAnalytics();
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -614,6 +617,7 @@ export default function RegisterPage() {
             });
           }
 
+
         } catch (stripeError) {
           console.error('Stripe setup detailed error:', stripeError);
           // Continue with account creation even if payment setup fails
@@ -647,6 +651,10 @@ export default function RegisterPage() {
             console.warn('Error storing pending registration:', result.error);
             // Non-critical error, we can continue
           }
+
+          // Google Tracking
+          trackRegistrationConversion(companyId);
+
         } catch (pendingErr) {
           console.warn('Failed to store pending registration:', pendingErr);
           // Continue execution, as this is just a backup
