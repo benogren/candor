@@ -187,7 +187,7 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement 
                   />
                 </div>
                 <h3 className={`text-xl font-light text-berkeleyblue max-w-xl ${radley.className}`}>
-                    Free 6-Month Pilot
+                    Free 3-Month Pilot
                 </h3>
                 <p className="text-slate-500 text-base font-light mt-2">
                     Experience Candor&apos;s complete feedback platform at no cost, with full functionality for your entire organization.
