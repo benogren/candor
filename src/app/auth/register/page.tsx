@@ -50,6 +50,7 @@ const PUBLIC_EMAIL_DOMAINS = [
   'outlook.com',
   'aol.com',
   'icloud.com',
+  'iclous.com',
   'protonmail.com',
   'mail.com',
   'zoho.com',
@@ -80,7 +81,33 @@ const formSchema = z.object({
     .refine(email => {
       const domain = email.split('@')[1]?.toLowerCase();
       return !PUBLIC_EMAIL_DOMAINS.includes(domain);
-    }, { message: 'Please use your work email address instead of a personal email provider' }),
+    }, { message: 'Please use your work email address instead of a personal email provider' })
+    .refine(
+      async (email) => {
+        // Skip validation for empty emails or emails without @
+        if (!email || !email.includes('@')) return true;
+        
+        const domain = email.split('@')[1];
+        
+        try {
+          const response = await fetch('/api/validate-email-domain', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain }),
+          });
+          
+          if (!response.ok) return false;
+          
+          const result = await response.json();
+          return result.valid && result.hasMx;
+        } catch (error) {
+          console.error('Error validating domain MX records:', error);
+          // In case of error, let it pass and handle validation elsewhere
+          return true;
+        }
+      },
+      { message: 'Please provide a valid work email' }
+    ),
   password: z.string().min(8, { message: 'Password must be at least 8 characters' }),
 });
 
@@ -386,6 +413,7 @@ export default function RegisterPage() {
   const [companyName, setCompanyName] = useState('');
   const [industry, setIndustry] = useState('');
   const { trackRegistrationConversion } = useAnalytics();
+  const [isValidatingEmail, setIsValidatingEmail] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -394,6 +422,7 @@ export default function RegisterPage() {
       email: '',
       password: '',
     },
+    mode: 'onBlur', // Validate on blur to improve user experience
   });
 
   // Check if the domain exists when email changes
@@ -703,7 +732,13 @@ export default function RegisterPage() {
   // This function handles the continue button click
   const handleContinueClick = async () => {
     try {
-      const isValid = await form.trigger(['name', 'email', 'password']);
+      // Manually trigger email validation first to check MX records
+      const emailValid = await form.trigger('email');
+      if (!emailValid) {
+        return; // Stop if email validation fails
+      }
+      
+      const isValid = await form.trigger(['name', 'password']);
       
       if (isValid) {
         if (existingCompanyId) {
@@ -793,9 +828,27 @@ export default function RegisterPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Email</FormLabel>
-                      <FormControl>
-                        <Input placeholder="email@example.com" {...field} />
-                      </FormControl>
+                      <div className="relative">
+                        <FormControl>
+                          <Input 
+                            placeholder="email@example.com" 
+                            {...field} 
+                            onBlur={async (e) => {
+                              field.onBlur();
+                              if (e.target.value && e.target.value.includes('@')) {
+                                setIsValidatingEmail(true);
+                                await form.trigger('email');
+                                setIsValidatingEmail(false);
+                              }
+                            }}
+                          />
+                        </FormControl>
+                        {isValidatingEmail && (
+                          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                            <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                          </div>
+                        )}
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}

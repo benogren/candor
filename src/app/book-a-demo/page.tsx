@@ -8,9 +8,41 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import supabase from '@/lib/supabase/client';
-import { PlayCircleIcon } from 'lucide-react';
+import { PlayCircleIcon, Loader2 } from 'lucide-react';
 import Header from '@/components/marketing/Header';
 import Footer from '@/components/marketing/Footer';
+
+// Add public email domains array
+const PUBLIC_EMAIL_DOMAINS = [
+  'gmail.com',
+  'gmai.com',
+  'yahoo.com',
+  'hotmail.com',
+  'outlook.com',
+  'aol.com',
+  'icloud.com',
+  'iclous.com',
+  'protonmail.com',
+  'mail.com',
+  'zoho.com',
+  'yandex.com',
+  'gmx.com',
+  'live.com',
+  'msn.com',
+  'me.com',
+  'comcast.net',
+  'verizon.net',
+  'att.net',
+  'inbox.com',
+  'test.com',
+  'testing.com',
+  'example.com',
+  'demo.com',
+  'sample.com',
+  'fake.com',
+  'fakemail.com',
+  'tempmail.com'
+];
 
 export default function DemoPage() {
   const { user } = useAuth();
@@ -33,28 +65,120 @@ export default function DemoPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailValidationState, setEmailValidationState] = useState<{
+    isValidating: boolean;
+    errorMessage: string | null;
+  }>({ isValidating: false, errorMessage: null });
 
   // Handle form input changes
-interface FormData {
+  interface FormData {
     name: string;
     email: string;
     company: string;
     companySize: string;
-}
+  }
 
-const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData((prev: FormData) => ({
-        ...prev,
-        [name]: value
+      ...prev,
+      [name]: value
     }));
-};
+    
+    // Clear any previous error messages for email when it changes
+    if (name === 'email') {
+      setEmailValidationState({ isValidating: false, errorMessage: null });
+    }
+  };
+
+  // Email validation functions
+  const isPublicEmailDomain = (email: string): boolean => {
+    if (!email || !email.includes('@')) return false;
+    const domain = email.split('@')[1]?.toLowerCase();
+    return PUBLIC_EMAIL_DOMAINS.includes(domain);
+  };
+
+  const validateEmailDomain = async (email: string): Promise<boolean> => {
+    if (!email || !email.includes('@')) return false;
+    
+    const domain = email.split('@')[1];
+    
+    try {
+      setEmailValidationState(prev => ({ ...prev, isValidating: true }));
+      
+      const response = await fetch('/api/validate-email-domain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to validate domain');
+      }
+      
+      const result = await response.json();
+      return result.valid && result.hasMx;
+    } catch (error) {
+      console.error('Error validating domain MX records:', error);
+      return false;
+    } finally {
+      setEmailValidationState(prev => ({ ...prev, isValidating: false }));
+    }
+  };
+
+  // Validate email when it loses focus
+  const handleEmailBlur = async () => {
+    const { email } = formData;
+    
+    if (!email) return;
+    
+    // First check if it's a public email domain
+    if (isPublicEmailDomain(email)) {
+      setEmailValidationState({
+        isValidating: false,
+        errorMessage: 'Please use your work email address instead of a personal email provider'
+      });
+      return;
+    }
+    
+    // Then check if the domain has valid MX records
+    if (email.includes('@')) {
+      const isValidDomain = await validateEmailDomain(email);
+      
+      if (!isValidDomain) {
+        setEmailValidationState({
+          isValidating: false,
+          errorMessage: 'Please provide a valid work email'
+        });
+      }
+    }
+  };
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsSubmitting(true);
     setError(null);
+    
+    // Check if email is valid before submitting
+    if (isPublicEmailDomain(formData.email)) {
+      setEmailValidationState({
+        isValidating: false,
+        errorMessage: 'Please use your work email address instead of a personal email provider'
+      });
+      return;
+    }
+    
+    // Additional validation for domain MX records
+    const isValidDomain = await validateEmailDomain(formData.email);
+    if (!isValidDomain) {
+      setEmailValidationState({
+        isValidating: false,
+        errorMessage: 'This domain does not have valid email servers'
+      });
+      return;
+    }
+    
+    setIsSubmitting(true);
     
     try {
       // Insert data into demo_leads table
@@ -66,7 +190,8 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
             email: formData.email, 
             company: formData.company, 
             company_size: formData.companySize,
-            created_at: new Date()
+            created_at: new Date(),
+            status: 'Demo Requested'
           }
         ]);
         
@@ -136,16 +261,31 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
                 
                 <div>
                   <label htmlFor="email" className="block text-slate-700 mb-1 font-medium">Work Email</label>
-                  <input 
-                    id="email"
-                    name="email"
-                    type="email" 
-                    value={formData.email}
-                    onChange={handleChange}
-                    className="w-full p-2 border border-slate-300 rounded" 
-                    placeholder="your@email.com" 
-                    required 
-                  />
+                  <div className="relative">
+                    <input 
+                      id="email"
+                      name="email"
+                      type="email" 
+                      value={formData.email}
+                      onChange={handleChange}
+                      onBlur={handleEmailBlur}
+                      className={`w-full p-2 border rounded ${
+                        emailValidationState.errorMessage 
+                          ? 'border-red-500' 
+                          : 'border-slate-300'
+                      }`}
+                      placeholder="your@work-email.com" 
+                      required 
+                    />
+                    {emailValidationState.isValidating && (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                        <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                      </div>
+                    )}
+                  </div>
+                  {emailValidationState.errorMessage && (
+                    <p className="text-red-500 text-sm mt-1">{emailValidationState.errorMessage}</p>
+                  )}
                 </div>
                 
                 <div>
@@ -184,7 +324,7 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
                   <Button 
                     type="submit"
                     className="w-full"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || emailValidationState.isValidating || !!emailValidationState.errorMessage}
                   >
                     {isSubmitting ? 'Submitting...' : 'Book My Demo'}
                   </Button>
