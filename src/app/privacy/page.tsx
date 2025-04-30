@@ -122,8 +122,7 @@ export default function PrivacyPage() {
                 If you have any questions or concerns about this Privacy Policy or our data practices, please contact us at:
               </p>
               <p className="mt-2">
-                <strong>Email:</strong> privacy@candor.ai<br />
-                <strong>Address:</strong> 123 Feedback Avenue, Suite 360, San Francisco, CA 94103
+                <strong>Email:</strong> support@candor.so<br />
               </p>
             </div>
           </div>
