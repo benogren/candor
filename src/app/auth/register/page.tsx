@@ -44,6 +44,7 @@ const PRICE_KEYS = {
 
 const PUBLIC_EMAIL_DOMAINS = [
   'gmail.com',
+  'gmai.com',
   'yahoo.com',
   'hotmail.com',
   'outlook.com',
