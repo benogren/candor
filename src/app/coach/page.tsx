@@ -17,6 +17,14 @@ declare global {
       q?: unknown[];
       (...args: unknown[]): void;
     };
+    fbq?: (event: string, eventName: string, params?: Record<string, unknown>) => void;
+    _fbq?: {
+      push: (arg: unknown) => void;
+      loaded: boolean;
+      version: string;
+      queue: unknown[];
+      [key: string]: unknown;
+    };
     addEventListener(event: string, callback: () => void): void;
     removeEventListener(event: string, callback: () => void): void;
   }
@@ -25,10 +33,15 @@ declare global {
 export default function CoachPage() {
   const [isSubmitted, setIsSubmitted] = useState(false);
 
-  // Track Prefinery signup events
+  // Track Prefinery signup events and Meta Pixel Contact events
   useEffect(() => {
     const handleSignupSuccess = () => {
       setIsSubmitted(true);
+      
+      // Track the "Contact" event when the form is successfully submitted
+      if (typeof window !== 'undefined' && window.fbq) {
+        window.fbq('track', 'Contact');
+      }
     };
 
     if (typeof window !== 'undefined') {
@@ -41,6 +54,7 @@ export default function CoachPage() {
   }, []);
 
   return (
+    <>
     <div className="flex flex-col min-h-screen">
       {/* Prefinery Script */}
       <Script 
@@ -57,6 +71,37 @@ export default function CoachPage() {
         src="https://widget.prefinery.com/widget/v2/7pgzxwbv.js" 
         strategy="afterInteractive"
       />
+      
+      {/* Meta Pixel Base Code */}
+      <Script 
+        id="meta-pixel-base"
+        strategy="afterInteractive"
+        dangerouslySetInnerHTML={{
+          __html: `
+            !function(f,b,e,v,n,t,s)
+            {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+            n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+            if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+            n.queue=[];t=b.createElement(e);t.async=!0;
+            t.src=v;s=b.getElementsByTagName(e)[0];
+            s.parentNode.insertBefore(t,s)}(window, document,'script',
+            'https://connect.facebook.net/en_US/fbevents.js');
+            fbq('init', '9746830468718722'); // Replace YOUR_PIXEL_ID with your actual Meta Pixel ID
+            fbq('track', 'PageView'); // Track page view event
+          `
+        }}
+      />
+
+      {/* Meta Pixel noscript fallback */}
+      <noscript>
+        <img 
+          height="1" 
+          width="1" 
+          style={{ display: 'none' }} 
+          src="https://www.facebook.com/tr?id=YOUR_PIXEL_ID&ev=PageView&noscript=1"
+          alt="" 
+        />
+      </noscript>
 
       <header className="bg-white shadow-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
@@ -90,6 +135,12 @@ export default function CoachPage() {
                       method="post" 
                       acceptCharset="UTF-8"
                       noValidate
+                      onSubmit={() => {
+                        // Track form submission attempt with Meta Pixel
+                        if (typeof window !== 'undefined' && window.fbq) {
+                          window.fbq('track', 'Contact');
+                        }
+                      }}
                     >
                       {/* Hidden tracking fields */}
                       <input id="referrer" name="referrer" type="hidden" value="" />
@@ -220,93 +271,80 @@ export default function CoachPage() {
           </div>
           
           <p className={`text-white max-w-2xl text-lg font-light mt-12 text-center`}>
-          Studies show that 81% of employees who receive career coaching report increased job satisfaction, and 63% of individuals who have used a career coach believe it has helped them advance their career.
+            Studies show that 81% of employees who receive career coaching report increased job satisfaction, and 63% of individuals who have used a career coach believe it has helped them advance their career.
           </p>
         </div>
       </div>
 
-      {/* Quote Section */}
-      {/* <div className='bg-slate-50 py-16'>
-        <div className="container mx-auto px-8 flex flex-col items-center text-center">
-          <h2 className={`text-xl font-light text-cerulean italic max-w-4xl ${radley.className}`}>
-            High-performing teams have mastered the art of giving and receiving feedback. They know feedback is the thing that helps them grow. So they don&apos;t shy away from it. They give positive and constructive feedback ALL. THE. TIME.
+      {/* Testimonials Section */}
+      <div className='bg-slate-50 py-16' id="testimonials">
+        <div className="container mx-auto px-4 flex flex-col items-center text-center">
+          <h2 className={`text-4xl font-light text-cerulean max-w-4xl ${radley.className}`}>
+            What Our Users Are Saying
           </h2>
-          <p className='mt-8 text-slate-500 text-base font-light'>
-            Shelley Johnson<br />
-            <span className="text-slate-500 text-sm font-light">HR Coach &amp; Author</span>
+          <p className={`text-slate-500 text-base font-light max-w-xl mt-4 mb-12`}>
+            Hear from professionals who have transformed their careers with Candor Coach.
           </p>
-        </div>
-      </div> */}
-
-      {/* Testimonials Section - Add this before the pricing section */}
-<div className='bg-slate-50 py-16' id="testimonials">
-  <div className="container mx-auto px-4 flex flex-col items-center text-center">
-    <h2 className={`text-4xl font-light text-cerulean max-w-4xl ${radley.className}`}>
-      What Our Users Are Saying
-    </h2>
-    <p className={`text-slate-500 text-base font-light max-w-xl mt-4 mb-12`}>
-      Hear from professionals who have transformed their careers with Candor Coach.
-    </p>
-    
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-      {/* Testimonial 1 */}
-      <div className="bg-white rounded-lg shadow-md p-6 md:p-8 text-left relative">
-        <p className="text-slate-600 italic mb-6">
-          Since I started using Candor Coach, I&apos;ve become much more strategic about my career moves. The weekly check-ins and goal-setting frameworks helped me prepare for a promotion conversation that led to a 15% salary increase!
-        </p>
-        <div className="flex items-center">
-          <div className="bg-cerulean-100 w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center text-cerulean font-semibold text-sm md:text-base">
-            <Image src="/beau.jpeg" alt="Candor Coach : Beau" width={40} height={40} className="rounded-full" />
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Testimonial 1 */}
+            <div className="bg-white rounded-lg shadow-md p-6 md:p-8 text-left relative">
+              <p className="text-slate-600 italic mb-6">
+                Since I started using Candor Coach, I&apos;ve become much more strategic about my career moves. The weekly check-ins and goal-setting frameworks helped me prepare for a promotion conversation that led to a 15% salary increase!
+              </p>
+              <div className="flex items-center">
+                <div className="bg-cerulean-100 w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center text-cerulean font-semibold text-sm md:text-base">
+                  <Image src="/beau.jpeg" alt="Candor Coach : Beau" width={40} height={40} className="rounded-full" />
+                </div>
+                <div className="ml-3 md:ml-4">
+                  <p className="font-medium text-slate-800 text-sm md:text-base">Beau L.</p>
+                  <p className="text-xs md:text-sm text-slate-500">Engineering</p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Testimonial 2 */}
+            <div className="bg-white rounded-lg shadow-md p-6 md:p-8 text-left relative">
+              <p className="text-slate-600 italic mb-6">
+                The best part about Candor Coach is being able to text anytime I need guidance. During a stressful job transition, having an AI coach available 24/7 helped me navigate tough decisions and prepare for interviews with confidence.
+              </p>
+              <div className="flex items-center">
+                <div className="bg-cerulean-100 w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center text-cerulean font-semibold text-sm md:text-base">
+                  <Image src="/courtney.jpeg" alt="Candor Coach : Courtney" width={40} height={40} className="rounded-full" />
+                </div>
+                <div className="ml-3 md:ml-4">
+                  <p className="font-medium text-slate-800 text-sm md:text-base">Courtney O.</p>
+                  <p className="text-xs md:text-sm text-slate-500">Operations</p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Testimonial 3 */}
+            <div className="bg-white rounded-lg shadow-md p-6 md:p-8 text-left relative">
+              <p className="text-slate-600 italic mb-6">
+                I was skeptical about AI coaching at first, but Candor Coach has been transformative. The personality assessments and ikigai exercises helped me recognize strengths I wasn&apos;t leveraging. I&apos;m now pursuing projects that align with my values and strengths.
+              </p>
+              <div className="flex items-center">
+                <div className="bg-cerulean-100 w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center text-cerulean font-semibold text-sm md:text-base">
+                  <Image src="/kate.jpeg" alt="Candor Coach : Kate" width={40} height={40} className="rounded-full" />
+                </div>
+                <div className="ml-3 md:ml-4">
+                  <p className="font-medium text-slate-800 text-sm md:text-base">Kate H.</p>
+                  <p className="text-xs md:text-sm text-slate-500">Product Management</p>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="ml-3 md:ml-4">
-            <p className="font-medium text-slate-800 text-sm md:text-base">Beau L.</p>
-            <p className="text-xs md:text-sm text-slate-500">Engineering</p>
-          </div>
-        </div>
-      </div>
-      
-      {/* Testimonial 2 */}
-      <div className="bg-white rounded-lg shadow-md p-6 md:p-8 text-left relative">
-        <p className="text-slate-600 italic mb-6">
-          The best part about Candor Coach is being able to text anytime I need guidance. During a stressful job transition, having an AI coach available 24/7 helped me navigate tough decisions and prepare for interviews with confidence.
-        </p>
-        <div className="flex items-center">
-          <div className="bg-cerulean-100 w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center text-cerulean font-semibold text-sm md:text-base">
-            <Image src="/courtney.jpeg" alt="Candor Coach : Courtney" width={40} height={40} className="rounded-full" />
-          </div>
-          <div className="ml-3 md:ml-4">
-            <p className="font-medium text-slate-800 text-sm md:text-base">Courtney O.</p>
-            <p className="text-xs md:text-sm text-slate-500">Operations</p>
-          </div>
-        </div>
-      </div>
-      
-      {/* Testimonial 3 */}
-      <div className="bg-white rounded-lg shadow-md p-6 md:p-8 text-left relative">
-        <p className="text-slate-600 italic mb-6">
-          I was skeptical about AI coaching at first, but Candor Coach has been transformative. The personality assessments and ikigai exercises helped me recognize strengths I wasn&apos;t leveraging. I&apos;m now pursuing projects that align with my values and strengths.
-        </p>
-        <div className="flex items-center">
-          <div className="bg-cerulean-100 w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center text-cerulean font-semibold text-sm md:text-base">
-            <Image src="/kate.jpeg" alt="Candor Coach : Courtney" width={40} height={40} className="rounded-full" />
-          </div>
-          <div className="ml-3 md:ml-4">
-            <p className="font-medium text-slate-800 text-sm md:text-base">Kate H.</p>
-            <p className="text-xs md:text-sm text-slate-500">Product Management</p>
+          
+          <div className="mt-10 md:mt-12">
+            <p className="text-slate-500 font-light text-sm md:text-base">
+              Join thousands of professionals advancing their careers with personalized coaching.
+            </p>
           </div>
         </div>
       </div>
-    </div>
-    
-    <div className="mt-10 md:mt-12">
-      <p className="text-slate-500 font-light text-sm md:text-base">
-        Join thousands of professionals advancing their careers with personalized coaching.
-      </p>
-    </div>
-  </div>
-</div>
 
-
+      {/* Pricing Section */}
       <div className='bg-white py-16' id="pricing">
         <div className="container mx-auto px-4 flex flex-col items-center text-center">
           <h2 className={`text-4xl font-light text-cerulean max-w-4xl ${radley.className}`}>
@@ -325,7 +363,6 @@ export default function CoachPage() {
                       <div className="text-center mt-2 text-slate-500">per week</div>
                     </div>
                   </div>
-
 
                   <div className="px-6 pb-6 rounded-lg">
                     <h4 className={`text-xl font-light text-cerulean mb-4 ${radley.className}`}>All Features Included</h4>
@@ -396,5 +433,6 @@ export default function CoachPage() {
         </div>
       </footer>
     </div>
+    </>
   );
 }
