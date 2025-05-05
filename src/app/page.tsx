@@ -4,9 +4,10 @@ import { useAuth } from '@/lib/context/auth-context';
 import { redirect } from "next/navigation";
 import Image from 'next/image';
 import { radley } from './fonts';
-import React from 'react';
+import React, { useState } from 'react';
 import { Binoculars, CalendarSync, ChartScatter, CircleCheck, Clock, Clock8, HeartHandshake, Sparkles, TriangleAlert, Zap } from 'lucide-react';
 import Link from 'next/link';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Header from '@/components/marketing/Header';
 import Footer from '@/components/marketing/Footer';
 
@@ -15,6 +16,8 @@ export default function Home() {
   const { user } = useAuth();
   // const [showFeedbackScreen, setShowFeedbackScreen] = React.useState(false);
   // const [showDashboardScreen, setShowDashboardScreen] = React.useState(false);
+  // const [userCount, setUserCount] = useState(10);
+  const [billingCycle, setBillingCycle] = useState('monthly');
 
   if (user) {
     console.log('Landing Page: User is logged in, redirecting to dashboard');
@@ -261,7 +264,263 @@ export default function Home() {
         </div>
       </div>
 
-      <div className='bg-berkeleyblue py-16'>
+      <div className='bg-white py-16' id="pricing">
+        <div className="container mx-auto px-4 flex flex-col items-center text-center">
+          <h2 className={`text-4xl font-light text-cerulean max-w-4xl ${radley.className}`}>
+            Simple, Volume-Based Pricing
+          </h2>
+          <p className={`text-slate-500 text-lg font-light max-w-2xl mt-4`}>
+          All features included for every customer - you only pay for what you use.
+          </p>
+
+          <div className='bg-white py-16'>
+            <div className="mx-auto px-4 flex flex-col items-center">
+              <div className="w-full">
+                <Tabs defaultValue="monthly" className="w-full" onValueChange={(value) => setBillingCycle(value)}>
+                  <div className="flex justify-center mb-8">
+                  <TabsList className="bg-slate-100 p-1 rounded-lg overflow-hidden">
+                        <TabsTrigger 
+                        value="monthly" 
+                        className="px-8 py-2 transition-all relative"
+                        style={billingCycle === 'monthly' ? {
+                            backgroundColor: 'white',
+                            color: '#0068b7', // cerulean color
+                            
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                        } : {
+                            backgroundColor: 'transparent',
+                            color: '#64748b' // slate-500
+                        }}
+                        >
+                        Monthly
+                        </TabsTrigger>
+                        <TabsTrigger 
+                        value="quarterly" 
+                        className="px-8 py-2 transition-all relative"
+                        style={billingCycle === 'quarterly' ? {
+                            backgroundColor: 'white',
+                            color: '#0068b7', // cerulean color
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                        } : {
+                            backgroundColor: 'transparent',
+                            color: '#64748b' // slate-500
+                        }}
+                        >
+                        Quarterly <span className="italic text-slate-500 ml-1">(Save 15%)</span>
+                        </TabsTrigger>
+                    </TabsList>
+                  </div>
+
+                  <TabsContent value="monthly" className="mt-0">
+                    <div className="bg-white w-full rounded-lg shadow-md p-8 border border-slate-200">
+                      {/* <div className="text-center mb-8">
+                        <h3 className={`text-2xl font-light text-cerulean ${radley.className}`}>Simple, Transparent Pricing</h3>
+                        <p className="mt-2 text-slate-500">All features included for every customer - you only pay for what you use</p>
+                      </div> */}
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div className="bg-slate-50 p-6 rounded-lg">
+                          <div className="flex items-baseline justify-center">
+                            <span className="text-3xl font-light text-slate-900">Free</span>
+                          </div>
+                          <div className="text-center mt-2 text-slate-500">1-5 users</div>
+                        </div>
+                        
+                        <div className="bg-slate-50 p-6 rounded-lg border-2 border-slate-400 relative">
+                          <div className="absolute -top-3 right-4 bg-slate-400 text-white text-xs px-3 py-1 rounded-full">
+                            MOST COMMON
+                          </div>
+                          <div className="flex items-baseline justify-center">
+                            <span className="text-3xl font-light text-slate-900">$10</span>
+                            <span className="ml-1 text-slate-500 text-sm">/user/month</span>
+                          </div>
+                          <div className="text-center mt-2 text-slate-500">6-50 users</div>
+                        </div>
+                        
+                        <div className="bg-slate-50 p-6 rounded-lg">
+                          <div className="flex items-baseline justify-center">
+                            <span className="text-3xl font-light text-slate-900">$9</span>
+                            <span className="ml-1 text-slate-500 text-sm">/user/month</span>
+                          </div>
+                          <div className="text-center mt-2 text-slate-500">51+ users</div>
+                        </div>
+                      </div>
+                      
+                      <div className="bg-slate-50 p-6 rounded-lg mb-8">
+                        <h4 className={`text-xl font-light text-cerulean mb-4 ${radley.className}`}>All Features Included</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="flex items-start">
+                            <svg className="h-5 w-5 text-cerulean flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <p className="ml-3 text-slate-500 text-sm">AI-powered feedback collection</p>
+                          </div>
+                          <div className="flex items-start">
+                            <svg className="h-5 w-5 text-cerulean flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <p className="ml-3 text-slate-500 text-sm">AI summarizations</p>
+                          </div>
+                          <div className="flex items-start">
+                            <svg className="h-5 w-5 text-cerulean flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <p className="ml-3 text-slate-500 text-sm">Company values &amp; employee recognition</p>
+                          </div>
+                          <div className="flex items-start">
+                            <svg className="h-5 w-5 text-cerulean flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <p className="ml-3 text-slate-500 text-sm">AI-enabled insights &amp; action</p>
+                          </div>
+                          <div className="flex items-start">
+                            <svg className="h-5 w-5 text-cerulean flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <p className="ml-3 text-slate-500 text-sm">Manager view of feedback</p>
+                          </div>
+                          <div className="flex items-start">
+                            <svg className="h-5 w-5 text-cerulean flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <p className="ml-3 text-slate-500 text-sm">Email notifications</p>
+                          </div>
+                          <div className="flex items-start">
+                            <svg className="h-5 w-5 text-cerulean flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <p className="ml-3 text-slate-500 text-sm">Unlimited feedback cycles</p>
+                          </div>
+                          <div className="flex items-start">
+                            <svg className="h-5 w-5 text-cerulean flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <p className="ml-3 text-slate-500 text-sm">10 Day Free Trial</p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="text-center mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+                        <Link href="/auth/register" className="inline-block bg-cerulean text-white text-center py-3 px-8 rounded-md hover:bg-cerulean-600 transition-colors">
+                          Start Free Trial
+                        </Link>
+                        <Link href="/book-a-demo" className="inline-block bg-white text-cerulean border border-cerulean text-center py-3 px-8 rounded-md hover:bg-cerulean-100 transition-colors">
+                          Request Demo
+                        </Link>
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="quarterly" className="mt-0">
+                    <div className="bg-white w-full rounded-lg shadow-md p-8 border border-slate-200">
+                      {/* <div className="text-center mb-8">
+                        <h3 className={`text-2xl font-light text-cerulean ${radley.className}`}>Simple, Volume-Based Pricing</h3>
+                        <p className="mt-2 text-slate-500">All features included for every customer - with quarterly discount</p>
+                      </div> */}
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div className="bg-slate-50 p-6 rounded-lg">
+                          <div className="flex items-baseline justify-center">
+                            <span className="text-3xl font-light text-slate-900">Free</span>
+                          </div>
+                          <div className="text-center mt-2 text-cerulean text-sm font-medium">No time limit</div>
+                          <div className="text-center mt-2 text-slate-500">1-5 users</div>
+                        </div>
+                        
+                        <div className="bg-slate-50 p-6 rounded-lg border-2 border-slate-400 relative">
+                          <div className="absolute -top-3 right-4 bg-slate-400 text-white text-xs px-3 py-1 rounded-full">
+                            MOST COMMON
+                          </div>
+                          <div className="flex items-baseline justify-center">
+                            <span className="text-3xl font-light text-slate-900">$8.50</span>
+                            <span className="ml-1 text-slate-500 text-sm">/user/month</span>
+                          </div>
+                          <div className="text-center mt-2 text-cerulean text-sm font-medium">$25.50 per user, billed quarterly</div>
+                          <div className="text-center mt-1 text-slate-500">6-50 users</div>
+                        </div>
+                        
+                        <div className="bg-slate-50 p-6 rounded-lg">
+                          <div className="flex items-baseline justify-center">
+                            <span className="text-3xl font-light text-slate-900">$7.65</span>
+                            <span className="ml-1 text-slate-500 text-sm">/user/month</span>
+                          </div>
+                          <div className="text-center mt-2 text-cerulean text-sm font-medium">$22.95 per user, billed quarterly</div>
+                          <div className="text-center mt-1 text-slate-500">51+ users</div>
+                        </div>
+                      </div>
+                      
+                      <div className="bg-slate-50 p-6 rounded-lg mb-8">
+                        <h4 className={`text-xl font-light text-cerulean mb-4 ${radley.className}`}>All Features Included</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="flex items-start">
+                            <svg className="h-5 w-5 text-cerulean flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <p className="ml-3 text-slate-500 text-sm">AI-powered feedback collection</p>
+                          </div>
+                          <div className="flex items-start">
+                            <svg className="h-5 w-5 text-cerulean flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <p className="ml-3 text-slate-500 text-sm">AI summarizations</p>
+                          </div>
+                          <div className="flex items-start">
+                            <svg className="h-5 w-5 text-cerulean flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <p className="ml-3 text-slate-500 text-sm">Company values &amp; employee recognition</p>
+                          </div>
+                          <div className="flex items-start">
+                            <svg className="h-5 w-5 text-cerulean flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <p className="ml-3 text-slate-500 text-sm">AI-enabled insights &amp; action</p>
+                          </div>
+                          <div className="flex items-start">
+                            <svg className="h-5 w-5 text-cerulean flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <p className="ml-3 text-slate-500 text-sm">Manager view of feedback</p>
+                          </div>
+                          <div className="flex items-start">
+                            <svg className="h-5 w-5 text-cerulean flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <p className="ml-3 text-slate-500 text-sm">Email notifications</p>
+                          </div>
+                          <div className="flex items-start">
+                            <svg className="h-5 w-5 text-cerulean flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <p className="ml-3 text-slate-500 text-sm">Unlimited feedback cycles</p>
+                          </div>
+                          <div className="flex items-start">
+                            <svg className="h-5 w-5 text-cerulean flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <p className="ml-3 text-slate-500 text-sm">10 Day Free Trial</p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="text-center mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+                        <Link href="/auth/register" className="inline-block bg-cerulean text-white text-center py-3 px-8 rounded-md hover:bg-cerulean-600 transition-colors">
+                          Start Free Trial
+                        </Link>
+                        <Link href="/book-a-demo" className="inline-block bg-white text-cerulean border border-cerulean text-center py-3 px-8 rounded-md hover:bg-cerulean-100 transition-colors">
+                          Request Demo
+                        </Link>
+                      </div>
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* <div className='bg-berkeleyblue py-16'>
         <div className="container mx-auto px-4 flex flex-col items-center text-center">
           <h2 className={`text-4xl font-light text-white max-w-xl ${radley.className}`}>
             Ready to Transform Your Performance Reviews?
@@ -278,7 +537,8 @@ export default function Home() {
             </Link>
           </div>
         </div>
-      </div>
+      </div> */}
+
 
       <Footer />
     </div>
