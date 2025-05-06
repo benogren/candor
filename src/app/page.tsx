@@ -73,7 +73,7 @@ export default function Home() {
             </div>
             <div className="md:w-1/2">
                 <video
-                  src="https://sjxwcwtgahnbooyboeww.supabase.co/storage/v1/object/public/marketing//candor-hero-video.mp4"
+                  src="https://candor360bucket.s3.us-east-2.amazonaws.com/candor-hero-video.mp4"
                   autoPlay
                   muted
                   loop
@@ -147,7 +147,7 @@ export default function Home() {
             
             <div className="md:w-1/2">
                 <video
-                  src="https://sjxwcwtgahnbooyboeww.supabase.co/storage/v1/object/public/marketing//candor-solution-video.mp4"
+                  src="https://candor360bucket.s3.us-east-2.amazonaws.com/candor-solution-video.mp4"
                   autoPlay
                   muted
                   loop
