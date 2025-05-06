@@ -10,13 +10,10 @@ import Link from 'next/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Header from '@/components/marketing/Header';
 import Footer from '@/components/marketing/Footer';
-
+import Script from 'next/script';
 
 export default function Home() {
   const { user } = useAuth();
-  // const [showFeedbackScreen, setShowFeedbackScreen] = React.useState(false);
-  // const [showDashboardScreen, setShowDashboardScreen] = React.useState(false);
-  // const [userCount, setUserCount] = useState(10);
   const [billingCycle, setBillingCycle] = useState('monthly');
 
   if (user) {
@@ -26,6 +23,31 @@ export default function Home() {
 
   return (
     <div className="flex flex-col min-h-screen">
+      {/* Meta Pixel Code */}
+      <Script id="facebook-pixel" strategy="afterInteractive">
+        {`
+          !function(f,b,e,v,n,t,s)
+          {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+          n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+          if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+          n.queue=[];t=b.createElement(e);t.async=!0;
+          t.src=v;s=b.getElementsByTagName(e)[0];
+          s.parentNode.insertBefore(t,s)}(window,document,'script',
+          'https://connect.facebook.net/en_US/fbevents.js');
+          fbq('init', '1020654256702161');
+          fbq('track', 'PageView');
+        `}
+      </Script>
+      <noscript>
+        <img 
+          height="1" 
+          width="1" 
+          style={{ display: 'none' }}
+          src="https://www.facebook.com/tr?id=1020654256702161&ev=PageView&noscript=1"
+          alt=""
+        />
+      </noscript>
+      
       <Header />
 
       {/* Hero Section */}
