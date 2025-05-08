@@ -357,7 +357,7 @@ export default function SelectRecipientsPageContent() {
   }
 
   return (
-    <div className="container mx-auto py-8 px-4 max-w-xl">
+    <div className="container mx-auto py-8 px-4 max-w-xl flex flex-col min-h-[900px]">
       <h1 className='text-4xl font-light text-berkeleyblue pb-2'>Give Feedback</h1>
       <p className='text-slate-500 text-base font-light pb-4'>
         {/* Here are a few colleagues who you have been in contact with a lot lately.  */}
