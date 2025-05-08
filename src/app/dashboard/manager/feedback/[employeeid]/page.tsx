@@ -14,7 +14,7 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
-import { Sparkles, NotepadText, NotebookPen, PieChart, ArrowLeft } from 'lucide-react';
+import { Sparkles, NotepadText, NotebookPen, PieChart, ArrowLeft, Lock } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { radley } from '@/app/fonts';
 import Link from 'next/link';
@@ -551,7 +551,9 @@ export default function EmployeeFeedbackPage() {
                 <Button 
                     variant={'outline'} 
                     className="hidden md:flex w-full"
+                    disabled
                 >
+                  <Lock className="h-4 w-4 mr-2" />
                     Assess Skills   
                 </Button>
             </div>
@@ -571,7 +573,9 @@ export default function EmployeeFeedbackPage() {
                 <Button 
                     variant={'outline'} 
                     className="hidden md:flex w-full"
+                    disabled
                 >
+                  <Lock className="h-4 w-4 mr-2" />
                     Generate Prep   
                 </Button>
             </div>
