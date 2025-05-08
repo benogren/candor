@@ -1,4 +1,4 @@
-// src/app/api/feedback/summarize/route.ts
+// src/app/api/feedback/prep/route.ts
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
@@ -211,12 +211,12 @@ export async function POST(request: Request) {
       `;
     }).join('\n');
     
-    // If there's no feedback content, return early
+    // If there's no feedback content, ...
     if (!formattedFeedback.trim()) {
-      return NextResponse.json(
-        { summary: 'No feedback content available to summarize.' },
-        { status: 200 }
-      );
+    //   return NextResponse.json(
+    //     { summary: 'No feedback content available to summarize.' },
+    //     { status: 200 }
+    //   );
     }
     
     // Determine time period for prompt
@@ -242,7 +242,7 @@ export async function POST(request: Request) {
     
 
     const prompt = `
-    Take on the role of an experienced career coach specialising in analyzing 360-degree employee feedback.
+    Take on the role of an experienced career coach specialising in one-on-one meeting preperation.
       
       Below is a collection of feedback for ${userName}.
       Their current job title is: ${jobTitle}
@@ -252,43 +252,47 @@ export async function POST(request: Request) {
       
       ${formattedFeedback}
       
-      Please provide a thoughtful, constructive summary of this feedback that includes:
-      1. Major strengths identified in the feedback
-      2. Areas for potential growth or improvement
-      3. Patterns or themes across the feedback
-      4. 2-3 specific, actionable recommendations based on the feedback
+      Steps:
+      1.) If provided, please summarize the feedback in a way that highlights the individual's strengths and areas for improvement.
+      2.) Generate a 1-on-1 meeting agenda focused on discussing the individual's strengths and areas for improvement, identifying any challenges, and exploring professional development opportunities for a ${jobTitle} in the ${industry} industry.
       
       Format your response in clear sections with meaningful headings. 
-      Keep your response balanced, constructive, and growth-oriented. 
-      Focus on patterns rather than individual comments and avoid unnecessarily harsh criticism.
       If provided, consider the individual's company and industry and focus on how companies within this industry operate; the type of work they do, the skills they need, and the challenges they face.
       If provided, consider the individual's job title and focus on how this role typically operates; the type of work they do, the skills they need, and the challenges they face.
-      Your reponse should be written in 2nd person, ${userName} will be the recipient of this summary.
+      ${userName} is the recipient of this agenda and they will use it to prepare for their 1:1 meeting with their manager, so write it in the 2nd person.
+      Suggest things they should ask their manager about, and things they should be prepared to discuss.
+      You do not need an Introduction section.
 
         Use the following format:  
-        ### Feedback Summary:
-
-        #### Major Strengths Identified in the Feedback
-        1. [Strength 1]
-        2. [Strength 2]
-        3. [Strength 3]
+        ### 1:1 Agenda
 
         #### Areas for Potential Growth or Improvement
         1. [Area 1]
+            - [Question to ask your manager about this area]
         2. [Area 2]
-        3. [Area 3]
+            - [Question to ask your manager about this area]
 
-        #### Patterns or Themes Across the Feedback
-        - [Pattern 1]
-        - [Pattern 2]
-        - [Pattern 3]
+        #### Challenges identified in Feedback
+        - [Challenge 1]
+            - [Question to ask your manager about this challenge]
+        - [Challenge 2]
+            - [Question to ask your manager about this challenge]
+        - [Challenge 3]
+            - [Question to ask your manager about this challenge]
 
-        #### Specific, Actionable Recommendations
-        1. [Recommendation 1]
-        2. [Recommendation 2]
-        3. [Recommendation 3]
-        
+        #### Professional Development Opportunities
+        1. [Opportunity 1]
+            - [Question to ask your manager about this opportunity]
+        2. [Opportunity 2]
+            - [Question to ask your manager about this opportunity]
+
+        #### Other Questions to Ask Your Manager
+        1. [Question 1]
+        2. [Question 2]
+        3. [Question 3]
     `;
+
+    // console.log('Prompt:', prompt);
     
     // Call OpenAI API
     const completion = await openai.chat.completions.create({
@@ -296,7 +300,7 @@ export async function POST(request: Request) {
       messages: [
         { 
           role: "system", 
-          content: "Assume the role of a career coach. You are a helpful career coach providing feedback analysis. Your summaries are balanced, constructive, and actionable."
+          content: "Assume the role of a career coach. You are a helpful career coach providing excellent one-on-one meeting prep. Your meeting agendas are clear, concise, and actionable. You are an expert in the field of career coaching and have a deep understanding of various industries and job roles."
         },
         { 
           role: "user", 
@@ -306,28 +310,11 @@ export async function POST(request: Request) {
       max_tokens: 1000
     });
     
-    const summary = completion.choices[0]?.message?.content || "Unable to generate summary.";
-//     const summary = `### Feedback Summary:
+    const prep = completion.choices[0]?.message?.content || "Unable to generate summary.";
 
-// #### Major Strengths Identified in the Feedback
-// 1. **Leadership and Influence**: You have been rated exceptionally high in leadership and influence, indicating that your ability to guide and inspire your team is highly valued at Initech.
-// 2. **Conflict Resolution**: Your approach to resolving team conflicts by ensuring everyone feels heard and fostering open communication has been notably appreciated. This skill is crucial in maintaining a cohesive work environment.
-// 3. **Company Values**: Your nominations for the company values related to customer service and integrity highlight your deep commitment to these principles, aligning well with Initech's core values.
+    // console.log('Summary:', prep);
 
-// #### Areas for Potential Growth or Improvement
-// 1. **Responsiveness and Reliability**: Your responsiveness and reliability received a moderate rating. Enhancing these areas could help in strengthening trust and dependability within your team.
-// 2. **Handling of Tight Deadlines**: There seems to be a concern with your handling of tight deadlines, suggesting an area where improvement could significantly impact your team's performance and stress levels.
-// 3. **Decision-Making Process**: There could be an opportunity to streamline your decision-making process. The feedback suggests that your thorough nature sometimes causes delays.
-
-// #### Patterns or Themes Across the Feedback
-// - **Balance of Thoroughness and Efficiency**: There is a recurring theme where your thoroughness is both a strength and a potential hindrance. It is highlighted in your conflict resolution and in comments about your approach to operations.
-// - **High Value Placement on Integrity and Leadership**: Repeated recognitions for your commitment to integrity and effective leadership suggest these are key strengths and critical to your role.
-// - **Need for Enhanced Efficiency under Pressure**: Feedback regarding deadlines and responsiveness indicates a pattern where increased efficiency and perhaps a more proactive approach in high-pressure situations could be beneficial.
-
-// #### Specific, Actionable Recommendations
-// 1. **Prioritize and Delegate**: To improve efficiency, especially when facing tight deadlines, consider setting clear priorities and delegating tasks. This approach might relieve pressure and enhance team performance.
-// 2. **Develop a More Agile Decision-Making Framework**: Introduce and cultivate a decision-making framework that balances your natural thoroughness with the necessity for quicker resolution, especially in critical situations. This could involve setting specific time limits for decision phases or adopting tools that facilitate faster consensus.
-// 3. **Responsive Communication Training or Tools**: Enroll in a workshop or explore tools that can help enhance your responsiveness and reliability. This training can offer methods to manage and prioritize communications effectively, ensuring you remain accessible to your team's needs.
+//     const summary = `### Feedback Summary: ing or Tools**: Enroll in a workshop or explore tools that can help enhance your responsiveness and reliability. This training can offer methods to manage and prioritize communications effectively, ensuring you remain accessible to your team's needs.
 
 // These recommendations aim to harness your existing strengths while addressing areas that can elevate your role as Director of Operations at Initech. The focus on efficiency and responsiveness, coupled with your demonstrated leadership skills, should further solidify your effectiveness and career growth within the company.`;
     
@@ -338,9 +325,9 @@ export async function POST(request: Request) {
       .insert({
         user_id: userId,
         timeframe: timeframe,
-        summary: summary,
+        summary: prep,
         feedback_data: feedback, // Store the raw feedback used for reference
-        type: "summary"
+        type: "prep"
       });
     
     if (insertError) {
@@ -349,7 +336,7 @@ export async function POST(request: Request) {
     }
     
     // Return the summary
-    return NextResponse.json({ summary }, { status: 200 });
+    return NextResponse.json({ prep }, { status: 200 });
   } catch (error) {
     console.error('Error in feedback summarization:', error);
     return NextResponse.json(

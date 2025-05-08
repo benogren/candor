@@ -11,16 +11,16 @@ export default function OrgChartPage() {
   // Show loading state
   if (loading) {
     return (
-      <>
-      <LoadingSpinner />
-      </>
+      <div className="flex justify-center items-center h-full">
+        <LoadingSpinner />
+      </div>
     );
   }
 
   // Show unauthorized message if not admin
   if (!isAdmin) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <div className="w-full max-w-full p-4">
         <div className="bg-red-50 p-4 rounded-md">
           <p className="text-red-700">
             You do not have permission to access this page. This feature is only available to administrators.
@@ -31,5 +31,9 @@ export default function OrgChartPage() {
   }
 
   // Show org chart if admin
-  return <OrgChartContainer />;
+  return (
+    <div className="w-full max-w-full px-4 py-4 overflow-hidden">
+      <OrgChartContainer />
+    </div>
+  );
 }

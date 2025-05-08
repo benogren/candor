@@ -1,75 +1,237 @@
-// components/dashboard/sidebar.tsx
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import {
+  HomeIcon,
+  ChevronUp,
+  Building2,
+  BotMessageSquare,
+  Medal,
+  Network,
+  LucideMessageCircleQuestion,
+  Shell
+} from 'lucide-react';
+import supabase from '@/lib/supabase/client';
+import { useRouter, usePathname } from 'next/navigation';
+import { toast } from '@/components/ui/use-toast';
+import Image from 'next/image';
+import { useIsAdmin } from '@/lib/context/auth-context';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarSeparator,
+  useSidebar
+} from "@/components/ui/sidebar"
+import { 
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuItem,
+  DropdownMenuContent
+} from '../ui/dropdown-menu';
+import { Avatar, AvatarFallback } from '../ui/avatar';
 
-type SidebarProps = {
-  role: 'admin' | 'member';
-};
+interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
+  user: {
+    id: string;
+    email?: string;
+    user_metadata?: {
+      name?: string;
+    };
+  };
+  company: {
+    id: string;
+    name: string;
+    domains?: string[];
+  };
+}
 
-export default function Sidebar({ role }: SidebarProps) {
+export function DashSidebar({ className, user, company, ...props }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { isAdmin } = useIsAdmin();
+  const { state } = useSidebar();
+  const isCollapsed = state === 'collapsed';
 
-  const links = [
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+      toast({ title: "Signed out successfully" });
+      router.push("/");
+      router.refresh();
+    } catch (error: unknown) {
+      console.error("Error signing out:", error);
+      toast({ title: "Error signing out", description: "Please try again", variant: "destructive" });
+    }
+  };
+  
+  const getInitial = (): string => {
+    if (user?.user_metadata?.name) {
+      return user.user_metadata.name.charAt(0).toUpperCase();
+    }
+    if (user?.email) {
+      return user.email.charAt(0).toUpperCase();
+    }
+    return "U";
+  };
+
+  const navItems = [
     {
-      name: 'Dashboard',
+      title: 'Dashboard',
       href: '/dashboard',
-      adminOnly: false,
+      icon: <HomeIcon className="w-5 h-5" />,
     },
     {
-      name: 'My Feedback',
-      href: '/dashboard/feedback',
-      adminOnly: false,
-    },
-    // {
-    //   name: 'Team',
-    //   href: '/dashboard/team',
-    //   adminOnly: false,
-    // },
-    {
-      name: 'Company Settings',
-      href: '/dashboard/admin',
-      adminOnly: true,
-    },
-    {
-      name: 'Org Chart',
-      href: '/dashboard/admin/orgchart',
-      adminOnly: true,
-    },
-    {
-      name: 'Feedback Cycles',
-      href: '/dashboard/admin/feedback/cycles',
-      adminOnly: true,
-    },
-    {
-      name: 'Feedback Questions',
-      href: '/dashboard/admin/feedback/questions',
-      adminOnly: true,
+      title: 'Feedback Coach',
+      href: '/dashboard/coach',
+      icon: <BotMessageSquare className="w-5 h-5" />,
     },
   ];
 
-  const filteredLinks = links.filter(link => !link.adminOnly || role === 'admin');
+  const adminNavItems = [
+    {
+      title: 'Admin Dashboard',
+      href: '/dashboard/admin',
+      icon: <Building2 className="w-5 h-5" />,
+    },
+    {
+      title: 'Org Chart',
+      href: '/dashboard/admin/orgchart',
+      icon: <Network className="w-5 h-5" />,
+    },
+    {
+      title: 'Feedback Cycles',
+      href: '/dashboard/admin/feedback/cycles',
+      icon: <Shell className="w-5 h-5" />,
+    },
+    {
+      title: 'Feedback Questions',
+      href: '/dashboard/admin/feedback/questions',
+      icon: <LucideMessageCircleQuestion className="w-5 h-5" />,
+    },
+    {
+      title: 'Company Values',
+      href: '/dashboard/admin/company-values',
+      icon: <Medal className="w-5 h-5" />,
+    },
+  ];
 
   return (
-    <aside className="w-64 bg-white shadow-sm h-[calc(100vh-64px)] p-4">
-      <nav className="space-y-1">
-        {filteredLinks.map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            className={cn(
-              'flex items-center px-4 py-2 text-sm rounded-md',
-              pathname === link.href
-                ? 'bg-slate-100 text-slate-900 font-medium'
-                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+    <Sidebar 
+      className={cn(
+        'border-r border-slate-200 bg-white transition-all duration-300 text-slate-500',
+        isCollapsed ? 'w-16' : 'w-64'
+      )}
+    >
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel className='flex items-center mt-2 mb-4'>
+            {!isCollapsed ? (
+              <Link href="/dashboard" className="text-xl font-bold text-slate-900">
+                <Image src="/logo/candor_cerulean.png" alt="Candor" width={98} height={25} priority />
+              </Link>
+            ) : (
+              <Link href="/dashboard" className="flex justify-center w-full">
+                <Image src="/logo/candor-icon.png" alt="C" width={24} height={24} priority />
+              </Link>
             )}
-          >
-            {link.name}
-          </Link>
-        ))}
-      </nav>
-    </aside>
+          </SidebarGroupLabel>
+          <SidebarSeparator className='mb-4' />
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {navItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild>
+                    <a href={item.href} className="flex items-center">
+                      {isCollapsed
+                          ? <span className="flex justify-center w-full">{item.icon}</span>
+                          : item.icon
+                        }
+                      {!isCollapsed && <span className="ml-3">{item.title}</span>}
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+          {isAdmin && (
+            <>
+              {!isCollapsed && <SidebarGroupLabel className='mt-4'>{company?.name}</SidebarGroupLabel>}
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {adminNavItems.map((item) => (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton asChild>
+                        <a href={item.href} className="flex items-center">
+                        {isCollapsed
+                          ? <span className="flex justify-center w-full">{item.icon}</span>
+                          : item.icon
+                        }
+                        {!isCollapsed && <span className="ml-3">{item.title}</span>}
+                        </a>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </>
+          )}
+        </SidebarGroup>
+      </SidebarContent>
+      <SidebarFooter className='w-full'>
+        <SidebarMenu className='w-full'>
+          <SidebarMenuItem className='w-full'>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild className='h-18'>
+                <SidebarMenuButton className="flex items-center p-2">
+                {isCollapsed
+                  ? 
+                  <Avatar className='justify-center w-full h-[30px]'>
+                    <AvatarFallback className='bg-slate-200'>
+                    {getInitial()}
+                    </AvatarFallback>
+                  </Avatar>
+                  : 
+                  <Avatar>
+                    <AvatarFallback className='bg-slate-200'>
+                    {getInitial()}
+                    </AvatarFallback>
+                </Avatar>
+                }
+                  {!isCollapsed && (
+                    <>
+                      <span className="max-w-24 truncate">
+                        {user?.user_metadata?.name || user?.email}
+                      </span>
+                      <ChevronUp className="ml-auto" />
+                    </>
+                  )}
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                side="top"
+                className="w-48"
+              >
+                <DropdownMenuItem>
+                  <Link href={`/dashboard/settings`} className="w-full">
+                    <span>Settings</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleSignOut}>
+                  <span>Sign out</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    </Sidebar>
   );
 }

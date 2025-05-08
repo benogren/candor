@@ -108,11 +108,11 @@ export default function Header({ user, company, children }: HeaderProps) {
       <>
         <header className="bg-white shadow-sm">
           <div className="container mx-auto flex justify-between items-center">
-            <div className="flex items-center ml-2">
+            <div className="flex items-center">
               <Link href="/dashboard" className="text-xl font-bold text-slate-900">
                 <Image src="/logo/candor_cerulean.png" alt="Candor" width={98} height={25} priority />
               </Link>
-              <span className="ml-4 text-sm text-slate-500">{company?.name}</span>
+              <span className="text-sm text-slate-500">{company?.name}</span>
             </div>
             <Button variant="ghost" className="relative rounded-full" disabled>
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200">

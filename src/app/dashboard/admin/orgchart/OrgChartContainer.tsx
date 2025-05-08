@@ -7,13 +7,11 @@ import UserAssignmentModal from '@/components/orgchart/UserAssignmentModal';
 import BulkAssignmentModal from '@/components/orgchart/BulkAssignmentModal';
 import CreateUserModal from '@/components/orgchart/CreateUserModal';
 import ImportOrgChartModal from '@/components/orgchart/ImportOrgChartModal';
-// import SyncIntegrationPanel from '@/components/orgchart/SyncIntegrationPanel';
 import supabase from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
-import { faCloudArrowUp } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { UploadIcon } from 'lucide-react';
 
 interface CsvRow {
   email: string;
@@ -28,11 +26,6 @@ export default function OrgChartContainer() {
   const [orgChartData, setOrgChartData] = useState<OrgChartData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
-
-  // State for Google Workspace integration
-  // const [isGoogleWorkspaceConnected, setIsGoogleWorkspaceConnected] = useState<boolean>(false);
-  // const [lastSyncDate, setLastSyncDate] = useState<Date | null>(null);
-  // const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   // Selected users state
   const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
@@ -111,16 +104,6 @@ export default function OrgChartContainer() {
         throw new Error('Not authenticated');
       }
       console.log('Assigning manager:', {empId, managerId});
-
-      // const { data, error } = await supabase.rpc('debug_manager_assignment', { 
-      //   manager_id_param: managerId, 
-      //   member_id_param: empId
-      // });
-      // if (error) {
-      //   console.log('****Error in debug_manager_assignment:', error);
-      // } else {
-      //   console.log("****Debut data:", data);
-      // }
 
       const response = await fetch('/api/org-chart/assign-manager', {
         method: 'PATCH',
@@ -383,124 +366,114 @@ export default function OrgChartContainer() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-6">
-      {/* Action bar */}
-      <div className="flex justify-between items-center mb-6">
-        <h2 className='text-4xl font-light text-berkeleyblue'>Organization Chart</h2>
-        <div className="flex space-x-3">
+    <div className="relative w-full">
+      {/* Fixed header section */}
+      <div className="flex justify-between items-center mb-6 top-0 left-0 right-0 z-40 bg-white py-2">
+        <h2 className='text-3xl font-light text-berkeleyblue pr-4'>Organization Chart</h2>
+        <div className="flex-shrink-0">
           <Button variant="outline" onClick={() => setIsImportModalOpen(true)}>
-            <FontAwesomeIcon 
-                icon={faCloudArrowUp}
-                height={18}
-                width={18}
-                className=""
-            />
+            <UploadIcon className="h-4 w-4 mr-2" />
             Import
           </Button>
-          {/* <button
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
+          {/* <Button
+            variant="outline"
+            className="ml-4"
             onClick={() => setIsCreateUserModalOpen(true)}
           >
-            <svg
-              className="w-5 h-5 mr-2"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-              />
-            </svg>
+            <PlusIcon className="h-4 w-4 mr-2" />
             Add User
-          </button> */}
+          </Button> */}
         </div>
       </div>
 
       {/* Bulk Actions (visible when users are selected) */}
       {selectedUsers.length > 0 && (
-        <div className="bg-blue-50 p-4 rounded-md mb-6 flex items-center justify-between">
-          <div>
-            <p className="text-blue-700">
-              {selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''} selected
-            </p>
-          </div>
-          <div className="flex space-x-3">
-            <button
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
-              onClick={() => setSelectedUsers([])}
-            >
-              Cancel
-            </button>
-            <button
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-              onClick={() => setIsBulkAssignmentModalOpen(true)}
-            >
-              Assign Manager
-            </button>
+        <div className="bg-blue-50 p-4 rounded-md mb-6 sticky top-16 z-30 bg-white">
+          <div className="flex flex-wrap justify-between items-center">
+            <div>
+              <p className="text-blue-700">
+                {selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''} selected
+              </p>
+            </div>
+            <div className="flex space-x-3 mt-2 sm:mt-0">
+              <button
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+                onClick={() => setSelectedUsers([])}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                onClick={() => setIsBulkAssignmentModalOpen(true)}
+              >
+                Assign Manager
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Organization Chart View */}
+      {/* Organization Chart View with scrollable container */}
       {orgChartData && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 overflow-auto">
-          <OrgChartView
-            data={orgChartData.hierarchical}
-            onSelectUser={handleSelectUser}
-            onSelectManager={handleSelectManager}
-          />
-
-          {/* Unassigned Users */}
-        {orgChartData.unassigned.length > 0 && (
-          <div className="mt-8 border-t border-gray-200 pt-6">
-            <h3 className="text-lg font-medium mb-4 text-berkeleyblue">Unassigned Users</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {orgChartData.unassigned.map((user) => (
-                <div
-                  key={user.id}
-                  className="bg-white border border-gray-200 rounded-md p-4 shadow-sm cursor-pointer hover:bg-gray-50 flex items-center"
-                  onClick={() => handleSelectUser(user)}
-                >
-                  <Avatar className="h-12 w-12 mr-4 border border-gray-100">
-                    {user.avatarUrl ? (
-                      <AvatarImage src={user.avatarUrl} alt={user.name} />
-                    ) : null}
-                    <AvatarFallback className="bg-cerulean text-white font-medium">
-                      {user.name.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  
-                  <div className="overflow-hidden">
-                    <h3 className="text-berkeleyblue font-medium truncate">{user.name}</h3>
-                    <p className="text-slate-500 text-sm truncate">{user.jobTitle || user.role || ''}</p>
-                    
-                    <div className="flex flex-wrap mt-1 gap-1">
-                      {user.role === 'admin' && (
-                        <span className="inline-block bg-nonphotoblue/20 text-nonphotoblue-900 text-xs px-2 py-0.5 rounded">
-                          Admin
-                        </span>
-                      )}
-                      {user.isPending && (
-                        <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded">
-                          Pending
-                        </span>
-                      )}
-                      {user.isInvited && (
-                        <span className="inline-block bg-honeydew text-honeydew-900 text-xs px-2 py-0.5 rounded">
-                          Invited
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          {/* Scrollable container for org chart */}
+          <div className="overflow-x-auto">
+            <div className="p-6 min-w-max">
+              <OrgChartView
+                data={orgChartData.hierarchical}
+                onSelectUser={handleSelectUser}
+                onSelectManager={handleSelectManager}
+              />
             </div>
           </div>
-        )}
+
+          {/* Unassigned Users */}
+          {orgChartData.unassigned.length > 0 && (
+            <div className="mt-8 border-t border-gray-200 p-6">
+              <h3 className="text-lg font-medium mb-4 text-berkeleyblue">Unassigned Users</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {orgChartData.unassigned.map((user) => (
+                  <div
+                    key={user.id}
+                    className="bg-white border border-gray-200 rounded-md p-4 shadow-sm cursor-pointer hover:bg-gray-50 flex items-center"
+                    onClick={() => handleSelectUser(user)}
+                  >
+                    <Avatar className="h-12 w-12 mr-4 border border-gray-100 flex-shrink-0">
+                      {user.avatarUrl ? (
+                        <AvatarImage src={user.avatarUrl} alt={user.name} />
+                      ) : null}
+                      <AvatarFallback className="bg-cerulean text-white font-medium">
+                        {user.name.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    
+                    <div className="overflow-hidden">
+                      <h3 className="text-berkeleyblue font-medium truncate">{user.name}</h3>
+                      <p className="text-slate-500 text-sm truncate">{user.jobTitle || user.role || ''}</p>
+                      
+                      <div className="flex flex-wrap mt-1 gap-1">
+                        {user.role === 'admin' && (
+                          <span className="inline-block bg-nonphotoblue/20 text-nonphotoblue-900 text-xs px-2 py-0.5 rounded">
+                            Admin
+                          </span>
+                        )}
+                        {user.isPending && (
+                          <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded">
+                            Pending
+                          </span>
+                        )}
+                        {user.isInvited && (
+                          <span className="inline-block bg-honeydew text-honeydew-900 text-xs px-2 py-0.5 rounded">
+                            Invited
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

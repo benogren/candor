@@ -1,4 +1,4 @@
-// src/app/api/feedback/summarize/route.ts
+// src/app/api/feedback/manager/summarize/route.ts
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
@@ -12,16 +12,18 @@ export async function POST(request: Request) {
   try {
     // Get the request body
     const body = await request.json();
-    const { userId, timeframe } = body;
+    const { employeeId, managerId, timeframe, is_invited } = body;
     
     // Basic validation
-    if (!userId || !timeframe) {
+    if (!employeeId || !timeframe || !managerId) {
       return NextResponse.json(
         { error: 'Invalid request parameters' },
         { status: 400 }
       );
     }
     
+    console.log('Received request:', { employeeId, managerId, timeframe, is_invited });
+
     // Create Supabase client
     const authHeader = request.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -69,7 +71,7 @@ export async function POST(request: Request) {
     const { data: recipientData, error: recipientError } = await supabase
         .from('feedback_recipients')
         .select('id')
-        .eq('recipient_id', userId);
+        .eq('recipient_id', employeeId); 
     
     if (recipientError || recipientData.length === 0) throw recipientError;
 
@@ -137,20 +139,48 @@ export async function POST(request: Request) {
     const feedback = feedbackData || [];
 
     // console.log(feedback);
-
-    const userName = user.user_metadata.name;
-
-    const { data: jobData, error: jobError } = await supabase
-      .from('user_profiles')
-      .select('job_title')
-      .eq('id', userId);
-
+    let userName = '';
     let jobTitle = '';
-    if (jobError || !jobData || jobData.length === 0) {
-        jobTitle = ''; //not found
+
+    if (is_invited) {
+        const { data: invitedUserData, error: invitedUserError } = await supabase
+        .from('invited_users')
+        .select('name, job_title')
+        .eq('id', employeeId);
+
+        if (invitedUserError || !invitedUserData || invitedUserData.length === 0) {
+            jobTitle = ''; //not found
+        } else {
+            jobTitle = `They're a ${invitedUserData[0].job_title}`;
+        }
+        userName = invitedUserData?.[0]?.name || 'Unknown User';
     } else {
-        jobTitle = `They're a ${jobData[0].job_title}`;
+        const { data: jobData, error: jobError } = await supabase
+        .from('user_profiles')
+        .select('name, job_title')
+        .eq('id', employeeId);
+
+        if (jobError || !jobData || jobData.length === 0) {
+            jobTitle = ''; //not found
+        } else {
+            jobTitle = `They're a ${jobData[0].job_title}`;
+        }
+        userName = jobData?.[0]?.name || 'Unknown User';
+    } 
+
+    const { data: managerData, error: managerError } = await supabase
+      .from('user_profiles')
+      .select('name, job_title')
+      .eq('id', managerId);
+
+    let managerJobTitle = '';
+    if (managerError || !managerData || managerData.length === 0) {
+        managerJobTitle = ''; //not found
+    } else {
+        managerJobTitle = `They're a ${managerData[0].job_title}`;
     }
+
+    const managerName = managerData?.[0]?.name || 'Unknown Manager';
 
     let company = '';
     let industry = '';
@@ -163,7 +193,7 @@ export async function POST(request: Request) {
             company_id,
             companies!inner(id, name, industry)
             `)
-            .eq('id', userId)
+            .eq('id', employeeId)
             .single();
 
             const companyObject = Array.isArray(companyData?.companies) 
@@ -263,7 +293,8 @@ export async function POST(request: Request) {
       Focus on patterns rather than individual comments and avoid unnecessarily harsh criticism.
       If provided, consider the individual's company and industry and focus on how companies within this industry operate; the type of work they do, the skills they need, and the challenges they face.
       If provided, consider the individual's job title and focus on how this role typically operates; the type of work they do, the skills they need, and the challenges they face.
-      Your reponse should be written in 2nd person, ${userName} will be the recipient of this summary.
+      Your reponse should be written in 2nd person, ${userName}'s manager ${managerName} will be the recipient of this summary.
+      ${managerName} is a ${managerJobTitle} at ${company}.
 
         Use the following format:  
         ### Feedback Summary:
@@ -289,7 +320,9 @@ export async function POST(request: Request) {
         3. [Recommendation 3]
         
     `;
-    
+
+    // console.log('Prompt for OpenAI:', prompt);
+
     // Call OpenAI API
     const completion = await openai.chat.completions.create({
       model: "gpt-4-turbo", // You may want to use a different model based on your needs
@@ -332,11 +365,12 @@ export async function POST(request: Request) {
 // These recommendations aim to harness your existing strengths while addressing areas that can elevate your role as Director of Operations at Initech. The focus on efficiency and responsiveness, coupled with your demonstrated leadership skills, should further solidify your effectiveness and career growth within the company.`;
     
     // Store the summary in the database for future reference
-
+    // TO DO: this will error if the user is an invited user...
     const { error: insertError } = await supabase
-      .from('feedback_summaries')
+      .from('manager_feedback_summaries')
       .insert({
-        user_id: userId,
+        manager_id: managerId,
+        employee_id: employeeId,
         timeframe: timeframe,
         summary: summary,
         feedback_data: feedback, // Store the raw feedback used for reference

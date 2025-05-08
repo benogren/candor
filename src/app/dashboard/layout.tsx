@@ -4,9 +4,11 @@ import { useEffect, useState, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/context/auth-context';
 import supabase from '@/lib/supabase/client';
-import Header from '@/components/dashboard/header';
-// import Sidebar from '@/components/dashboard/sidebar';
+import { DashSidebar } from '@/components/dashboard/sidebar';
 import { LoadingSpinner } from '@/components/loading-spinner';
+import { SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
+import { Menu } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -17,22 +19,39 @@ interface Company {
   id: string;
   name: string;
   domains?: string[];
-  // Define a proper index signature that allows for common property types
-  // while avoiding the 'any' type
   [key: string]: string | string[] | number | boolean | null | undefined;
+}
+
+// Create a separate component for the main content to access sidebar state
+function MainContent({ children, company }: { children: ReactNode; company: Company }) {
+  const { state } = useSidebar();
+  const isCollapsed = state === 'collapsed';
+  
+  return (
+    <div className={`flex-1 transition-all duration-300 ${isCollapsed ? 'ml-16' : 'ml-64'}`}>
+      <div className="flex items-center p-4">
+        <Button variant="ghost" size="icon" asChild>
+          <SidebarTrigger>
+            <Menu className="h-5 w-5" />
+          </SidebarTrigger>
+        </Button>
+        {/* <h1 className="ml-4 text-xl font-base text-slate-500">{company.name}</h1> */}
+      </div>
+      <main className="mx-auto px-4 sm:px-6 lg:px-8 py-6 overflow-y-scroll">
+        {children}
+      </main>
+    </div>
+  );
 }
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, loading: authLoading } = useAuth();
-  // const { isAdmin } = useIsAdmin();
   const [company, setCompany] = useState<Company | null>(null);
   const [loadingCompany, setLoadingCompany] = useState(true);
   const router = useRouter();
-  
-  // Track whether we've shown the login page to prevent loops
   const [redirectedToLogin, setRedirectedToLogin] = useState(false);
 
-  // Load company data separately from auth check
+  // Load company data
   useEffect(() => {
     async function loadCompanyData() {
       if (!user?.id) return;
@@ -40,7 +59,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       try {
         console.log("Loading company data for user:", user.id);
         
-        // First, try to get the company associated with this user
         const { data: userData, error: userError } = await supabase
           .from('company_members')
           .select('company_id')
@@ -59,7 +77,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           return;
         }
         
-        // Now get the specific company by ID
         const { data: companyData, error: companyError } = await supabase
           .from('companies')
           .select('*')
@@ -72,7 +89,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           return;
         }
         
-        // Type assertion to ensure companyData matches our Company interface
         setCompany(companyData as Company);
       } catch (error) {
         console.error('Error in loadCompanyData:', error);
@@ -84,15 +100,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     if (user?.id) {
       loadCompanyData();
     } else if (!authLoading && !redirectedToLogin) {
-      // Only redirect if we're not already loading auth and haven't redirected yet
       setRedirectedToLogin(true);
       
-      // Check if we're not already on a login page to avoid redirect loops
       if (typeof window !== 'undefined') {
         const isAuthPage = window.location.pathname.includes('/auth/');
         if (!isAuthPage) {
           console.log('No user found, redirecting to login from layout');
-          // Use a short delay to ensure state updates properly
           setTimeout(() => router.push('/auth/login'), 50);
         }
       }
@@ -101,7 +114,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     }
   }, [user?.id, authLoading, router, redirectedToLogin]);
 
-  // Show loading state while authentication is being checked
+  // Loading states
   if (authLoading || (user && loadingCompany)) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -110,12 +123,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     );
   }
 
-  // If we're not loading but don't have a user, the auth context will handle redirect
   if (!user) {
-    return null; // Return null to avoid rendering anything while redirect happens
+    return null;
   }
 
-  // If we have user but no company data yet, show a loading state
   if (!company) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -127,15 +138,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   // When we have both user and company, render the full layout
   return (
-    <>
-      <Header user={user} company={company}>
-        <div className="">
-          {/* <Sidebar role={isAdmin ? 'admin' : 'member'} /> */}
-          <main className="container mx-auto">
-            {children}
-          </main>
-        </div>
-      </Header>
-    </>
+    <SidebarProvider>
+      <div className="flex h-screen bg-white overflow-scroll">
+        <DashSidebar user={user} company={company} />
+        <MainContent company={company}>
+          {children}
+        </MainContent>
+      </div>
+    </SidebarProvider>
   );
 }

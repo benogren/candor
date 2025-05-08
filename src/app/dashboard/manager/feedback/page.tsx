@@ -19,6 +19,7 @@ import {
 import { MessagesSquare, X, ChevronDown, Sparkles, NotepadText, Gauge, NotebookPen, PieChart } from 'lucide-react'; // Added ChevronDown
 import Markdown from 'react-markdown';
 import { radley } from '../../../fonts';
+import Link from 'next/link';
 
 interface DirectReport {
   id: string;
@@ -206,33 +207,26 @@ export default function ManagerFeedbackPage() {
             <div className="flex justify-between items-center mb-6">
             <h2 className='text-4xl font-light text-berkeleyblue'>My Team&#39;s Feedback</h2>
             <div className='flex items-center gap-2'>
-            <Select
-                value={selectedEmployee}
-                onValueChange={value => setSelectedEmployee(value)}
-            >
-                <SelectTrigger className="w-full md:w-[300px]">
-                    <SelectValue placeholder="View all team feedback" />
-                </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">All Team Members</SelectItem>
-                        {directReports.map(employee => (
-                        <SelectItem key={employee.id} value={employee.id}>
-                            {employee.name || employee.email.split('@')[0]}
-                            {employee.is_invited && " (Invited)"}
-                        </SelectItem>
-                        ))}
-                  </SelectContent>
-                </Select>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="default">
+                    All Team Members
+                    <ChevronDown className="h-5 w-5 ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className='w-full'>
+                {directReports.map(employee => (
+                  <DropdownMenuItem className='w-full' key={employee.id}>
+                    <Link key={employee.id} href={`/dashboard/manager/feedback/${employee.id}`}>
+                      {employee.name || employee.email.split('@')[0]}
+                      {employee.is_invited && " (Invited)"}
+                      </Link>
+                      </DropdownMenuItem>
+                    
+                  ))}
 
-                {selectedEmployee !== 'all' && (
-                  <Button 
-                  variant="outline" 
-                  size="default" 
-                  onClick={() => setIsDrawerOpen(!isDrawerOpen)}
-                >
-                  Feedback Coach
-                </Button>
-                )}
+                </DropdownMenuContent>
+              </DropdownMenu>
                 </div>
                 
             </div>
