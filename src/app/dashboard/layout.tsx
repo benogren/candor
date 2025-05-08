@@ -139,7 +139,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   // When we have both user and company, render the full layout
   return (
     <SidebarProvider>
-      <div className="flex h-screen bg-white overflow-scroll">
+      <div className="flex h-screen bg-white overflow-scroll w-full">
         <DashSidebar user={user} company={company} />
         <MainContent company={company}>
           {children}

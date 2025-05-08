@@ -345,7 +345,7 @@ export default function FeedbackCyclesPage() {
   }
   
   return (
-    <div className="container mx-auto py-8 px-4">
+    <div className='container mx-auto py-8 px-4'>
       <div className="flex justify-between items-center mb-6">
         <h2 className='text-4xl font-light text-berkeleyblue'>Feedback Cycles</h2>
         {!hasActiveOrDraftCycle && (
