@@ -41,30 +41,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    interface UserRelationship {
-        type: string;
-        description: string;
-        distance: number;
-    }
-
-    interface RelationshipResponse {
-        relationship: UserRelationship;
-        users: {
-          user1: {
-            id: string;
-            name: string;
-            email: string;
-            role: string;
-          };
-          user2: {
-            id: string;
-            name: string;
-            email: string;
-            role: string;
-          };
-        };
-      }
-
     // Check if the user is a recipient
     const { data: recipientData, error: recipientError } = await supabase
         .from('feedback_recipients')
@@ -203,6 +179,7 @@ export async function POST(request: Request) {
             industry = `in the ${companyObject?.industry} industry.`;
     } catch (error) {
         // not found
+        console.log('Error fetching company data:', error);
     }
 
     // console.log('Feedback data:', feedback);    
@@ -289,6 +266,7 @@ export async function POST(request: Request) {
       If provided, consider the individual's company and industry and focus on how companies within this industry operate; the type of work they do, the skills they need, and the challenges they face.
       If provided, consider the individual's job title and focus on how this role typically operates; the type of work they do, the skills they need, and the challenges they face.
       ${userName}'s manager, ${managerName}, is the recipient of this agenda and they will use it to prepare for their 1:1 meeting with ${userName}, so write it in the 2nd person.
+      ${managerName} is a ${managerJobTitle} at ${company}.
       Suggest things they should ask their employee about, and things they should be prepared to discuss.
       You do not need an Introduction section.
 

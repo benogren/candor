@@ -23,7 +23,7 @@ interface Company {
 }
 
 // Create a separate component for the main content to access sidebar state
-function MainContent({ children, company }: { children: ReactNode; company: Company }) {
+function MainContent({ children }: { children: ReactNode; company: Company }) {
   const { state } = useSidebar();
   const isCollapsed = state === 'collapsed';
   

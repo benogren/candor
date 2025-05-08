@@ -41,30 +41,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    interface UserRelationship {
-        type: string;
-        description: string;
-        distance: number;
-    }
-
-    interface RelationshipResponse {
-        relationship: UserRelationship;
-        users: {
-          user1: {
-            id: string;
-            name: string;
-            email: string;
-            role: string;
-          };
-          user2: {
-            id: string;
-            name: string;
-            email: string;
-            role: string;
-          };
-        };
-      }
-
     // Check if the user is a recipient
     const { data: recipientData, error: recipientError } = await supabase
         .from('feedback_recipients')
@@ -175,6 +151,7 @@ export async function POST(request: Request) {
             industry = `in the ${companyObject?.industry} industry.`;
     } catch (error) {
         // not found
+        console.log('Error fetching company data:', error);
     }
 
     // console.log('Feedback data:', feedback);    
@@ -269,77 +246,77 @@ export async function POST(request: Request) {
     `;
     
     // Call OpenAI API
-    // const completion = await openai.chat.completions.create({
-    //   model: "gpt-4-turbo", // You may want to use a different model based on your needs
-    //   messages: [
-    //     { 
-    //       role: "system", 
-    //       content: "You are a helpful career coach providing a personalized plan. Your plans are balanced, constructive, and actionable."
-    //     },
-    //     { 
-    //       role: "user", 
-    //       content: prompt
-    //     }
-    //   ],
-    //   max_tokens: 1000
-    // });
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4-turbo", // You may want to use a different model based on your needs
+        messages: [
+          { 
+            role: "system", 
+            content: "You are a helpful career coach providing a personalized plan. Your plans are balanced, constructive, and actionable."
+          },
+          { 
+            role: "user", 
+            content: prompt
+          }
+        ],
+        max_tokens: 1000
+      });
     
-    // const summary = completion.choices[0]?.message?.content || "Unable to generate summary.";
-    const summary = `### Personalized Development Plan for Bob Porter
+    const summary = completion.choices[0]?.message?.content || "Unable to generate summary.";
+//     const summary = `### Personalized Development Plan for Bob Porter
 
-#### Overview
-Bob Porter, currently positioned as a Management Consultant II at Initech in the IT Services and Consulting industry, has demonstrated commendable expertise and reliability in his role. Based on the 360-degree feedback, it is evident that Bob excels in technical triage, client and project management, and utilizes project management tools effectively. Praised for his ability to manage multiple projects and mentor team members, Bob has shown potential for further growth and leadership within the industry. The feedback also highlighted areas for improvement such as anticipating changes in project priorities and conflict resolution skills which could be enhanced to maximize his consulting effectiveness and leadership qualities.
+// #### Overview
+// Bob Porter, currently positioned as a Management Consultant II at Initech in the IT Services and Consulting industry, has demonstrated commendable expertise and reliability in his role. Based on the 360-degree feedback, it is evident that Bob excels in technical triage, client and project management, and utilizes project management tools effectively. Praised for his ability to manage multiple projects and mentor team members, Bob has shown potential for further growth and leadership within the industry. The feedback also highlighted areas for improvement such as anticipating changes in project priorities and conflict resolution skills which could be enhanced to maximize his consulting effectiveness and leadership qualities.
 
-#### Current Skills and Strengths:
-- **Technical Expertise in Triage**
-- **Client Management**
-- **Project Management**
-- **Efficiency with Management Tools like Monday.com**
-- **Multi-Project Management**
-- **Mentorship and Team Support**
+// #### Current Skills and Strengths:
+// - **Technical Expertise in Triage**
+// - **Client Management**
+// - **Project Management**
+// - **Efficiency with Management Tools like Monday.com**
+// - **Multi-Project Management**
+// - **Mentorship and Team Support**
 
-#### Identified Skill Gaps:
-- **Anticipating Changes**: While Bob adapts well, enhancing his ability to anticipate and strategize proactively could improve project outcomes.
-- **Conflict Resolution**: Bob handles conflicts but can develop more proactive strategies to manage and preempt potential issues to maintain team harmony and productivity.
+// #### Identified Skill Gaps:
+// - **Anticipating Changes**: While Bob adapts well, enhancing his ability to anticipate and strategize proactively could improve project outcomes.
+// - **Conflict Resolution**: Bob handles conflicts but can develop more proactive strategies to manage and preempt potential issues to maintain team harmony and productivity.
 
-#### Long-term Career Goals:
-While specific long-term career aspirations were not detailed, Bob’s current trajectory and capabilities suggest potential goals such as:
-- Advancing to a Senior Management Consultant role or similar leadership positions within the industry.
-- Expanding expertise in advanced strategic consultancy and digital transformation strategies.
+// #### Long-term Career Goals:
+// While specific long-term career aspirations were not detailed, Bob’s current trajectory and capabilities suggest potential goals such as:
+// - Advancing to a Senior Management Consultant role or similar leadership positions within the industry.
+// - Expanding expertise in advanced strategic consultancy and digital transformation strategies.
 
-#### Learning and Development Plan
+// #### Learning and Development Plan
 
-**1. Advanced Project Management:**
-- **Courses:** PMI Agile Certified Practitioner (PMI-ACP)® or Certified ScrumMaster® (CSM) to enhance agile project management skills.
-- **Timeline:** Start with a certification within the next 3 months.
-- **Providers:** PMI or Scrum Alliance through online certification courses.
+// **1. Advanced Project Management:**
+// - **Courses:** PMI Agile Certified Practitioner (PMI-ACP)® or Certified ScrumMaster® (CSM) to enhance agile project management skills.
+// - **Timeline:** Start with a certification within the next 3 months.
+// - **Providers:** PMI or Scrum Alliance through online certification courses.
 
-**2. Anticipatory and Strategic Thinking:**
-- **Workshops:** Attend strategy and foresight workshops which focus on scenario planning and environmental scanning.
-- **Timeline:** Attend at least two workshops over the next 6 months.
-- **Providers:** Online platforms like Coursera or live workshops from local business schools or professional associations.
+// **2. Anticipatory and Strategic Thinking:**
+// - **Workshops:** Attend strategy and foresight workshops which focus on scenario planning and environmental scanning.
+// - **Timeline:** Attend at least two workshops over the next 6 months.
+// - **Providers:** Online platforms like Coursera or live workshops from local business schools or professional associations.
 
-**3. Advanced Conflict Resolution:**
-- **Training:** Enroll in an advanced conflict management course that includes negotiation and mediation.
-- **Timeline:** Within the next 6 months.
-- **Providers:** Online courses from providers like Udemy, LinkedIn Learning, or in-person sessions via the American Management Association.
+// **3. Advanced Conflict Resolution:**
+// - **Training:** Enroll in an advanced conflict management course that includes negotiation and mediation.
+// - **Timeline:** Within the next 6 months.
+// - **Providers:** Online courses from providers like Udemy, LinkedIn Learning, or in-person sessions via the American Management Association.
 
-**4. Leadership Development:**
-- **Mentoring:** Engage in a leadership mentoring program with a senior leader within Initech.
-- **Timeline:** Begin within the next month and continue for at least one year.
-- **Objective:** To gain insights from experienced leaders on managing complex team dynamics and strategic decision-making.
+// **4. Leadership Development:**
+// - **Mentoring:** Engage in a leadership mentoring program with a senior leader within Initech.
+// - **Timeline:** Begin within the next month and continue for at least one year.
+// - **Objective:** To gain insights from experienced leaders on managing complex team dynamics and strategic decision-making.
 
-**5. Digital Transformation in IT:**
-- **Certifications:** Pursue a certification in digital transformation, focusing on how IT can leverage digital technologies to transform business operations.
-- **Timeline:** Start within the next year.
-- **Providers:** Digital Transformation Institute, Coursera, or edX.
+// **5. Digital Transformation in IT:**
+// - **Certifications:** Pursue a certification in digital transformation, focusing on how IT can leverage digital technologies to transform business operations.
+// - **Timeline:** Start within the next year.
+// - **Providers:** Digital Transformation Institute, Coursera, or edX.
 
-**6. Regular Feedback and Assessment:**
-- **Process:** Implement a quarterly review session with peers and supervisors to assess progress on these goals and adjust the learning path as needed.
+// **6. Regular Feedback and Assessment:**
+// - **Process:** Implement a quarterly review session with peers and supervisors to assess progress on these goals and adjust the learning path as needed.
 
-### Conclusion
-By addressing the identified skill gaps and enhancing his current strengths, Bob Porter can significantly enhance his consultancy effectiveness and readiness for upcoming leadership roles. This tailored plan not only aligns with his current career stage at Initech but also prepares him for future challenges in the IT consulting industry. The recommendations provided will support sustained professional growth and maximize Bob's contributions to Initech.
-    `;
+// ### Conclusion
+// By addressing the identified skill gaps and enhancing his current strengths, Bob Porter can significantly enhance his consultancy effectiveness and readiness for upcoming leadership roles. This tailored plan not only aligns with his current career stage at Initech but also prepares him for future challenges in the IT consulting industry. The recommendations provided will support sustained professional growth and maximize Bob's contributions to Initech.
+//     `;
     
     // Store the summary in the database for future reference
 

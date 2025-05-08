@@ -14,13 +14,11 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
-import { X, Sparkles, NotepadText, Gauge, NotebookPen, PieChart, ArrowLeft } from 'lucide-react';
+import { Sparkles, NotepadText, NotebookPen, PieChart, ArrowLeft } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { radley } from '@/app/fonts';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { Avatar } from '@radix-ui/react-avatar';
-import { AvatarFallback } from '@/components/ui/avatar';
 import { formatDistanceToNow } from 'date-fns';
 import {
   Dialog,
@@ -99,12 +97,14 @@ export default function EmployeeFeedbackPage() {
           
           // Set employee profile
           const empData = orgData[0];
-          let empProfile: EmployeeProfile = {
+          const empProfile: EmployeeProfile = {
             id: empData.id,
             email: empData.email,
             is_invited: empData.is_invited,
             name: empData.is_invited ? empData.email.split('@')[0] : undefined
           };
+
+          // console.log('Employee Profile:', empProfile);
           
           // If not invited, fetch profile data
           if (!empData.is_invited) {
@@ -359,6 +359,7 @@ export default function EmployeeFeedbackPage() {
     try {
       return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
     } catch (error) {
+      console.log('Error formatting date:', error);
       return 'some time ago';
     }
   };
@@ -464,10 +465,10 @@ export default function EmployeeFeedbackPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => handleSummarizeFeedback('week')} className='w-full'>
-                            Last Week's Feedback
+                            Last Week&apos;s Feedback
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleSummarizeFeedback('month')} className='w-full'>
-                            Last Month's Feedback
+                            Last Month&apos;s Feedback
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleSummarizeFeedback('all')} className='w-full'>
                             All Feedback

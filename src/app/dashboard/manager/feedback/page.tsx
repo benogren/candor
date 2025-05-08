@@ -3,7 +3,6 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/context/auth-context';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import FeedbackList from '@/components/FeedbackList';
 import supabase from '@/lib/supabase/client';
@@ -16,7 +15,7 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
-import { MessagesSquare, X, ChevronDown, Sparkles, NotepadText, Gauge, NotebookPen, PieChart } from 'lucide-react'; // Added ChevronDown
+import { X, ChevronDown, Sparkles, NotepadText, Gauge, NotebookPen, PieChart } from 'lucide-react'; // Added ChevronDown
 import Markdown from 'react-markdown';
 import { radley } from '../../../fonts';
 import Link from 'next/link';
@@ -31,7 +30,7 @@ interface DirectReport {
 export default function ManagerFeedbackPage() {
   const { user } = useAuth();
   const [directReports, setDirectReports] = useState<DirectReport[]>([]);
-  const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
+  const [selectedEmployee] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [isManager, setIsManager] = useState(false);
 
@@ -42,6 +41,8 @@ export default function ManagerFeedbackPage() {
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [feedbackSummary, setFeedbackSummary] = useState<string | null>(null);
   const [summaryTimeframe, setSummaryTimeframe] = useState<string | null>(null);
+
+  console.log('summaryTimeframe:', summaryTimeframe);
   
   const handleCoachingPlan = async (timeframe: string, empId: string) => {
     console.log('Generating coaching plan for:', empId, 'Timeframe:', timeframe);
@@ -302,10 +303,10 @@ export default function ManagerFeedbackPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className='w-full'>
                       <DropdownMenuItem onClick={() => handleCoachingPlan('week', selectedEmployee)} className='w-full'>
-                        Last Week's Feedback
+                        Last Week&apos;s Feedback
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleCoachingPlan('month', selectedEmployee)} className='w-full'>
-                        Last Month's Feedback
+                        Last Month&apos;s Feedback
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleCoachingPlan('all', selectedEmployee)} className='w-full'>
                         All Feedback

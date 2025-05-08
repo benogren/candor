@@ -442,7 +442,7 @@ export default function DashboardPage() {
 
         <div className="flex justify-between items-center mb-6">
           <h2 className='text-4xl font-light text-berkeleyblue'>Your Feedback</h2>
-          <div className="flex gap-2">
+
             
             {/* Show team feedback button to managers or admins */}
             {(isManager || isAdmin) && (
@@ -456,18 +456,7 @@ export default function DashboardPage() {
                 </Link>
               </Button>
             )}
-            
-            {/* Feedback Coach button */}
-            <Button 
-              variant="outline" 
-              size="sm" 
-              asChild
-            >
-              <Link href="/dashboard/coach">
-                Feedback Coach
-              </Link>
-            </Button>
-          </div>
+
         </div>
         <FeedbackList userId={user?.id} />
       </div>

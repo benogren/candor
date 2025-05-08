@@ -254,6 +254,7 @@ export default function FeedbackCoachPage() {
             return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
         } catch (error) {
             return 'some time ago';
+            console.log('Error formatting time:', error);
         }
     };
 
@@ -356,10 +357,10 @@ export default function FeedbackCoachPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => handleSummarizeFeedback('week')} className='w-full'>
-                                Last Week's Feedback
+                                Last Week&apos;s Feedback
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleSummarizeFeedback('month')} className='w-full'>
-                                Last Month's Feedback
+                                Last Month&apos;s Feedback
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleSummarizeFeedback('all')} className='w-full'>
                                 All Feedback

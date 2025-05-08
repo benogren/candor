@@ -13,7 +13,7 @@ import {
   Shell
 } from 'lucide-react';
 import supabase from '@/lib/supabase/client';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { toast } from '@/components/ui/use-toast';
 import Image from 'next/image';
 import { useIsAdmin } from '@/lib/context/auth-context';
@@ -53,8 +53,8 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
   };
 }
 
-export function DashSidebar({ className, user, company, ...props }: SidebarProps) {
-  const pathname = usePathname();
+export function DashSidebar({ user, company }: SidebarProps) {
+  // const pathname = usePathname();
   const router = useRouter();
   const { isAdmin } = useIsAdmin();
   const { state } = useSidebar();
