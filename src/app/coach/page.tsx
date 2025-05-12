@@ -160,11 +160,13 @@ export default function CoachPage() {
                           placeholder="Enter your email"
                           className="h-12 w-full px-4 py-2 rounded-md border-gray-300 shadow-sm text-sm"
                           required
+                          disabled
                         />
                         <Button
                           type="submit"
                           size="lg"
                           className="w-full sm:w-auto mt-2 sm:mt-0 h-12"
+                          disabled
                         >
                           Join Waitlist
                         </Button>

@@ -5,24 +5,163 @@ import { redirect } from "next/navigation";
 import Image from 'next/image';
 import { radley } from './fonts';
 import React, { useState } from 'react';
-import { Binoculars, CalendarSync, ChartScatter, CircleCheck, Clock, Clock8, HeartHandshake, Sparkles, TriangleAlert, Zap } from 'lucide-react';
+import { Binoculars, CalendarSync, ChartScatter, CircleCheck, Clock, Clock8, HeartHandshake, Loader2, Sparkles, TriangleAlert, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Header from '@/components/marketing/Header';
 import Footer from '@/components/marketing/Footer';
 import Script from 'next/script';
+import { Button } from '@/components/ui/button';
+import supabase from '@/lib/supabase/client';
+import { Input } from '@/components/ui/input';
+
+// Public email domains to validate against
+const PUBLIC_EMAIL_DOMAINS = [
+  'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com', 
+  'icloud.com', 'protonmail.com', 'mail.com', 'zoho.com', 'yandex.com', 
+  'gmx.com', 'live.com', 'msn.com', 'me.com', 'comcast.net', 'verizon.net', 
+  'att.net', 'inbox.com', 'test.com', 'testing.com', 'example.com', 
+  'demo.com', 'sample.com', 'fake.com', 'fakemail.com', 'tempmail.com'
+];
 
 export default function Home() {
   const { user } = useAuth();
   const [billingCycle, setBillingCycle] = useState('monthly');
+  
+  // Form state
+  const [email, setEmail] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [emailValidationState, setEmailValidationState] = useState<{
+    isValidating: boolean;
+    errorMessage: string | null;
+  }>({ isValidating: false, errorMessage: null });
 
   if (user) {
     console.log('Landing Page: User is logged in, redirecting to dashboard');
     redirect('/dashboard');
   }
 
+  // Email validation functions
+  const isPublicEmailDomain = (email: string): boolean => {
+    if (!email || !email.includes('@')) return false;
+    const domain = email.split('@')[1]?.toLowerCase();
+    return PUBLIC_EMAIL_DOMAINS.includes(domain);
+  };
+
+  const validateEmailDomain = async (email: string): Promise<boolean> => {
+    if (!email || !email.includes('@')) return false;
+    
+    const domain = email.split('@')[1];
+    
+    try {
+      setEmailValidationState(prev => ({ ...prev, isValidating: true }));
+      
+      const response = await fetch('/api/validate-email-domain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to validate domain');
+      }
+      
+      const result = await response.json();
+      return result.valid && result.hasMx;
+    } catch (error) {
+      console.error('Error validating domain MX records:', error);
+      return false;
+    } finally {
+      setEmailValidationState(prev => ({ ...prev, isValidating: false }));
+    }
+  };
+
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEmail(e.target.value);
+    setEmailValidationState({ isValidating: false, errorMessage: null });
+  };
+
+  const handleEmailBlur = async () => {
+    if (!email) return;
+    
+    // First check if it's a public email domain
+    if (isPublicEmailDomain(email)) {
+      setEmailValidationState({
+        isValidating: false,
+        errorMessage: 'Please use your work email address instead of a personal email provider'
+      });
+      return;
+    }
+    
+    // Then check if the domain has valid MX records
+    if (email.includes('@')) {
+      const isValidDomain = await validateEmailDomain(email);
+      
+      if (!isValidDomain) {
+        setEmailValidationState({
+          isValidating: false,
+          errorMessage: 'Please provide a valid work email'
+        });
+      }
+    }
+  };
+
+  const handleDemoRequest = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    
+    // Check if email is valid before submitting
+    if (isPublicEmailDomain(email)) {
+      setEmailValidationState({
+        isValidating: false,
+        errorMessage: 'Please use your work email address instead of a personal email provider'
+      });
+      return;
+    }
+    
+    // Additional validation for domain MX records
+    const isValidDomain = await validateEmailDomain(email);
+    if (!isValidDomain) {
+      setEmailValidationState({
+        isValidating: false,
+        errorMessage: 'This domain does not have valid email servers'
+      });
+      return;
+    }
+    
+    setIsSubmitting(true);
+    
+    try {
+      // Insert data into demo_leads table
+      const { error: dbError } = await supabase
+        .from('demo_leads')
+        .insert([{
+          name: 'unknown',
+          company: 'unknown',
+          company_size: 'unknown',
+          notes: '', 
+          email: email, 
+          created_at: new Date(),
+          status: 'Demo Requested From Landing'
+        }]);
+        
+      if (dbError) throw dbError;
+      
+      // Set submission success
+      setSubmitted(true);
+      setEmail('');
+    } catch (err) {
+      console.error('Error submitting demo request:', err);
+      setError('There was an error submitting your request. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="">
       {/* Meta Pixel Code */}
       <Script id="facebook-pixel" strategy="afterInteractive">
         {`
@@ -51,27 +190,67 @@ export default function Home() {
       <Header />
 
       {/* Hero Section */}
-      <main className="flex-1 flex items-center justify-center bg-slate-50">
-        <div className="container mx-auto px-8 py-16">
+      <main className="flex-1 flex items-center justify-center bg-slate-50" id="demo">
+        <div className="container mx-auto px-8 py-16 sm:px-8 py-8 sm:py-16">
           <div className="flex flex-col md:flex-row items-center">
-            <div className="md:w-1/2 mb-10 md:mb-0">
-              <h1 className={`text-6xl font-light text-cerulean ${radley.className}`}>
+            <div className="w-full md:w-1/2 mb-8 md:mb-0 text-center md:text-left">
+              <h1 className={`text-3xl sm:text-5xl md:text-6xl font-light text-cerulean ${radley.className}`}>
                 Continuous Feedback, <i>Zero Effort</i>.
               </h1>
-              <p className={`text-slate-500 text-base font-light mt-4`}>
+              <p className={`text-slate-500 text-sm sm:text-base font-light mt-4 mx-auto md:mx-0`}>
               Our AI-powered platform automatically collects meaningful 360&deg; feedback in the background, saving managers 210+ hours a year while eliminating bias from performance reviews.
               </p>
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Link className='mt-8 border border-cerulean text-background bg-cerulean shadow-xs hover:bg-cerulean-600 h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/auth/register'>
-                  Start Free Trial
-                </Link>
-                
-                <Link className='mt-8 border border-cerulean text-cerulean bg-background shadow-xs hover:bg-cerulean-100 h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/book-a-demo'>
-                  Request Demo
-                </Link>
-              </div>
+              
+                <form
+                  onSubmit={handleDemoRequest}
+                  className="flex flex-col sm:flex-row gap-2 w-full"
+                >
+                  <div className="relative flex-grow">
+                    {submitted ? (
+                      <div className='mt-4 bg-white rounded-md border border-slate-200 mr-4 p-4'>
+                        <p className={`text-slate-500 text-sm font-light`}>
+                          <strong className='font-bold text-cerulean'>Thank You!</strong> We&apos;ve received your demo request and will be in touch shortly to schedule your personalized demo of Candor &mdash; within 24 hours.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                      <div className="flex flex-col sm:flex-row gap-4 mt-4">
+                        <Input
+                          type="email"
+                          name="email"
+                          placeholder="Enter your work email"
+                          className={`border ${emailValidationState.errorMessage ? 'border-red-500' : 'border-slate-300'} rounded-md px-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-cerulean focus:border-transparent h-12 bg-white`}
+                          required
+                          value={email}
+                          onChange={handleEmailChange}
+                          onBlur={handleEmailBlur}  
+                        />
+                        <Button
+                          type="submit"
+                          className="bg-cerulean text-white rounded-md px-4 py-2 hover:bg-cerulean-600 transition-colors h-12 mr-4" 
+                          disabled={isSubmitting || emailValidationState.isValidating || !!emailValidationState.errorMessage}
+                        >
+                          {isSubmitting ? 'Submitting...' : 'Request a Demo'}
+                        </Button>
+                      </div>
+                      </>
+                    )}
+                    {emailValidationState.isValidating && (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                        <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                      </div>
+                    )}
+                    {emailValidationState.errorMessage && (
+                      <p className="text-red-500 text-xs mt-1">{emailValidationState.errorMessage}</p>
+                    )}
+                    {error && (
+                      <p className="text-red-500 text-xs mt-1">{error}</p>
+                    )}
+                  </div>
+                </form>
+              
             </div>
-            <div className="md:w-1/2">
+            <div className="w-full md:w-1/2 mt-4 md:mt-0">
                 <video
                   src="https://candor360bucket.s3.us-east-2.amazonaws.com/candor-hero-video.mp4"
                   autoPlay
@@ -95,179 +274,177 @@ export default function Home() {
       </main>
 
 
-      <div className='bg-cerulean py-16'>
+      <div className='bg-cerulean py-10 sm:py-16'>
         <div className="container mx-auto px-4 flex flex-col items-center">
-          <h2 className={`text-4xl font-light text-white max-w-4xl text-center ${radley.className}`}>
+          <h2 className={`text-3xl sm:text-4xl font-light text-white max-w-4xl text-center ${radley.className}`}>
             Performance Reviews Are Broken
           </h2>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="mt-8 rounded-lg shadow-lg bg-gradient-to-bl from-cerulean-600 to-cerulean-700 p-8">
-              <h3 className={`text-2xl font-light text-white ${radley.className}`}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 w-full">
+            <div className="mt-6 sm:mt-8 rounded-lg shadow-lg bg-gradient-to-bl from-cerulean-600 to-cerulean-700 p-6 sm:p-8">
+              <h3 className={`text-xl sm:text-2xl font-light text-white ${radley.className}`}>
                 <Clock className='mb-2 text-cerulean-200' />
                 Time-Consuming
               </h3>
-              <p className="text-cerulean-200 text-base font-light mt-2">
+              <p className="text-cerulean-200 text-sm sm:text-base font-light mt-2">
                 Managers spend over 210 hours per year on performance reviews, taking time away from coaching and development.
               </p>
             </div>
             
-            <div className="mt-8 rounded-lg shadow-lg bg-gradient-to-bl from-cerulean-600 to-cerulean-700 p-8">
-              <h3 className={`text-2xl font-light text-white ${radley.className}`}>
+            <div className="mt-6 sm:mt-8 rounded-lg shadow-lg bg-gradient-to-bl from-cerulean-600 to-cerulean-700 p-6 sm:p-8">
+              <h3 className={`text-xl sm:text-2xl font-light text-white ${radley.className}`}>
                 <TriangleAlert className='mb-2 text-cerulean-200' />
                 Recency Bias
               </h3>
-              <p className="text-cerulean-200 text-base font-light mt-2">
+              <p className="text-cerulean-200 text-sm sm:text-base font-light mt-2">
                 Traditional reviews focus on recent events, missing months of achievements and creating an incomplete performance picture.
               </p>
             </div>
 
-            <div className="mt-8 rounded-lg shadow-lg bg-gradient-to-bl from-cerulean-600 to-cerulean-700 p-8">
-              <h3 className={`text-2xl font-light text-white ${radley.className}`}>
+            <div className="mt-6 sm:mt-8 rounded-lg shadow-lg bg-gradient-to-bl from-cerulean-600 to-cerulean-700 p-6 sm:p-8">
+              <h3 className={`text-xl sm:text-2xl font-light text-white ${radley.className}`}>
                 <Binoculars className='mb-2 text-cerulean-200' />
                 Limited Perspective
               </h3>
-              <p className="text-cerulean-200 text-base font-light mt-2">
+              <p className="text-cerulean-200 text-sm sm:text-base font-light mt-2">
                 Even the most well-intentioned manager will only gather feedback from a small sample size, missing the full story of employee contributions.
               </p>
             </div>
           </div>
 
-          <p className={`text-white max-w-xl text-lg font-light mt-12 text-center`}>
-          8% of companies say their performance management system is <i>&quot;not an effective use of time&quot;</i> and 45% of managers see no value in it.
+          <p className={`text-white max-w-xl text-sm sm:text-lg font-light mt-8 sm:mt-12 text-center`}>
+            58% of companies say their performance management system is <i>&quot;not an effective use of time&quot;</i> and 45% of managers see no value in it.
           </p>
-
         </div>
       </div>
 
-
-      <div className="flex-1 flex items-center justify-center bg-slate-50">
-        <div className="container mx-auto px-8 py-16">
+      {/* Solution Section */}
+      <div className="bg-slate-50 py-10 sm:py-16">
+        <div className="container mx-auto px-4 sm:px-8">
           <div className="flex flex-col md:flex-row items-center">
-            
-            <div className="md:w-1/2">
-                <video
-                  src="https://candor360bucket.s3.us-east-2.amazonaws.com/candor-solution-video.mp4"
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                  style={{ width: '100%', height: 'auto' }}
-                >
-                  <Image 
-                        src="/candor-solution.png" 
-                        alt="Candor Give Feedback Demo" 
-                        width={640} 
-                        height={375}
-                        className="w-full object-cover rounded-lg" 
-                        priority={true}
-                      />
-                </video>
+            <div className="w-full md:w-1/2 order-2 md:order-1">
+              <video
+                src="https://candor360bucket.s3.us-east-2.amazonaws.com/candor-solution-video.mp4"
+                autoPlay
+                muted
+                loop
+                playsInline
+                style={{ width: '100%', height: 'auto' }}
+                className="mt-6 md:mt-0"
+              >
+                <Image 
+                  src="/candor-solution.png" 
+                  alt="Candor Give Feedback Demo" 
+                  width={640} 
+                  height={375}
+                  className="w-full object-cover rounded-lg" 
+                  priority={true}
+                />
+              </video>
             </div>
 
-            <div className="md:w-1/2 mb-10 md:mb-0 ml-8">
-                <h2 className={`text-4xl font-light text-cerulean max-w-4xl ${radley.className}`}>
-                  Feedback That Works!
-                </h2>
-                <p className={`text-slate-500 text-base font-light max-w-xl mt-4 mb-4`}>
-                  Candor flips the feedback process on its head. Instead of waiting for managers to initiate reviews, our AI quietly works in the background, automatically collecting contextual feedback based on actual work relationships.
-                </p>
-                <p className='text-slate-500 text-base font-light mb-1'>
-                  <CircleCheck className='inline-block text-cerulean-300 mr-4' />
+            <div className="w-full md:w-1/2 order-1 md:order-2 md:pl-8">
+              <h2 className={`text-3xl sm:text-4xl font-light text-cerulean max-w-4xl text-center md:text-left ${radley.className}`}>
+                Feedback That Works!
+              </h2>
+              <p className={`text-slate-500 text-sm sm:text-base font-light max-w-xl mt-4 mb-4 text-center md:text-left`}>
+                Candor flips the feedback process on its head. Instead of waiting for managers to initiate reviews, our AI quietly works in the background, automatically collecting contextual feedback based on actual work relationships.
+              </p>
+              <div className="mt-4">
+                <p className='text-slate-500 text-sm sm:text-base font-light mb-2'>
+                  <CircleCheck className='inline-block text-cerulean-300 mr-2' />
                   Automatically identifies real working relationships
                 </p>
-                <p className='text-slate-500 text-base font-light mb-1'>
-                  <CircleCheck className='inline-block text-cerulean-300 mr-4' />
+                <p className='text-slate-500 text-sm sm:text-base font-light mb-2'>
+                  <CircleCheck className='inline-block text-cerulean-300 mr-2' />
                   Generates contextual surveys based on relationship, role, and industry
                 </p>
-                <p className='text-slate-500 text-base font-light mb-1'>
-                  <CircleCheck className='inline-block text-cerulean-300 mr-4' />
+                <p className='text-slate-500 text-sm sm:text-base font-light mb-2'>
+                  <CircleCheck className='inline-block text-cerulean-300 mr-2' />
                   Works continuously in the background with zero maintenance
                 </p>
-                <p className='text-slate-500 text-base font-light'>
-                  <CircleCheck className='inline-block text-cerulean-300 mr-4' />
+                <p className='text-slate-500 text-sm sm:text-base font-light'>
+                  <CircleCheck className='inline-block text-cerulean-300 mr-2' />
                   Uses AI to analyze and summarize feedback themes
                 </p>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className='bg-white py-16' id="features">
-        <div className="container mx-auto px-4 flex flex-col items-center text-center">
-          <h2 className={`text-4xl font-light text-nonphotoblue-600 max-w-4xl ${radley.className}`}>
+      {/* Features Section */}
+      <div className='bg-white py-10 sm:py-16' id="features">
+        <div className="container mx-auto px-4 flex flex-col items-center">
+          <h2 className={`text-3xl sm:text-4xl font-light text-nonphotoblue-600 max-w-4xl text-center ${radley.className}`}>
             Transform Your Feedback Culture
           </h2>
-          <p className={`text-slate-500 text-lg font-light max-w-2xl mt-4`}>
-          Companies with continuous feedback systems show 39% higher effectiveness in talent attraction and 44% better retention rates.
+          <p className={`text-slate-500 text-sm sm:text-lg font-light max-w-2xl mt-4 text-center`}>
+            Companies with continuous feedback systems show 39% higher effectiveness in talent attraction and 44% better retention rates.
           </p>
 
-          <div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-8 mt-8 text-left">
+          <div className="w-full mt-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               
-              <div className="mt-8 rounded-lg shadow-lg bg-gradient-to-bl from-slate-50 to-white p-8">
-                <h3 className={`text-2xl font-light text-nonphotoblue-600 ${radley.className}`}>
+              <div className="mt-4 rounded-lg shadow-lg bg-gradient-to-bl from-slate-50 to-white p-6">
+                <h3 className={`text-xl sm:text-2xl font-light text-nonphotoblue-600 ${radley.className}`}>
                   <CalendarSync className='mb-2 text-nonphotoblue-600' />
                   Continuous Feedback
                 </h3>
-                <p className="text-slate-500 text-base font-light mt-2">
-                Collect feedback throughout the year instead of periodic review cycles, giving employees the timely insights they need.
+                <p className="text-slate-500 text-sm sm:text-base font-light mt-2">
+                  Collect feedback throughout the year instead of periodic review cycles, giving employees the timely insights they need.
                 </p>
               </div>
 
-              <div className="mt-8 rounded-lg shadow-lg bg-gradient-to-bl from-slate-50 to-white p-8">
-                <h3 className={`text-2xl font-light text-nonphotoblue-600 ${radley.className}`}>
+              <div className="mt-4 rounded-lg shadow-lg bg-gradient-to-bl from-slate-50 to-white p-6">
+                <h3 className={`text-xl sm:text-2xl font-light text-nonphotoblue-600 ${radley.className}`}>
                   <Zap className='mb-2 text-nonphotoblue-600' />
                   Automated Collection
                 </h3>
-                <p className="text-slate-500 text-base font-light mt-2">
-                Zero manual effort required from managers or HR. Candor handles everything from identifying relationships to gathering responses.
+                <p className="text-slate-500 text-sm sm:text-base font-light mt-2">
+                  Zero manual effort required from managers or HR. Candor handles everything from identifying relationships to gathering responses.
                 </p>
               </div>
 
-              <div className="mt-8 rounded-lg shadow-lg bg-gradient-to-bl from-slate-50 to-white p-8">
-                <h3 className={`text-2xl font-light text-nonphotoblue-600 ${radley.className}`}>
+              <div className="mt-4 rounded-lg shadow-lg bg-gradient-to-bl from-slate-50 to-white p-6">
+                <h3 className={`text-xl sm:text-2xl font-light text-nonphotoblue-600 ${radley.className}`}>
                   <ChartScatter className='mb-2 text-nonphotoblue-600' />
                   Comprehensive Insights
                 </h3>
-                <p className="text-slate-500 text-base font-light mt-2">
-                Get a full view of employee performance based on actual work relationships, not just manager observations.
+                <p className="text-slate-500 text-sm sm:text-base font-light mt-2">
+                  Get a full view of employee performance based on actual work relationships, not just manager observations.
                 </p>
               </div>
 
-              <div className="mt-8 rounded-lg shadow-lg bg-gradient-to-bl from-slate-50 to-white p-8">
-                <h3 className={`text-2xl font-light text-nonphotoblue-600 ${radley.className}`}>
+              <div className="mt-4 rounded-lg shadow-lg bg-gradient-to-bl from-slate-50 to-white p-6">
+                <h3 className={`text-xl sm:text-2xl font-light text-nonphotoblue-600 ${radley.className}`}>
                   <HeartHandshake className='mb-2 text-nonphotoblue-600' />
                   Reduced Bias
                 </h3>
-                <p className="text-slate-500 text-base font-light mt-2">
-                Eliminate recency bias by capturing performance data continuously. AI analysis helps identify and reduce subjective biases.
+                <p className="text-slate-500 text-sm sm:text-base font-light mt-2">
+                  Eliminate recency bias by capturing performance data continuously. AI analysis helps identify and reduce subjective biases.
                 </p>
               </div>
 
-              <div className="mt-8 rounded-lg shadow-lg bg-gradient-to-bl from-slate-50 to-white p-8">
-                <h3 className={`text-2xl font-light text-nonphotoblue-600 ${radley.className}`}>
+              <div className="mt-4 rounded-lg shadow-lg bg-gradient-to-bl from-slate-50 to-white p-6">
+                <h3 className={`text-xl sm:text-2xl font-light text-nonphotoblue-600 ${radley.className}`}>
                   <Sparkles className='mb-2 text-nonphotoblue-600' />
                   AI Powered
                 </h3>
-                <p className="text-slate-500 text-base font-light mt-2">
-                Advanced AI analyzes relationship patterns, generates contextual surveys, and identifies themes from feedback to provide unbiased, actionable insights.
+                <p className="text-slate-500 text-sm sm:text-base font-light mt-2">
+                  Advanced AI analyzes relationship patterns, generates contextual surveys, and identifies themes from feedback to provide unbiased, actionable insights.
                 </p>
               </div>
 
-              <div className="mt-8 rounded-lg shadow-lg bg-gradient-to-bl from-slate-50 to-white p-8">
-                <h3 className={`text-2xl font-light text-nonphotoblue-600 ${radley.className}`}>
+              <div className="mt-4 rounded-lg shadow-lg bg-gradient-to-bl from-slate-50 to-white p-6">
+                <h3 className={`text-xl sm:text-2xl font-light text-nonphotoblue-600 ${radley.className}`}>
                   <Clock8 className='mb-2 text-nonphotoblue-600' />
                   Massive Time Savings
                 </h3>
-                <p className="text-slate-500 text-base font-light mt-2">
-                Save 210+ hours per manager annually, freeing them to focus on coaching and development rather than administrative tasks. <i className='text-xs'>Oh, Candor helps with coaching too!</i>
+                <p className="text-slate-500 text-sm sm:text-base font-light mt-2">
+                  Save 210+ hours per manager annually, freeing them to focus on coaching and development rather than administrative tasks. <i className='text-xs'>Oh, Candor helps with coaching too!</i>
                 </p>
               </div>
-
-
-              
-
             </div>
           </div>
         </div>
@@ -423,11 +600,11 @@ export default function Home() {
                       </div>
                       
                       <div className="text-center mt-8 flex flex-col sm:flex-row gap-4 justify-center">
-                        <Link href="/auth/register" className="inline-block bg-cerulean text-white text-center py-3 px-8 rounded-md hover:bg-cerulean-600 transition-colors">
+                        {/* <Link href="/auth/register" className="inline-block bg-cerulean text-white text-center py-3 px-8 rounded-md hover:bg-cerulean-600 transition-colors">
                           Start Free Trial
-                        </Link>
-                        <Link href="/book-a-demo" className="inline-block bg-white text-cerulean border border-cerulean text-center py-3 px-8 rounded-md hover:bg-cerulean-100 transition-colors">
-                          Request Demo
+                        </Link> */}
+                        <Link href="/book-a-demo" className="inline-block bg-cerulean text-white text-center py-3 px-8 rounded-md hover:bg-cerulean-600 transition-colors">
+                          Request a Demo
                         </Link>
                       </div>
                     </div>
@@ -526,11 +703,11 @@ export default function Home() {
                       </div>
                       
                       <div className="text-center mt-8 flex flex-col sm:flex-row gap-4 justify-center">
-                        <Link href="/auth/register" className="inline-block bg-cerulean text-white text-center py-3 px-8 rounded-md hover:bg-cerulean-600 transition-colors">
+                        {/* <Link href="/auth/register" className="inline-block bg-cerulean text-white text-center py-3 px-8 rounded-md hover:bg-cerulean-600 transition-colors">
                           Start Free Trial
-                        </Link>
-                        <Link href="/book-a-demo" className="inline-block bg-white text-cerulean border border-cerulean text-center py-3 px-8 rounded-md hover:bg-cerulean-100 transition-colors">
-                          Request Demo
+                        </Link> */}
+                        <Link href="/book-a-demo" className="inline-block bg-cerulean text-white text-center py-3 px-8 rounded-md hover:bg-cerulean-600 transition-colors">
+                          Request a Demo
                         </Link>
                       </div>
                     </div>

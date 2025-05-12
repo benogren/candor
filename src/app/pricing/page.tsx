@@ -199,8 +199,8 @@ export default function Pricing() {
                   </div>
                   
                   <div className="text-center">
-                    <Link href="/auth/register" className="inline-block bg-cerulean text-white text-center py-3 px-8 rounded-md hover:bg-cerulean-600 transition-colors">
-                      Start Free Trial
+                    <Link href="/book-a-demo" className="inline-block bg-cerulean text-white text-center py-3 px-8 rounded-md hover:bg-cerulean-600 transition-colors">
+                      Request a Demo
                     </Link>
                   </div>
                 </div>
@@ -299,8 +299,8 @@ export default function Pricing() {
                   </div>
                   
                   <div className="text-center">
-                  <Link href="/auth/register" className="inline-block bg-cerulean text-white text-center py-3 px-8 rounded-md hover:bg-cerulean-600 transition-colors">
-                      Start Free Trial
+                  <Link href="/book-a-demo" className="inline-block bg-cerulean text-white text-center py-3 px-8 rounded-md hover:bg-cerulean-600 transition-colors">
+                      Request a Demo
                     </Link>
                   </div>
                 </div>
@@ -374,11 +374,11 @@ export default function Pricing() {
               </div>
             </div>
 
-            <div className="mt-8">
+            {/* <div className="mt-8">
               <Link href="/auth/register" className="block w-full bg-cerulean text-white text-center py-3 rounded-md hover:bg-cerulean-600 transition-colors">
                 Get Started
               </Link>
-            </div>
+            </div> */}
           </div>
         </div>
       </div>
@@ -430,11 +430,11 @@ export default function Pricing() {
           </p>
 
           <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
-            <Link className='border border-berkeleyblue-200 text-berkeleyblue bg-background shadow-xs hover:bg-cerulean-100 h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/auth/register'>
+            {/* <Link className='border border-berkeleyblue-200 text-berkeleyblue bg-background shadow-xs hover:bg-cerulean-100 h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/auth/register'>
               Start Free Trial
-            </Link>
+            </Link> */}
             <Link className='border border-white text-white hover:bg-berkeleyblue-700 h-10 rounded-md px-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal' href='/book-a-demo'>
-              Book a Demo
+              Request a Demo
             </Link>
           </div>
         </div>
