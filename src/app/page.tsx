@@ -1,7 +1,7 @@
 // app/page.tsx
 'use client';
 import { useAuth } from '@/lib/context/auth-context';
-import { redirect } from "next/navigation";
+import { redirect, useRouter } from "next/navigation";
 import Image from 'next/image';
 import { radley } from './fonts';
 import React, { useState } from 'react';
@@ -26,6 +26,7 @@ const PUBLIC_EMAIL_DOMAINS = [
 
 export default function Home() {
   const { user } = useAuth();
+  const router = useRouter(); 
   const [billingCycle, setBillingCycle] = useState('monthly');
   
   // Form state
@@ -150,6 +151,7 @@ export default function Home() {
       if (dbError) throw dbError;
       
       // Set submission success
+      router.push('/thank-you?source=landing');
       setSubmitted(true);
       setEmail('');
     } catch (err) {

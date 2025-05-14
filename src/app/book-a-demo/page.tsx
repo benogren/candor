@@ -1,7 +1,6 @@
 'use client';
 
 import { useAuth } from '@/lib/context/auth-context';
-import { redirect } from "next/navigation";
 import Image from 'next/image';
 import { radley } from '../fonts';
 import React, { useState } from 'react';
@@ -11,6 +10,7 @@ import supabase from '@/lib/supabase/client';
 import { PlayCircleIcon, Loader2 } from 'lucide-react';
 import Header from '@/components/marketing/Header';
 import Footer from '@/components/marketing/Footer';
+import { redirect, useRouter } from "next/navigation";
 
 // Add public email domains array
 const PUBLIC_EMAIL_DOMAINS = [
@@ -46,6 +46,7 @@ const PUBLIC_EMAIL_DOMAINS = [
 
 export default function DemoPage() {
   const { user } = useAuth();
+  const router = useRouter();
 
   // Redirect if user is already logged in
   if (user) {
@@ -198,7 +199,9 @@ export default function DemoPage() {
       if (error) throw error;
       
       // Set submission success
+      router.push('/thank-you?source=demo');
       setSubmitted(true);
+
     } catch (err) {
       console.error('Error submitting demo request:', err);
       setError('There was an error submitting your request. Please try again.');
