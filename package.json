@@ -7,7 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "tailwind": "tailwindcss"
+    "tailwind": "tailwindcss",
+    "db:push": "drizzle-kit push:pg",
+    "db:push:staging": "env-cmd -f .env.staging drizzle-kit push:pg",
+    "db:push:production": "env-cmd -f .env.production drizzle-kit push:pg",
+    "db:generate": "drizzle-kit generate",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^6.7.2",
@@ -45,6 +50,8 @@
     "clsx": "^2.1.1",
     "cmdk": "1.0.0",
     "date-fns": "^4.1.0",
+    "dotenv": "^16.5.0",
+    "drizzle-orm": "^0.43.1",
     "formidable": "^3.5.2",
     "google": "link:@next/third-parties/google",
     "google-auth-library": "^9.15.1",
@@ -54,6 +61,8 @@
     "next-auth": "^4.24.11",
     "openai": "^4.89.0",
     "papaparse": "^5.5.2",
+    "pg": "^8.16.0",
+    "postgres": "^3.4.5",
     "react": "^19.0.0",
     "react-day-picker": "8.10.1",
     "react-dom": "^19.0.0",
@@ -73,17 +82,21 @@
     "@types/next-auth": "^3.15.0",
     "@types/node": "^20",
     "@types/papaparse": "^5.3.15",
+    "@types/pg": "^8.15.2",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19",
     "autoprefixer": "^10.4.20",
+    "drizzle-kit": "^0.31.1",
+    "env-cmd": "^10.1.0",
     "eslint": "^9",
     "eslint-config-next": "15.2.0",
     "postcss": "^8.5.3",
-    "prisma": "^6.4.1",
-    "supabase": "^2.15.8",
+    "supabase": "^2.20.12",
     "tailwindcss": "3.0.0",
     "tailwindcss-animate": "^1.0.7",
-    "typescript": "^5"
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
   },
-  "packageManager": "pnpm@latest"
+  "packageManager": "pnpm@8.15.4"
 }
