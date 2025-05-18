@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Sparkles, NotepadText, Calendar, UserCircle, FileText, Plus, Trash2, AlertCircle, Users, NotebookPen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
@@ -104,7 +104,7 @@ export default function ManagerCoachPage() {
     // const [directReports, setDirectReports] = useState<any[]>([]);
 
     // Fetch team members (direct reports)
-    const fetchTeamMembers = async () => {
+    const fetchTeamMembers = useCallback(async () => {
         if (!user) return;
         
         try {
@@ -185,10 +185,10 @@ export default function ManagerCoachPage() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [user, toast]);
 
     // Fetch all manager notes
-    const fetchManagerNotes = async () => {
+    const fetchManagerNotes = useCallback(async () => {
         if (!user) return;
 
         try {
@@ -249,7 +249,7 @@ export default function ManagerCoachPage() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [user, toast]);
 
     // Filter notes by team member
     const filterNotesByMember = (memberId: string) => {
@@ -596,9 +596,9 @@ export default function ManagerCoachPage() {
 
     // Load data when the component mounts
     useEffect(() => {
-        fetchTeamMembers();
-        fetchManagerNotes();
-    }, [user, fetchTeamMembers, fetchManagerNotes]);
+    fetchTeamMembers();
+    fetchManagerNotes();
+}, [fetchTeamMembers, fetchManagerNotes]);
 
     return (
         <div className="container mx-auto px-4 py-6">
