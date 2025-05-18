@@ -1,0 +1,121 @@
+/* app/styles/editor-styles.css */
+
+.tiptap {
+  /* Base editor styling */
+  color: #333;
+  font-family: 'Overpass', sans-serif;
+  line-height: 1.6;
+}
+
+/* Headings */
+.tiptap h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  color: #457b9d;
+}
+
+.tiptap h2 {
+  font-size: 2rem;
+  font-weight: 600;
+  margin-top: 1.75rem;
+  margin-bottom: 0.75rem;
+  color: #457b9d;
+}
+
+.tiptap h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  color: #457b9d;
+}
+
+.tiptap h4 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  color: #457b9d;
+}
+
+/* Lists */
+.tiptap ul, .tiptap ol {
+  padding-left: 1.5rem;
+  margin: 1rem 0;;
+}
+.tiptap ul {
+  list-style-type: disc;
+}
+.tiptap ol {
+  list-style-type: decimal;
+}
+.tiptap li {
+  margin-bottom: 0.5rem;
+}
+
+.tiptap li {
+  margin-bottom: 0.5rem;
+}
+
+.tiptap li > p {
+  margin: 0;
+}
+
+/* Paragraphs and spacing */
+.tiptap p {
+  margin-bottom: 1rem;
+}
+
+/* Bold and other formatting */
+.tiptap strong {
+  color: #2d3748;
+  font-weight: 700;
+}
+
+/* Add space between sections */
+.tiptap h4 + ul, .tiptap h4 + ol {
+  margin-top: 0.5rem;
+}
+
+.tiptap .feedback-summary {
+  background-color: #f7fafc;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  margin-bottom: 1.5rem;
+  border-left: 4px solid #4299e1;
+}
+
+.tiptap .strengths-section {
+  border-left: 4px solid #48bb78;
+  padding-left: 1rem;
+}
+
+.tiptap .areas-improvement {
+  border-left: 4px solid #ed8936;
+  padding-left: 1rem;
+}
+
+.tiptap .recommendations {
+  background-color: #ebf8ff;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+@media print {
+  .tiptap {
+    font-size: 12pt;
+  }
+  
+  .tiptap h1 {
+    font-size: 18pt;
+  }
+  
+  .tiptap h2 {
+    font-size: 16pt;
+  }
+  
+  /* Add more print-specific styling as needed */
+}

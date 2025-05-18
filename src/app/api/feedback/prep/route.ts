@@ -289,28 +289,22 @@ export async function POST(request: Request) {
     
     const prep = completion.choices[0]?.message?.content || "Unable to generate summary.";
 
-    // console.log('Summary:', prep);
-
-//     const summary = `### Feedback Summary: ing or Tools**: Enroll in a workshop or explore tools that can help enhance your responsiveness and reliability. This training can offer methods to manage and prioritize communications effectively, ensuring you remain accessible to your team's needs.
-
-// These recommendations aim to harness your existing strengths while addressing areas that can elevate your role as Director of Operations at Initech. The focus on efficiency and responsiveness, coupled with your demonstrated leadership skills, should further solidify your effectiveness and career growth within the company.`;
-    
     // Store the summary in the database for future reference
 
-    const { error: insertError } = await supabase
-      .from('feedback_summaries')
-      .insert({
-        user_id: userId,
-        timeframe: timeframe,
-        summary: prep,
-        feedback_data: feedback, // Store the raw feedback used for reference
-        type: "prep"
-      });
+    // const { error: insertError } = await supabase
+    //   .from('feedback_summaries')
+    //   .insert({
+    //     user_id: userId,
+    //     timeframe: timeframe,
+    //     summary: prep,
+    //     feedback_data: feedback, // Store the raw feedback used for reference
+    //     type: "prep"
+    //   });
     
-    if (insertError) {
-      console.error('Error storing feedback summary:', insertError);
-      // Continue anyway since we have the summary
-    }
+    // if (insertError) {
+    //   console.error('Error storing feedback summary:', insertError);
+    //   // Continue anyway since we have the summary
+    // }
     
     // Return the summary
     return NextResponse.json({ prep }, { status: 200 });

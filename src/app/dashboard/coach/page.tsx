@@ -1,67 +1,123 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { radley } from '../../fonts';
-import Image from 'next/image';
-import { Sparkles, NotepadText } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Sparkles, NotepadText, Calendar, FileText, Plus, Trash2, AlertCircle, Users, NotebookPen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useRouter } from 'next/navigation';
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
-import { useAuth } from '@/lib/context/auth-context';
-import supabase from '@/lib/supabase/client';
-import { toast } from '@/components/ui/use-toast';
-import Markdown from 'react-markdown';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
-import { formatDistanceToNow } from 'date-fns';
+import { useAuth } from '@/lib/context/auth-context';
+import supabase from '@/lib/supabase/client';
+import { useToast } from "@/components/ui/use-toast";
+import { formatDistanceToNow, format } from 'date-fns';
 
-// Types for our data
-type FeedbackSummary = {
+// Type for our notes data
+type Note = {
   id: string;
-  timeframe: string;
-  summary: string;
+  title: string;
+  content: string;
+  content_type: string;
+  creator_id: string;
+  subject_member_id?: string;
+  subject_invited_id?: string;
+  metadata?: Record<string, unknown>;
   created_at: string;
-  type: string;
+  updated_at: string;
+  is_generating: boolean;
+};
+
+// Helper function to safely strip HTML for previews
+const stripHtml = (html: string) => {
+  if (!html) return '';
+  
+  try {
+    // For browser environments
+    if (typeof window !== 'undefined') {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      return doc.body.textContent || '';
+    } 
+    // Fallback for SSR
+    return html.replace(/<[^>]*>?/gm, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  } catch {
+    // Fallback if parsing fails
+    return html.replace(/<[^>]*>?/gm, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
 };
 
 export default function FeedbackCoachPage() {
     const { user } = useAuth();
+    const router = useRouter();
+    const { toast } = useToast();
     
-    // State for feedback summaries
+    // State for summaries and preps from notes table
     const [isSummarizing, setIsSummarizing] = useState(false);
-    const [feedbackSummary, setFeedbackSummary] = useState<string | null>(null);
-    const [summaryTimeframe, setSummaryTimeframe] = useState<string | null>(null);
-    const [summaries, setSummaries] = useState<FeedbackSummary[]>([]);
-    
-    // State for 1:1 preps
     const [isGeneratingPrep, setIsGeneratingPrep] = useState(false);
-    const [prepContent, setPrepContent] = useState<string | null>(null);
-    const [preps, setPreps] = useState<FeedbackSummary[]>([]);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const [summaries, setSummaries] = useState<Note[]>([]);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const [preps, setPreps] = useState<Note[]>([]);
+    const [recentNotes, setRecentNotes] = useState<Note[]>([]);
+    const [allNotes, setAllNotes] = useState<Note[]>([]);
+    const [isGeneratingReview, setIsGeneratingReview] = useState(false);
     
-    // Shared modal state
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [selectedItem, setSelectedItem] = useState<FeedbackSummary | null>(null);
-    const [activeContentType, setActiveContentType] = useState<'summary' | 'prep'>('summary');
+    // State for delete confirmation
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [noteToDelete, setNoteToDelete] = useState<Note | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
-    // Fetch recent summaries
-    const fetchSummaries = async () => {
+    // is manager?
+    const [isManager, setIsManager] = useState(false);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const [directReports, setDirectReports] = useState<{id: string}[]>([]);
+
+    const checkIfManager = useCallback(async () => {
+        if (!user) return;
+        
+        try {
+            const { data: reportsData, error: reportsError } = await supabase
+            .from('org_structure')
+            .select('id')
+            .eq('manager_id', user.id)
+            .limit(1);
+            
+            if (reportsError) throw reportsError;
+            
+            // If we found any direct reports, the user is a manager
+            setIsManager(reportsData && reportsData.length > 0);
+            setDirectReports(reportsData || []);
+        } catch (error) {
+            console.error('Error checking manager status:', error);
+        }
+    }, [user]);
+
+    // Fetch recent summaries from notes table
+    const fetchSummaries = useCallback(async () => {
         if (!user) return;
 
         try {
             const { data, error } = await supabase
-                .from('feedback_summaries')
-                .select('id, timeframe, summary, created_at, type')
-                .eq('user_id', user.id)
-                .eq('type', 'summary')
+                .from('notes')
+                .select('*')
+                .eq('creator_id', user.id)
+                .eq('content_type', 'summary')
+                .is('subject_member_id', null)   // Only get personal notes
+                .is('subject_invited_id', null)  // Only get personal notes
                 .order('created_at', { ascending: false })
                 .limit(5);
 
@@ -78,18 +134,20 @@ export default function FeedbackCoachPage() {
                 variant: 'destructive',
             });
         }
-    };
+    }, [user, toast]);
 
-    // Fetch recent 1:1 preps
-    const fetchPreps = async () => {
+    // Fetch recent 1:1 preps from notes table
+    const fetchPreps = useCallback(async () => {
         if (!user) return;
 
         try {
             const { data, error } = await supabase
-                .from('feedback_summaries')
-                .select('id, timeframe, summary, created_at, type')
-                .eq('user_id', user.id)
-                .eq('type', 'prep')
+                .from('notes')
+                .select('*')
+                .eq('creator_id', user.id)
+                .eq('content_type', 'prep')
+                .is('subject_member_id', null)   // Only get personal notes
+                .is('subject_invited_id', null)  // Only get personal notes
                 .order('created_at', { ascending: false })
                 .limit(5);
 
@@ -106,145 +164,308 @@ export default function FeedbackCoachPage() {
                 variant: 'destructive',
             });
         }
+    }, [user, toast]);
+
+    // Fetch all recent notes for the top section
+    const fetchRecentNotes = useCallback(async () => {
+        if (!user) return;
+
+        try {
+            const { data, error } = await supabase
+                .from('notes')
+                .select('*')
+                .eq('creator_id', user.id)
+                .is('subject_member_id', null)   // Only get personal notes
+                .is('subject_invited_id', null)  // Only get personal notes
+                .order('updated_at', { ascending: false })
+                .limit(3);  // Only show 3 most recent notes in the top section
+
+            if (error) throw error;
+            
+            if (data) {
+                setRecentNotes(data);
+            }
+        } catch (error) {
+            console.error('Error fetching recent notes:', error);
+        }
+    }, [user]);
+
+    // Fetch all notes for the full list section
+    const fetchAllNotes = useCallback(async () => {
+        if (!user) return;
+
+        try {
+            const { data, error } = await supabase
+                .from('notes')
+                .select('*')
+                .eq('creator_id', user.id)
+                .is('subject_member_id', null)   // Only get personal notes
+                .is('subject_invited_id', null)  // Only get personal notes
+                .order('updated_at', { ascending: false })
+                .limit(20);  // Show more notes in the full list
+
+            if (error) throw error;
+            
+            if (data) {
+                setAllNotes(data);
+            }
+        } catch (error) {
+            console.error('Error fetching all notes:', error);
+        }
+    }, [user]);
+
+    // Delete a note
+    const deleteNote = async () => {
+        if (!noteToDelete || !user) return;
+        
+        try {
+            setIsDeleting(true);
+            
+            // Delete the note from the database
+            const { error } = await supabase
+                .from('notes')
+                .delete()
+                .eq('id', noteToDelete.id)
+                .eq('creator_id', user.id);
+                
+            if (error) throw error;
+            
+            // Close the modal
+            setDeleteModalOpen(false);
+            setNoteToDelete(null);
+            
+            // Show success message
+            toast({
+                title: 'Note deleted',
+                description: 'Your note has been deleted successfully.',
+            });
+            
+            // Refresh the lists
+            fetchSummaries();
+            fetchPreps();
+            fetchRecentNotes();
+            fetchAllNotes();
+            
+        } catch (error) {
+            console.error('Error deleting note:', error);
+            toast({
+                title: 'Error deleting note',
+                description: 'Could not delete your note. Please try again later.',
+                variant: 'destructive',
+            });
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
+    // Handle delete click - open confirmation modal
+    const handleDeleteClick = (note: Note, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent navigating to the note
+        setNoteToDelete(note);
+        setDeleteModalOpen(true);
     };
 
     // Load data when the component mounts
     useEffect(() => {
-        fetchSummaries();
-        fetchPreps();
-    }, [user]);
+    fetchSummaries();
+    fetchPreps();
+    fetchRecentNotes();
+    fetchAllNotes();
+    checkIfManager();
+    }, [fetchSummaries, fetchPreps, fetchRecentNotes, fetchAllNotes, checkIfManager]);
 
-    const handleSummarizeFeedback = async (timeframe: string) => {
-        if (!user) return;
-
-        try {
-            setIsSummarizing(true);
-            setSummaryTimeframe(timeframe);
-            setFeedbackSummary(null);
-            setSelectedItem(null);
-            setActiveContentType('summary');
-            setIsModalOpen(true);
-            
-            const { data: { session } } = await supabase.auth.getSession();
-            const token = session?.access_token;
-            
-            // Call API to summarize feedback
-            const response = await fetch('/api/feedback/summarize', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                    userId: user.id,
-                    timeframe,
-                    type: 'summary'
-                }),
-            });
-            
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to summarize feedback');
-            }
-            
-            const data = await response.json();
-            setFeedbackSummary(data.summary);
-            
-            // Refresh the summaries list
-            fetchSummaries();
-        } catch (error) {
-            console.error('Error summarizing feedback:', error);
-            toast({
-                title: 'Error summarizing feedback',
-                description: 'Could not summarize your feedback. Please try again later.',
-                variant: 'destructive',
-            });
-            setFeedbackSummary('An error occurred while summarizing your feedback.');
-        } finally {
-            setIsSummarizing(false);
-        }
+    // Handle clicking on a note
+    const handleNoteClick = (note: Note) => {
+        router.push(`/dashboard/notes/${note.id}`);
     };
 
+    // Generate summary handler
+    const handleSummarizeFeedback = async (timeframe: string) => {
+    if (!user) return;
+
+    try {
+        setIsSummarizing(true);
+        
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        
+        // First, check if there's feedback for this timeframe
+        const checkResponse = await fetch('/api/feedback/check-feedback', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+            userId: user.id,
+            timeframe
+        }),
+        });
+        
+        if (!checkResponse.ok) {
+        const errorData = await checkResponse.json();
+        throw new Error(errorData.error || 'Failed to check feedback');
+        }
+        
+        const { hasFeedback } = await checkResponse.json();
+        
+        if (!hasFeedback) {
+        // No feedback for this timeframe, show a message to the user
+        toast({
+            description: `You have no feedback for the ${timeframe === 'week' ? 'past week' : timeframe === 'month' ? 'past month' : 'selected period'}.`,
+        });
+
+        // fallback
+        alert(`You have no feedback for the ${timeframe === 'week' ? 'past week' : timeframe === 'month' ? 'past month' : 'selected period'}.`);
+        return;
+        }
+        
+        // Feedback exists, proceed with creating a note
+        let catTitle = '';
+        if (timeframe === 'week') {
+        catTitle = 'Last Week\'s Feedback Summary';
+        } else if (timeframe === 'month') {
+        catTitle = 'Last Month\'s Feedback Summary';
+        } else {
+        catTitle = 'Overall Feedback Summary';
+        }
+
+        catTitle += ` (${new Date().toLocaleDateString()})`;
+        
+        // Create a new note
+        const response = await fetch('/api/notes/create', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+            title: catTitle,
+            content_type: 'summary',
+            metadata: { timeframe },
+            subject_member_id: null,
+            subject_invited_id: null
+        }),
+        });
+        
+        if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create note');
+        }
+        
+        const data = await response.json();
+        
+        // Navigate to the editor page
+        router.push(`/dashboard/notes/${data.id}`);
+    } catch (error) {
+        console.error('Error creating summary note:', error);
+        toast({
+        title: 'Error creating summary',
+        description: 'Could not create your feedback summary. Please try again later.',
+        variant: 'destructive',
+        });
+    } finally {
+        setIsSummarizing(false);
+    }
+    };
+
+    // Generate prep handler
     const handlePrep = async () => {
         if (!user) return;
 
-        const timeframe = 'week'; // Default to week for 1:1 prep
-
         try {
             setIsGeneratingPrep(true);
-            setPrepContent(null);
-            setSelectedItem(null);
-            setActiveContentType('prep');
-            setIsModalOpen(true);
             
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;
+
+            let catTitle = '1:1 Preparation Notes';
+            catTitle += ` (${new Date().toLocaleDateString()})`;
             
-            // Call API to generate 1:1 prep
-            const response = await fetch('/api/feedback/prep', {
+            // Create a new note
+            const response = await fetch('/api/notes/create', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
                 },
                 body: JSON.stringify({
-                    userId: user.id,
-                    timeframe,
-                    type: 'prep'
+                    title: catTitle,
+                    content_type: 'prep',
+                    metadata: { timeframe: 'week' },
+                    subject_member_id: null,
+                    subject_invited_id: null
                 }),
             });
             
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to generate 1:1 prep');
+                throw new Error(errorData.error || 'Failed to create note');
             }
             
             const data = await response.json();
-            setPrepContent(data.prep);
             
-            // Refresh the preps list
-            fetchPreps();
+            // Navigate to the editor page
+            router.push(`/dashboard/notes/${data.id}`);
         } catch (error) {
-            console.error('Error generating 1:1 prep:', error);
+            console.error('Error creating prep note:', error);
             toast({
-                title: 'Error generating 1:1 prep',
-                description: 'Could not generate your 1:1 preparation. Please try again later.',
+                title: 'Error creating prep notes',
+                description: 'Could not create your 1:1 preparation. Please try again later.',
                 variant: 'destructive',
             });
-            setPrepContent('An error occurred while generating your 1:1 preparation.');
         } finally {
             setIsGeneratingPrep(false);
         }
     };
 
-    // Handle clicking on a summary
-    const handleSummaryClick = (summary: FeedbackSummary) => {
-        setSelectedItem(summary);
-        setFeedbackSummary(summary.summary);
-        setSummaryTimeframe(summary.timeframe);
-        setActiveContentType('summary');
-        setIsModalOpen(true);
-    };
+    // Generate review handler
+    const handleReview = async () => {
+        if (!user) return;
 
-    // Handle clicking on a prep
-    const handlePrepClick = (prep: FeedbackSummary) => {
-        setSelectedItem(prep);
-        setPrepContent(prep.summary);
-        setActiveContentType('prep');
-        setIsModalOpen(true);
-    };
+        try {
+            setIsGeneratingReview(true);
+            
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
 
-    // Format the summary title based on timeframe
-    const formatTimeframeTitle = (timeframe: string) => {
-        switch (timeframe) {
-            case 'week':
-                return 'Last Week\'s Feedback Summary';
-            case 'month':
-                return 'Last Month\'s Feedback Summary';
-            case 'all':
-                return 'Overall Feedback Summary';
-            default:
-                return 'Feedback Summary';
+            let catTitle = 'Self-Evaluation Notes';
+            catTitle += ` (${new Date().toLocaleDateString()})`;
+            
+            // Create a new note
+            const response = await fetch('/api/notes/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    title: catTitle,
+                    content_type: 'review',
+                    metadata: { timeframe: 'all' },
+                    subject_member_id: null,
+                    subject_invited_id: null
+                }),
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to create note');
+            }
+            
+            const data = await response.json();
+            
+            // Navigate to the editor page
+            router.push(`/dashboard/notes/${data.id}`);
+        } catch (error) {
+            console.error('Error creating review note:', error);
+            toast({
+                title: 'Error creating self-evaluation notes',
+                description: 'Could not create your self-evaluation preparation. Please try again later.',
+                variant: 'destructive',
+            });
+        } finally {
+            setIsGeneratingReview(false);
         }
     };
 
@@ -253,255 +474,281 @@ export default function FeedbackCoachPage() {
         try {
             return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
         } catch (error) {
+            console.log('Error formatting date:', error);
             return 'some time ago';
-            console.log('Error formatting time:', error);
         }
     };
 
-    // Get a preview of the content (first 150 characters)
+    // Get a preview of the content (first 180 characters)
     const getContentPreview = (content: string) => {
-        return content.length > 150 ? content.substring(0, 150) + '...' : content;
+        if (!content) return '';
+        const plainText = stripHtml(content);
+        return plainText.length > 160 ? plainText.substring(0, 160) + '...' : plainText;
     };
 
-    // Format prep title
-    const formatPrepTitle = (created_at: string) => {
-        const date = new Date(created_at);
-        return `1:1 Prep Notes (${date.toLocaleDateString()})`;
+    const ContentPreview = ({ content }: { content: string }) => {
+    return (
+        <div className="h-[72px] overflow-hidden relative">
+        <p className="text-sm text-slate-400 line-clamp-3">
+            {getContentPreview(content)}
+        </p>
+        <div className="absolute bottom-0 w-full h-6 bg-gradient-to-t from-white to-transparent"></div>
+        </div>
+        );
+    };
+
+    // Get note type display label
+    const getNoteTypeLabel = (note: Note) => {
+        if (note.content_type === 'summary') {
+            return 'Feedback Summary';
+        } 
+        if (note.content_type === 'prep') {
+            return '1:1 Prep Notes';
+        }
+        if (note.content_type === 'review') {
+            return 'Self-Evaluation Prep';
+        }
+        return 'Note';
     };
 
     return (
-        <>
-        <main className="flex-1 flex bg-slate-50 rounded-lg w-full shadow-md">
-            <div className="container mx-auto px-4">
-                <div className='flex flex-col md:flex-row relative px-12 items-center justify-center'>
-                    <div className='w-1/2'>
-                        <h1 className={`text-4xl md:text-6xl font-light text-cerulean ${radley.className}`}>
-                            Your Personal Feedback Coach.
-                        </h1>
-                        <p className={`text-slate-500 text-sm md:text-base font-light mt-4`}>
-                        Your Feedback Coach helps you get the most out of the feedback you&apos;ve received. Use these tools to understand patterns, identify growth opportunities, and track your progress over time.
-                        </p>
-                    </div>
-                    <div className='w-1/2'>
-                        <Image
-                            src="/candor-coach-hero.png"
-                            alt="Candor Coach"
-                            width={300}
-                            height={180}
-                            className="object-cover w-full h-full mx-auto"
-                            priority={true}
-                        />
+        <div className="container mx-auto px-4 py-6">
+            <div className='flex items-center justify-between mb-8'>
+            <h2 className='text-4xl font-light text-berkeleyblue mb-6'>Feedback Coach</h2>
+            {isManager && (
+                <Button
+                variant="outline"
+                className="flex items-center gap-2"
+                onClick={() => router.push('/dashboard/coach/manager')}
+                >
+                <Users className="h-5 w-5 text-cerulean-400" />
+                Switch to Manager View
+                </Button>
+            )}
+            </div>
+            {/* Recent Activity Section */}
+            {recentNotes.length > 0 && (
+                <div className="mb-10">
+                    <h2 className='text-2xl font-light text-berkeleyblue mb-4'>Recently Updated</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        {recentNotes.map(note => (
+                            <div 
+                        key={note.id}
+                        className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-100 overflow-hidden cursor-pointer h-[210px] flex flex-col"
+                        onClick={() => handleNoteClick(note)}
+                        >
+                        <div className="p-5 flex-1 flex flex-col">
+                            <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center">
+                                {note.content_type === 'summary' && (
+                                <Sparkles className="h-4 w-4 text-cerulean-400 mr-2" />
+                                )}
+                                {note.content_type === 'prep' && (
+                                <NotepadText className="h-4 w-4 text-cerulean-400 mr-2" />
+                                )}
+                                {note.content_type === 'review' && (
+                                <NotebookPen className="h-4 w-4 text-cerulean-400 mr-2" />
+                                )}
+                                <span className="text-xs font-medium text-cerulean-500 uppercase tracking-wide">
+                                {getNoteTypeLabel(note)}
+                                </span>
+                            </div>
+                            <span className="text-xs text-gray-500">
+                                {formatRelativeTime(note.updated_at)}
+                            </span>
+                            </div>
+                            <h4 className="font-medium text-gray-900 mb-2 truncate">{note.title}</h4>
+                            <ContentPreview content={note.content} />
+                        </div>
+                        <div className="bg-slate-50 px-5 py-2 text-xs text-gray-500 flex items-center justify-between mt-auto">
+                            <div className="flex items-center">
+                            <Calendar className="h-3 w-3 mr-1" />
+                            <span>{format(new Date(note.created_at), 'MMM d, yyyy')}</span>
+                            </div>
+                            <button 
+                            className="text-gray-400 hover:text-red-500 transition-colors"
+                            onClick={(e) => handleDeleteClick(note, e)}
+                            title="Delete"
+                            >
+                            <Trash2 className="h-3 w-3" />
+                            </button>
+                        </div>
+                        </div>
+                        ))}
                     </div>
                 </div>
-            </div>
-        </main>
-                
-        <div className="container mx-auto px-4 py-8">
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-8 mt-4'>
-                
-                {/* Summarized Feedback Card */}
-                <div className='rounded-lg bg-white shadow-md pt-8 px-8 pb-6'>    
-                    <div className='border-b border-slate-200 pb-4 mb-4'>
-                        <div className='flex items-center gap-2 mb-6'>
-                            <Sparkles className="h-6 w-6 text-cerulean-300" />
-                            <h4 className='text-lg font-light text-cerulean'>Summarized Feedback</h4>
-                        </div>
+            )}
 
-                        {summaries.length > 0 ? (
-                            summaries.map((summary) => (
-                                <div key={summary.id} className='mb-4'>
-                                    <div className='flex items-center justify-between'>
-                                        <div 
-                                            className="text-cerulean hover:text-cerulean-300 hover:underline cursor-pointer text-sm font-medium"
-                                            onClick={() => handleSummaryClick(summary)}
-                                        >
-                                            {formatTimeframeTitle(summary.timeframe)}
-                                        </div>
-                                        <time className="text-xs text-gray-500">
-                                            {formatRelativeTime(summary.created_at)}
-                                        </time>
-                                    </div>
-                                    <p 
-                                        className="text-sm font-light text-slate-500 mt-1 cursor-pointer"
-                                        onClick={() => handleSummaryClick(summary)}
-                                    >
-                                        <Markdown 
-                                                components={{
-                                                    pre: ({children}) => <span>{children}</span>,
-                                                    code: ({children}) => <span>{children}</span>,
-                                                    h3: ({children}) => <span>{children}</span>,
-                                                    h4: ({children}) => <span>{children}</span>,
-                                                    p: ({children}) => <span>{children}</span>,
-                                                    strong: ({children}) => <span>{children}</span>,
-                                                    ol: ({children}) => <span>{children}</span>,
-                                                    ul: ({children}) => <span>{children}</span>,
-                                                    li: ({children}) => <span>{children}</span>,
-                                                }}
-                                            >
-                                        {getContentPreview(summary.summary)}
-                                        </Markdown>
-                                    </p>
-                                </div>
-                            ))
-                        ) : (
-                            <p className="text-sm font-light text-slate-500 italic">
-                                No feedback summaries yet. Generate your first summary below.
-                            </p>
-                        )}
-                    </div>
+            {/* Quick Actions */}
+            <div className="mb-4">
+                <h2 className='text-2xl font-light text-berkeleyblue mb-4'>Generate New</h2>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button variant={'outline'} className="hidden md:flex w-full text-center">
-                                Generate Summary
+                            <Button 
+                            variant="secondary" 
+                            className="w-full flex items-center justify-between px-4 py-12 text-left"
+                            disabled={isSummarizing}
+                            >
+                                <div className="flex items-center">
+                                    <Sparkles className="h-7 w-7 text-cerulean-400 mr-4" />
+                                    <div>
+                                        <div className="font-light text-lg text-cerulean">Feedback Summary</div>
+                                        <div className="text-sm text-gray-500">Analyze your received feedback</div>
+                                    </div>
+                                </div>
+                                <Plus className="h-5 w-5 text-cerulean" />
                             </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleSummarizeFeedback('week')} className='w-full'>
-                                Last Week&apos;s Feedback
+                        <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuItem 
+                                onClick={() => handleSummarizeFeedback('week')} 
+                                className="cursor-pointer"
+                                disabled={isSummarizing}
+                            >
+                                {isSummarizing ? 'Checking feedback...' : 'Last Week\'s Feedback'}
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleSummarizeFeedback('month')} className='w-full'>
-                                Last Month&apos;s Feedback
+                            <DropdownMenuItem 
+                                onClick={() => handleSummarizeFeedback('month')} 
+                                className="cursor-pointer"
+                                disabled={isSummarizing}
+                            >
+                                {isSummarizing ? 'Checking feedback...' : 'Last Month\'s Feedback'}
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleSummarizeFeedback('all')} className='w-full'>
-                                All Feedback
+                            <DropdownMenuItem 
+                                onClick={() => handleSummarizeFeedback('all')} 
+                                className="cursor-pointer"
+                                disabled={isSummarizing}
+                            >
+                                {isSummarizing ? 'Checking feedback...' : 'All Feedback'}
                             </DropdownMenuItem>
-                        </DropdownMenuContent>
+                            </DropdownMenuContent>
                     </DropdownMenu>
-                </div>
 
-                {/* 1:1 Prep Card */}
-                <div className='rounded-lg bg-white shadow-md pt-8 px-8 pb-6'>    
-                    <div className='border-b border-slate-200 pb-4 mb-4'>
-                        <div className='flex items-center gap-2 mb-6'>
-                            <NotepadText className="h-6 w-6 text-cerulean-300" />
-                            <h4 className='text-lg font-light text-cerulean'>1:1 Prep</h4>
-                        </div>
-
-                        {preps.length > 0 ? (
-                            preps.map((prep) => (
-                                <div key={prep.id} className='mb-4'>
-                                    <div className='flex items-center justify-between'>
-                                        <div 
-                                            className="text-cerulean hover:text-cerulean-300 hover:underline cursor-pointer text-sm font-medium"
-                                            onClick={() => handlePrepClick(prep)}
-                                        >
-                                            {formatPrepTitle(prep.created_at)}
-                                        </div>
-                                        <time className="text-xs text-gray-500">
-                                            {formatRelativeTime(prep.created_at)}
-                                        </time>
-                                    </div>
-                                    <p 
-                                        className="text-sm font-light text-slate-500 mt-1 cursor-pointer"
-                                        onClick={() => handlePrepClick(prep)}
-                                    >
-                                        <Markdown 
-                                                components={{
-                                                    pre: ({children}) => <span>{children}</span>,
-                                                    code: ({children}) => <span>{children}</span>,
-                                                    h3: ({children}) => <span>{children}</span>,
-                                                    h4: ({children}) => <span>{children}</span>,
-                                                    p: ({children}) => <span>{children}</span>,
-                                                    strong: ({children}) => <span>{children}</span>,
-                                                    ol: ({children}) => <span>{children}</span>,
-                                                    ul: ({children}) => <span>{children}</span>,
-                                                    li: ({children}) => <span>{children}</span>,
-                                                }}
-                                            >
-                                        {getContentPreview(prep.summary)}
-                                        </Markdown>
-                                    </p>
-                                </div>
-                            ))
-                        ) : (
-                            <p className="text-sm font-light text-slate-500 italic">
-                                No 1:1 prep notes yet. Generate your first preparation below.
-                            </p>
-                        )}
-                    </div>
                     <Button 
-                        variant={'outline'} 
-                        className="hidden md:flex w-full"
+                        variant="secondary" 
+                        className="w-full flex items-center justify-between px-4 py-12 text-left"
                         onClick={() => handlePrep()}
+                        disabled={isGeneratingPrep}
                     >
-                        Generate Prep   
+                        <div className="flex items-center">
+                            <NotepadText className="h-7 w-7 text-cerulean-400 mr-4" />
+                            <div>
+                                <div className="font-light text-lg text-cerulean">1:1 Preparation</div>
+                                <div className="text-sm text-gray-500">Create notes for your next meeting</div>
+                            </div>
+                        </div>
+                        <Plus className="h-5 w-5 text-cerulean" />
+                    </Button>
+
+                    <Button 
+                        variant="secondary" 
+                        className="w-full flex items-center justify-between px-4 py-12 text-left"
+                        onClick={() => handleReview()}
+                        disabled={isGeneratingReview}
+                    >
+                        <div className="flex items-center">
+                            <NotebookPen className="h-7 w-7 text-cerulean-400 mr-4" />
+                            <div>
+                                <div className="font-light text-lg text-cerulean">Self-Evaluation Preparation</div>
+                                <div className="text-sm text-gray-500">Create notes for your next career discussion</div>
+                            </div>
+                        </div>
+                        <Plus className="h-5 w-5 text-cerulean" />
                     </Button>
                 </div>
             </div>
-        </div>
 
-        {/* Shared Modal for both Feedback Summary and 1:1 Prep */}
-        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-            <DialogContent className="sm:max-w-[90%] max-h-[90%] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>
-                        {activeContentType === 'summary' ? (
-                            isSummarizing ? 'Analyzing your feedback...' : 
-                            selectedItem ? formatTimeframeTitle(selectedItem.timeframe) :
-                            summaryTimeframe === 'week' ? 'Last Week\'s Feedback Summary' :
-                            summaryTimeframe === 'month' ? 'Last Month\'s Feedback Summary' :
-                            'Overall Feedback Summary'
-                        ) : (
-                            isGeneratingPrep ? 'Generating 1:1 prep notes...' :
-                            selectedItem ? formatPrepTitle(selectedItem.created_at) :
-                            '1:1 Preparation Notes'
-                        )}
-                    </DialogTitle>
-                    <DialogDescription>
-                        {activeContentType === 'summary' ? (
-                            isSummarizing ? 'Please wait while we generate your feedback summary.' : 
-                            'Here\'s what we found in your feedback.'
-                        ) : (
-                            isGeneratingPrep ? 'Please wait while we generate your 1:1 preparation notes.' :
-                            'Use these notes to prepare for your next 1:1 meeting.'
-                        )}
-                    </DialogDescription>
-                </DialogHeader>
-                
-                {activeContentType === 'summary' && isSummarizing || activeContentType === 'prep' && isGeneratingPrep ? (
-                    <div className="flex justify-center items-center py-8">
-                        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cerulean"></div>
-                    </div>
-                ) : (
-                    <div className="py-4">
-                        {activeContentType === 'summary' && feedbackSummary && (
-                            <Markdown 
-                                components={{
-                                    pre: ({children}) => <pre className={`text-2xl font-medium text-cerulean mb-3 ${radley.className}`}>{children}</pre>,
-                                    code: ({children}) => <code className={`text-2xl font-medium text-cerulean mb-3 ${radley.className}`}>{children}</code>,
-                                    h3: ({children}) => <h3 className="text-xl font-medium text-gray-800 mb-3">{children}</h3>,
-                                    h4: ({children}) => <h4 className="text-lg font-medium text-gray-800 mt-5 mb-2">{children}</h4>,
-                                    p: ({children}) => <p className="mb-4">{children}</p>,
-                                    strong: ({children}) => <strong className="font-bold">{children}</strong>,
-                                    ol: ({children}) => <ol className="list-decimal pl-6 mb-4">{children}</ol>,
-                                    ul: ({children}) => <ul className="list-disc pl-6 mb-4">{children}</ul>,
-                                    li: ({children}) => <li className="mb-1">{children}</li>,
-                                }}
+            <div className='mb-8'>
+                <div className='rounded-lg bg-white shadow-md border border-gray-100'>
+                    {allNotes.length > 0 ? (
+                        <>
+                        {allNotes.map((note, index) => (
+                            <div 
+                            key={note.id}
+                            className={`px-6 py-4 hover:bg-slate-50 cursor-pointer ${index !== 0 ? 'border-t border-gray-100' : ''}`}
+                            onClick={() => handleNoteClick(note)}
                             >
-                                {feedbackSummary}
-                            </Markdown>
-                        )}
-                        {activeContentType === 'prep' && prepContent && (
-                            <Markdown 
-                                components={{
-                                    pre: ({children}) => <pre className={`text-2xl font-medium text-cerulean mb-3 ${radley.className}`}>{children}</pre>,
-                                    code: ({children}) => <code className={`text-2xl font-medium text-cerulean mb-3 ${radley.className}`}>{children}</code>,
-                                    h3: ({children}) => <h3 className="text-xl font-medium text-gray-800 mb-3">{children}</h3>,
-                                    h4: ({children}) => <h4 className="text-lg font-medium text-gray-800 mt-5 mb-2">{children}</h4>,
-                                    p: ({children}) => <p className="mb-4">{children}</p>,
-                                    strong: ({children}) => <strong className="font-bold">{children}</strong>,
-                                    ol: ({children}) => <ol className="list-decimal pl-6 mb-4">{children}</ol>,
-                                    ul: ({children}) => <ul className="list-disc pl-6 mb-4">{children}</ul>,
-                                    li: ({children}) => <li className="mb-1">{children}</li>,
-                                }}
-                            >
-                                {prepContent}
-                            </Markdown>
-                        )}
-                    </div>
-                )}
-            </DialogContent>
-        </Dialog>
-        </>
+                                <div className='flex items-center justify-between w-full'>
+                                    <div className='flex items-center'>
+                                        {note.content_type === 'summary' ? (
+                                            <Sparkles className="h-5 w-5 text-cerulean-400 mr-2" />
+                                        ) : note.content_type === 'prep' ? (
+                                            <NotepadText className="h-5 w-5 text-cerulean-400 mr-2" />
+                                        ) : note.content_type === 'review' ? (
+                                            <NotebookPen className="h-5 w-5 text-cerulean-400 mr-2" />
+                                        ) : (
+                                            <FileText className="h-5 w-5 text-cerulean-400 mr-2" />
+                                        )}
+                                        <h4 className="font-medium text-cerulean truncate">{note.title}</h4>
+                                    </div>
+                                    <div className='flex items-center text-xs text-gray-500'>
+                                        <span>{formatRelativeTime(note.updated_at)}</span>
+                                        <button 
+                                            className="text-gray-400 hover:text-red-500 transition-colors ml-4"
+                                            onClick={(e) => handleDeleteClick(note, e)}
+                                            title="Delete"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className='mt-2 text-sm text-slate-400'>
+                                    {getContentPreview(note.content)}
+                                </div>
+                                
+                            </div>
+                        ))}
+                        </>
+                    ) : (
+                        <div className="text-center p-6">
+                            <FileText className="h-10 w-10 text-gray-300 mx-auto mb-4" />
+                            <p className="text-gray-500">Generate your first note using the options above.</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Delete Confirmation Modal */}
+            <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center">
+                            <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
+                            Confirm Deletion
+                        </DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to delete this note? This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    
+                    {noteToDelete && (
+                        <div className="my-2 p-3 bg-gray-50 rounded-md">
+                            <p className="font-medium text-sm">{noteToDelete.title}</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                                Created {format(new Date(noteToDelete.created_at), 'MMMM d, yyyy')}
+                            </p>
+                        </div>
+                    )}
+                    
+                    <DialogFooter className="flex justify-end gap-2 mt-4">
+                        <Button 
+                            variant="outline" 
+                            onClick={() => setDeleteModalOpen(false)} 
+                            disabled={isDeleting}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            variant="destructive" 
+                            onClick={deleteNote} 
+                            disabled={isDeleting}
+                        >
+                            {isDeleting ? 'Deleting...' : 'Delete'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </div>
     );
 }

@@ -1,4 +1,4 @@
-// src/app/api/feedback/manager/summarize/route.ts
+// src/app/api/feedback/review/route.ts
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
@@ -12,18 +12,16 @@ export async function POST(request: Request) {
   try {
     // Get the request body
     const body = await request.json();
-    const { employeeId, managerId, timeframe, is_invited } = body;
+    const { userId, timeframe } = body;
     
     // Basic validation
-    if (!employeeId || !timeframe || !managerId) {
+    if (!userId || !timeframe) {
       return NextResponse.json(
         { error: 'Invalid request parameters' },
         { status: 400 }
       );
     }
     
-    // console.log('Received request:', { employeeId, managerId, timeframe, is_invited });
-
     // Create Supabase client
     const authHeader = request.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -47,7 +45,7 @@ export async function POST(request: Request) {
     const { data: recipientData, error: recipientError } = await supabase
         .from('feedback_recipients')
         .select('id')
-        .eq('recipient_id', employeeId); 
+        .eq('recipient_id', userId);
     
     if (recipientError || recipientData.length === 0) throw recipientError;
 
@@ -55,18 +53,9 @@ export async function POST(request: Request) {
 
     // Now get feedback responses for these recipients, joining with questions
     const today = new Date();
-    let startDate = new Date();
+    const startDate = new Date();
 
-    if (timeframe === 'week') {
-        // Last week's feedback
-        startDate.setDate(today.getDate() - 7);
-    } else if (timeframe === 'month') {
-        // Last month's feedback
-        startDate.setMonth(today.getMonth() - 1);
-    } else {
-        // All feedback - use a very old date
-        startDate = new Date(2000, 0, 1);
-    }
+    startDate.setMonth(today.getMonth() - 12); // Default to 12 months ago
 
     const { data: feedbackData, error: feedbackError } = await supabase
         .from('feedback_responses')
@@ -115,48 +104,20 @@ export async function POST(request: Request) {
     const feedback = feedbackData || [];
 
     // console.log(feedback);
-    let userName = '';
-    let jobTitle = '';
 
-    if (is_invited) {
-        const { data: invitedUserData, error: invitedUserError } = await supabase
-        .from('invited_users')
-        .select('name, job_title')
-        .eq('id', employeeId);
+    const userName = user.user_metadata.name;
 
-        if (invitedUserError || !invitedUserData || invitedUserData.length === 0) {
-            jobTitle = ''; //not found
-        } else {
-            jobTitle = `They're a ${invitedUserData[0].job_title}`;
-        }
-        userName = invitedUserData?.[0]?.name || 'Unknown User';
-    } else {
-        const { data: jobData, error: jobError } = await supabase
-        .from('user_profiles')
-        .select('name, job_title')
-        .eq('id', employeeId);
-
-        if (jobError || !jobData || jobData.length === 0) {
-            jobTitle = ''; //not found
-        } else {
-            jobTitle = `They're a ${jobData[0].job_title}`;
-        }
-        userName = jobData?.[0]?.name || 'Unknown User';
-    } 
-
-    const { data: managerData, error: managerError } = await supabase
+    const { data: jobData, error: jobError } = await supabase
       .from('user_profiles')
-      .select('name, job_title')
-      .eq('id', managerId);
+      .select('job_title')
+      .eq('id', userId);
 
-    let managerJobTitle = '';
-    if (managerError || !managerData || managerData.length === 0) {
-        managerJobTitle = ''; //not found
+    let jobTitle = '';
+    if (jobError || !jobData || jobData.length === 0) {
+        jobTitle = ''; //not found
     } else {
-        managerJobTitle = `They're a ${managerData[0].job_title}`;
+        jobTitle = `They're a ${jobData[0].job_title}`;
     }
-
-    const managerName = managerData?.[0]?.name || 'Unknown Manager';
 
     let company = '';
     let industry = '';
@@ -169,7 +130,7 @@ export async function POST(request: Request) {
             company_id,
             companies!inner(id, name, industry)
             `)
-            .eq('id', employeeId)
+            .eq('id', userId)
             .single();
 
             const companyObject = Array.isArray(companyData?.companies) 
@@ -180,7 +141,7 @@ export async function POST(request: Request) {
             industry = `in the ${companyObject?.industry} industry.`;
     } catch (error) {
         // not found
-        console.log('Error fetching company data:', error);
+        console.log('Error fetching company or industry:', error);
     }
 
     // console.log('Feedback data:', feedback);    
@@ -218,38 +179,21 @@ export async function POST(request: Request) {
       `;
     }).join('\n');
     
-    // If there's no feedback content, return early
+    // If there's no feedback content, ...
     if (!formattedFeedback.trim()) {
-      return NextResponse.json(
-        { summary: 'No feedback content available to summarize.' },
-        { status: 200 }
-      );
+    //   return NextResponse.json(
+    //     { summary: 'No feedback content available to summarize.' },
+    //     { status: 200 }
+    //   );
     }
     
     // Determine time period for prompt
     let timePeriodText = '';
-    switch (timeframe) {
-      case 'week':
-        timePeriodText = 'the past week';
-        break;
-      case 'month': 
-        timePeriodText = 'the past month';
-        break;
-      default:
-        timePeriodText = 'across all time periods';
-    }
+    timePeriodText = 'over the past year'; // Default to year
     
     // Create the prompt for OpenAI
-
-    // const prompt = `
-    // ${timePeriodText} (${startDate.toISOString()} - ${today.toISOString()})
-    // formatted feedback:
-    // ${formattedFeedback}
-    // `;
-    
-
     const prompt = `
-    Take on the role of an experienced career coach specialising in analyzing 360-degree employee feedback.
+    Take on the role of an experienced career coach specialising in Performance Review meeting preperation.
       
       Below is a collection of feedback for ${userName}.
       Their current job title is: ${jobTitle}
@@ -259,54 +203,94 @@ export async function POST(request: Request) {
       
       ${formattedFeedback}
       
-      Please provide a thoughtful, constructive summary of this feedback that includes:
-      1. Major strengths identified in the feedback
-      2. Areas for potential growth or improvement
-      3. Patterns or themes across the feedback
-      4. 2-3 specific, actionable recommendations based on the feedback
+      Steps:
+      1.) List the key achievements of ${userName} ${timePeriodText}, focusing on contributions to projects, and any notable innovations or solutions they provided.
+      2.) Based on the feedback and performance data for ${userName}, identify three areas for improvement that align with our team goals and their personal development plan.‍
+      3.) Generate constructive feedback for ${userName} regarding their time management skills, incorporating examples from the last quarter and suggestions for improvement.
+      4.) What are the top three strengths of ${userName} as demonstrated in their recent projects, and how have these strengths positively impacted our team's performance?
+      5.) Propose three SMART goals for ${userName} for the next review period that focus on leveraging their strengths identified in step 4 and addressing their improvement areas you identified in step 3.
+      6.) Reviewing the feedback given, analyze ${userName}'s contribution to team dynamics and collaboration over the past year, including any leadership roles or initiatives they undertook to enhance team cohesion.
+      7.) Reviewing the feedback given, provide examples of how ${userName} demonstrated exceptional problem-solving skills, especially in dealing with challenges or projects, and suggest ways to further develop these skills.
+      8.) Reviewing the feedback given, create a paragraph acknowledging ${userName}'s exceptional contributions to their projects or team, highlighting their innovative approaches and the value added to the team.
+      9.) Compose a set of open-ended questions to facilitate a development discussion with ${userName}'s manager, focusing on their career aspirations, feedback on the team environment, and how management can support their growth.
+      10.) Review all of the previous steps and performance feedback for ${userName} and make edits to minimize bias, ensuring the language is neutral and focuses on specific behaviors and outcomes.
+
       
       Format your response in clear sections with meaningful headings. 
-      Keep your response balanced, constructive, and growth-oriented. 
-      Focus on patterns rather than individual comments and avoid unnecessarily harsh criticism.
       If provided, consider the individual's company and industry and focus on how companies within this industry operate; the type of work they do, the skills they need, and the challenges they face.
       If provided, consider the individual's job title and focus on how this role typically operates; the type of work they do, the skills they need, and the challenges they face.
-      Your reponse should be written in 2nd person, ${userName}'s manager ${managerName} will be the recipient of this summary.
-      ${managerName} is a ${managerJobTitle} at ${company}.
+      ${userName} is the recipient of this self reflection and they will use it to prepare for their career discussion with their manager, so write it in the 2nd person.
+      Suggest things they should ask their manager about, and things they should be prepared to discuss.
+      You do not need an Introduction section.
 
         Use the following format:  
-        ### Feedback Summary:
+        ### Self-Evaluation
 
-        #### Major Strengths Identified in the Feedback
-        1. [Strength 1]
-        2. [Strength 2]
-        3. [Strength 3]
+        Employee: ${userName}, ${jobTitle}
+        Company: ${company}
 
-        #### Areas for Potential Growth or Improvement
-        1. [Area 1]
-        2. [Area 2]
-        3. [Area 3]
+        ----
 
-        #### Patterns or Themes Across the Feedback
-        - [Pattern 1]
-        - [Pattern 2]
-        - [Pattern 3]
+        ### Feedback
+        List feedback from the last year, including any notable achievements or contributions.
 
-        #### Specific, Actionable Recommendations
-        1. [Recommendation 1]
-        2. [Recommendation 2]
-        3. [Recommendation 3]
-        
+        #### Feedback Questions
+        List 3 questions the employee should ask the manager to get feedback on their performance.
+
+        ### Accomplishments
+        List any accomplishments or contributions the employee made in the last year.
+
+        #### Accomplishments Questions
+        List 3 questions the employee should ask the manager about their accomplishments.
+
+        ### Results
+        List any results or outcomes from the employee's work in the last year.
+
+        #### Results Questions
+        List 3 questions the employee should ask the manager about their results.
+
+        ### Overall Impact
+        List the overall impact of the employee's work on the team or organization.
+
+        #### Overall Impact Questions
+        List 3 questions the employee should ask the manager about their overall impact.
+
+        ### What I have Learned
+        List any lessons learned or skills developed in the last year.
+
+        ### Obstacles
+        List any obstacles or challenges the employee faced in the last year.
+
+        #### Obstacles Questions
+        List 3 questions the employee should ask the manager about their obstacles.
+
+        ### Opportunities
+        List any opportunities for the employee to grow or develop in the next year.
+
+        #### Opportunities Questions
+        List 3 questions the employee should ask the manager about their opportunities for growth.
+
+        ### Goals
+        List the goals for the employee for the next year, including any specific projects or initiatives they should focus on. Examples: What were my short-term and long-term goals? What are my future goals?
+
+        #### Goals Questions
+        List 3 questions the employee should ask the manager about their goals for the next year.
+
+        ### Decisions
+        List any decisions that need to be made in the next year, including any specific projects or initiatives that need to be prioritized. Examples: What are my priorities? What steps can I take before next review?
+
+        ### Other Notes
     `;
 
-    // console.log('Prompt for OpenAI:', prompt);
-
+    // console.log('Prompt:', prompt);
+    
     // Call OpenAI API
     const completion = await openai.chat.completions.create({
       model: "gpt-4-turbo", // You may want to use a different model based on your needs
       messages: [
         { 
           role: "system", 
-          content: "Assume the role of a career coach. You are a helpful career coach providing feedback analysis. Your summaries are balanced, constructive, and actionable."
+          content: "Assume the role of a career coach. You are a helpful career coach providing excellent career discussion meeting prep. Your self evaluations are clear, concise, and actionable. You are an expert in the field of career coaching and have a deep understanding of various industries and job roles."
         },
         { 
           role: "user", 
@@ -316,9 +300,14 @@ export async function POST(request: Request) {
       max_tokens: 1000
     });
     
-    const summary = completion.choices[0]?.message?.content || "Unable to generate summary.";
+    const review = completion.choices[0]?.message?.content || "Unable to generate summary.";
+
+    // console.log('Summary:', review);
+
+
     
     // Store the summary in the database for future reference
+
     // TO DO: this will error if the user is an invited user...
     // const { error: insertError } = await supabase
     //   .from('manager_feedback_summaries')
@@ -326,9 +315,9 @@ export async function POST(request: Request) {
     //     manager_id: managerId,
     //     employee_id: employeeId,
     //     timeframe: timeframe,
-    //     summary: summary,
+    //     summary: prep,
     //     feedback_data: feedback, // Store the raw feedback used for reference
-    //     type: "summary"
+    //     type: "prep"
     //   });
     
     // if (insertError) {
@@ -337,7 +326,7 @@ export async function POST(request: Request) {
     // }
     
     // Return the summary
-    return NextResponse.json({ summary }, { status: 200 });
+    return NextResponse.json({ review }, { status: 200 });
   } catch (error) {
     console.error('Error in feedback summarization:', error);
     return NextResponse.json(

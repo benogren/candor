@@ -17,10 +17,7 @@ module.exports = {
   	},
   	extend: {
   		fontFamily: {
-  			sans: [
-  				'var(--font-overpass)',
-  				'sans-serif'
-  			]
+  			sans: ['Overpass', 'system-ui', 'sans-serif']
   		},
   		colors: {
   			pantonered: {

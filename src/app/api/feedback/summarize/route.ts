@@ -284,46 +284,23 @@ export async function POST(request: Request) {
     });
     
     const summary = completion.choices[0]?.message?.content || "Unable to generate summary.";
-//     const summary = `### Feedback Summary:
-
-// #### Major Strengths Identified in the Feedback
-// 1. **Leadership and Influence**: You have been rated exceptionally high in leadership and influence, indicating that your ability to guide and inspire your team is highly valued at Initech.
-// 2. **Conflict Resolution**: Your approach to resolving team conflicts by ensuring everyone feels heard and fostering open communication has been notably appreciated. This skill is crucial in maintaining a cohesive work environment.
-// 3. **Company Values**: Your nominations for the company values related to customer service and integrity highlight your deep commitment to these principles, aligning well with Initech's core values.
-
-// #### Areas for Potential Growth or Improvement
-// 1. **Responsiveness and Reliability**: Your responsiveness and reliability received a moderate rating. Enhancing these areas could help in strengthening trust and dependability within your team.
-// 2. **Handling of Tight Deadlines**: There seems to be a concern with your handling of tight deadlines, suggesting an area where improvement could significantly impact your team's performance and stress levels.
-// 3. **Decision-Making Process**: There could be an opportunity to streamline your decision-making process. The feedback suggests that your thorough nature sometimes causes delays.
-
-// #### Patterns or Themes Across the Feedback
-// - **Balance of Thoroughness and Efficiency**: There is a recurring theme where your thoroughness is both a strength and a potential hindrance. It is highlighted in your conflict resolution and in comments about your approach to operations.
-// - **High Value Placement on Integrity and Leadership**: Repeated recognitions for your commitment to integrity and effective leadership suggest these are key strengths and critical to your role.
-// - **Need for Enhanced Efficiency under Pressure**: Feedback regarding deadlines and responsiveness indicates a pattern where increased efficiency and perhaps a more proactive approach in high-pressure situations could be beneficial.
-
-// #### Specific, Actionable Recommendations
-// 1. **Prioritize and Delegate**: To improve efficiency, especially when facing tight deadlines, consider setting clear priorities and delegating tasks. This approach might relieve pressure and enhance team performance.
-// 2. **Develop a More Agile Decision-Making Framework**: Introduce and cultivate a decision-making framework that balances your natural thoroughness with the necessity for quicker resolution, especially in critical situations. This could involve setting specific time limits for decision phases or adopting tools that facilitate faster consensus.
-// 3. **Responsive Communication Training or Tools**: Enroll in a workshop or explore tools that can help enhance your responsiveness and reliability. This training can offer methods to manage and prioritize communications effectively, ensuring you remain accessible to your team's needs.
-
-// These recommendations aim to harness your existing strengths while addressing areas that can elevate your role as Director of Operations at Initech. The focus on efficiency and responsiveness, coupled with your demonstrated leadership skills, should further solidify your effectiveness and career growth within the company.`;
     
     // Store the summary in the database for future reference
 
-    const { error: insertError } = await supabase
-      .from('feedback_summaries')
-      .insert({
-        user_id: userId,
-        timeframe: timeframe,
-        summary: summary,
-        feedback_data: feedback, // Store the raw feedback used for reference
-        type: "summary"
-      });
+    // const { error: insertError } = await supabase
+    //   .from('feedback_summaries')
+    //   .insert({
+    //     user_id: userId,
+    //     timeframe: timeframe,
+    //     summary: summary,
+    //     feedback_data: feedback, // Store the raw feedback used for reference
+    //     type: "summary"
+    //   });
     
-    if (insertError) {
-      console.error('Error storing feedback summary:', insertError);
-      // Continue anyway since we have the summary
-    }
+    // if (insertError) {
+    //   console.error('Error storing feedback summary:', insertError);
+    //   // Continue anyway since we have the summary
+    // }
     
     // Return the summary
     return NextResponse.json({ summary }, { status: 200 });
