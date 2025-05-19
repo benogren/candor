@@ -114,66 +114,66 @@ const FeedbackTextarea = React.forwardRef<HTMLTextAreaElement, FeedbackTextareaP
     
     // Memoize the analyzeTone function to prevent recreation on each render
     const analyzeTone = useCallback(async (text: string) => {
-      if (isAnalyzing || !text || !isMounted.current || skipNextAnalysis.current) {
-        skipNextAnalysis.current = false;
-        return;
-      }
-      
-      setIsAnalyzing(true);
-      try {
-        console.log("**Making API Call to Analyze Tone**");
-        // API call for tone analysis
-        const response = await fetch('/api/analyze-tone', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ text }),
-        });
-        
-        if (!isMounted.current) return;
+  if (isAnalyzing || !text || !isMounted.current || skipNextAnalysis.current) {
+    skipNextAnalysis.current = false;
+    return;
+  }
+  
+  setIsAnalyzing(true);
+  try {
+    console.log("**Making API Call to Analyze Tone**");
+    // API call for tone analysis
+    const response = await fetch('/api/analyze-tone', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text }),
+    });
+    
+    if (!isMounted.current) return;
 
-        const responseText = await response.text();
-        // console.log("Raw tone analysis response:", responseText);
+    const responseText = await response.text();
+    // console.log("Raw tone analysis response:", responseText);
+    
+    try {
+      const data = JSON.parse(responseText);
+      console.log("Parsed tone data:", data);
+      
+      if (data && typeof data.toneScore === 'number') {
+        console.log(`Setting tone score to ${data.toneScore}`);
+        setToneScore(data.toneScore);
         
-        try {
-          const data = JSON.parse(responseText);
-          console.log("Parsed tone data:", data);
-          
-          if (data && typeof data.toneScore === 'number') {
-            console.log(`Setting tone score to ${data.toneScore}`);
-            setToneScore(data.toneScore);
-            
-            // Only call onToneChange if component is still mounted
-            if (isMounted.current && onToneChange) {
-              onToneChange(data.toneScore);
-            }
-          } else {
-            console.error('No valid tone score in response:', data);
-            if (isMounted.current) {
-              setToneScore(50); // Neutral fallback
-              if (onToneChange) onToneChange(50);
-            }
-          }
-        } catch (e) {
-          console.error("Failed to parse tone response:", e);
-          if (isMounted.current) {
-            setToneScore(50); // Neutral fallback
-            if (onToneChange) onToneChange(50);
-          }
+        // Only call onToneChange if component is still mounted
+        if (isMounted.current && onToneChange) {
+          onToneChange(data.toneScore);
         }
-      } catch (error) {
-        console.error('Error analyzing tone:', error);
+      } else {
+        console.error('No valid tone score in response:', data);
         if (isMounted.current) {
           setToneScore(50); // Neutral fallback
           if (onToneChange) onToneChange(50);
         }
-      } finally {
-        if (isMounted.current) {
-          setIsAnalyzing(false);
-        }
       }
-    }, [onToneChange]);
+    } catch (e) {
+      console.error("Failed to parse tone response:", e);
+      if (isMounted.current) {
+        setToneScore(50); // Neutral fallback
+        if (onToneChange) onToneChange(50);
+      }
+    }
+  } catch (error) {
+    console.error('Error analyzing tone:', error);
+    if (isMounted.current) {
+      setToneScore(50); // Neutral fallback
+      if (onToneChange) onToneChange(50);
+    }
+  } finally {
+    if (isMounted.current) {
+      setIsAnalyzing(false);
+    }
+  }
+}, [onToneChange, isAnalyzing]);
     
     // New function to analyze tone for modal display
     // Use direct fetch implementation with forced state updates

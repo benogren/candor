@@ -41,12 +41,11 @@ type StripeSubscription = {
   } | null;
 };
 
-const { data: { session } } = await supabase.auth.getSession();
-
 export default function SettingsPage() {
   const { user } = useAuth();
   const { isAdmin } = useIsAdmin();
   const [loading, setLoading] = useState(true);
+  const [sessionData, setSessionData] = useState<{access_token?: string} | null>(null);
   const [profileData, setProfileData] = useState<{
     name: string;
     email: string;
@@ -64,17 +63,29 @@ export default function SettingsPage() {
   
   const [subscription, setSubscription] = useState<StripeSubscription | null>(null);
   const [userCount, setUserCount] = useState<number>(5);
-  // const [updatingUserCount, setUpdatingUserCount] = useState(false);
-  // console.log('updatingUserCount', updatingUserCount);
   const [loadingSubscription, setLoadingSubscription] = useState(false);
   
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
+  // First effect to get the session
+  useEffect(() => {
+    const getSessionData = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        setSessionData(data.session);
+      } catch (error) {
+        console.error('Error getting session:', error);
+      }
+    };
+    
+    getSessionData();
+  }, []);
+
   useEffect(() => {
     const fetchUserData = async () => {
-      if (!user || !session?.access_token) return;
+      if (!user || !sessionData?.access_token) return;
       
       try {
         setLoading(true);
@@ -113,7 +124,7 @@ export default function SettingsPage() {
           
           // If there's a subscription ID, fetch details from Stripe
           if (companyDetails.subscription_id) {
-            await fetchSubscriptionFromStripe(companyDetails.id, session.access_token);
+            await fetchSubscriptionFromStripe(companyDetails.id, sessionData.access_token);
           }
         }
       } catch (error) {
@@ -123,11 +134,14 @@ export default function SettingsPage() {
       }
     };
     
-    fetchUserData();
-  }, [user, isAdmin, session?.access_token]);
+    if (sessionData) {
+      fetchUserData();
+    }
+  }, [user, isAdmin, sessionData]);
 
   const fetchSubscriptionFromStripe = async (companyId: string, accessToken: string) => {
     try {
+      setLoadingSubscription(true);
       const response = await fetch('/api/stripe/get-subscription', {
         method: 'POST',
         headers: {
@@ -179,7 +193,7 @@ export default function SettingsPage() {
   
   const handleCompanyUpdate = () => {
     // Refresh company data after update
-    if (user && isAdmin && companyData && session?.access_token) {
+    if (user && isAdmin && companyData && sessionData?.access_token) {
       // First get the company_id for the user
       supabase
         .from('company_members')
@@ -199,8 +213,8 @@ export default function SettingsPage() {
                   setCompanyData(companyDetails);
                   
                   // Refresh subscription data if subscription ID exists
-                  if (companyDetails.subscription_id) {
-                    fetchSubscriptionFromStripe(companyDetails.id, session.access_token);
+                  if (companyDetails.subscription_id && sessionData?.access_token) {
+                    fetchSubscriptionFromStripe(companyDetails.id, sessionData.access_token);
                   }
                 }
               });
@@ -211,83 +225,11 @@ export default function SettingsPage() {
   
   const handleSubscriptionUpdate = async () => {
     // Refresh subscription data after payment method update
-    if (companyData?.id && session?.access_token) {
-      await fetchSubscriptionFromStripe(companyData.id, session.access_token);
+    if (companyData?.id && sessionData?.access_token) {
+      await fetchSubscriptionFromStripe(companyData.id, sessionData.access_token);
     }
   };
   
-  // const handleUserCountChange = async () => {
-  //   if (!companyData || !subscription || userCount === subscription.user_count || !session?.access_token) return;
-    
-  //   try {
-  //     setUpdatingUserCount(true);
-      
-  //     // Call API to update subscription quantity in Stripe
-  //     const response = await fetch('/api/stripe/update-subscription', {
-  //       method: 'POST',
-  //       headers: {
-  //         'Content-Type': 'application/json',
-  //         'Authorization': `Bearer ${session.access_token}`
-  //       },
-  //       body: JSON.stringify({
-  //         companyId: companyData.id,
-  //         subscriptionId: subscription.id,
-  //         newQuantity: userCount
-  //       }),
-  //     });
-      
-  //     if (!response.ok) {
-  //       const errorData = await response.json();
-  //       throw new Error(errorData.error || 'Failed to update subscription');
-  //     }
-      
-  //     // Update local state with the new user count
-  //     setSubscription({
-  //       ...subscription,
-  //       user_count: userCount
-  //     });
-      
-  //     toast({
-  //       title: 'Success',
-  //       description: 'Your subscription has been updated successfully.',
-  //       variant: 'default',
-  //     });
-      
-  //   } catch (error) {
-  //     console.error('Error updating subscription:', error);
-  //     toast({
-  //       title: 'Error',
-  //       description: error instanceof Error ? error.message : 'Failed to update subscription',
-  //       variant: 'destructive',
-  //     });
-  //     // Reset to original value
-  //     if (subscription) {
-  //       setUserCount(subscription.user_count);
-  //     }
-  //   } finally {
-  //     setUpdatingUserCount(false);
-  //   }
-  // };
-  
-  // Calculate price based on user count and subscription interval
-  // const calculatePricePerUser = (count: number, interval?: string): number => {
-  //   if (count <= 5) return 0;
-    
-  //   if (interval === 'monthly') {
-  //     if (count <= 50) return 10.00;
-  //     return 9.00;
-  //   } else if (interval === 'quarterly') {
-  //     if (count <= 50) return 8.50;
-  //     return 7.65;
-  //   }
-    
-  //   // Default to monthly pricing
-  //   if (count <= 50) return 10.00;
-  //   return 9.00;
-  // };
-  
-  // const pricePerUser = calculatePricePerUser(userCount, subscription?.interval);
-  // const totalPrice = pricePerUser * userCount;
   const isFreeTier = userCount <= 5;
   
   // Format dates for display
@@ -295,14 +237,6 @@ export default function SettingsPage() {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString();
   };
-
-  // Format payment method for display
-  // const getPaymentMethodDisplay = () => {
-  //   if (!subscription?.payment_method) return 'No payment method on file';
-    
-  //   const { brand, last4, exp_month, exp_year } = subscription.payment_method;
-  //   return `${brand.charAt(0).toUpperCase() + brand.slice(1)} ending in ${last4} (Expires ${exp_month}/${exp_year})`;
-  // };
 
   if (loading) {
     return (
@@ -410,21 +344,12 @@ export default function SettingsPage() {
                 <CardDescription>Manage your plan, seats, and payment information</CardDescription>
               </div>
               <div className='items-center flex gap-2'>
-              {/* <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setIsPaymentModalOpen(true)}
-              >
-                <FontAwesomeIcon icon={faCreditCard} className="mr-2" />
-                Update Payment
-              </Button> */}
               <Link 
                 href="https://billing.stripe.com/p/login/8wMcOT6TvejKeRi4gg"
                 target='_blank'
                 rel="noopener noreferrer"
                 className="h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5 border border-cerulean text-cerulean bg-background shadow-xs hover:bg-cerulean-100 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-normal transition-[color,box-shadow] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive"
               >
-                
                 Manage Subscription
               </Link>
               </div>
@@ -527,7 +452,7 @@ export default function SettingsPage() {
       )}
       
       {/* Payment Modal */}
-      {companyData && subscription && session?.access_token && (
+      {companyData && subscription && sessionData?.access_token && (
         <PaymentModal
           isOpen={isPaymentModalOpen}
           onClose={() => {
@@ -536,7 +461,7 @@ export default function SettingsPage() {
           }}
           companyId={companyData.id}
           subscriptionId={subscription.id}
-          accessToken={session.access_token}
+          accessToken={sessionData.access_token}
         />
       )}
     </div>

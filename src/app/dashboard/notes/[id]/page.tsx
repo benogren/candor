@@ -173,50 +173,59 @@ export default function NotesPage() {
   }, [note, editor]);
   
   // Auto-save with debounce
-  const saveNote = useCallback(
-    debounce(async (title: string, content: string) => {
-      if (!note || !user) return;
+  const saveNote = useCallback((title: string, content: string) => {
+  if (!note || !user) return;
+  
+  // Use ref to store the debounced function to avoid recreating it on every render
+  const saveToDB = async () => {
+    try {
+      setIsSaving(true);
       
-      try {
-        setIsSaving(true);
-        
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        
-        const response = await fetch('/api/notes/update', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            id: note.id,
-            title,
-            content,
-          }),
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to save note');
-        }
-        
-        const data = await response.json();
-        setNote(data.note);
-        setLastSaved(new Date());
-      } catch (error) {
-        console.error('Error saving note:', error);
-        toast({
-          title: 'Error saving changes',
-          description: 'Could not save your changes. Please try again.',
-          variant: 'destructive',
-        });
-      } finally {
-        setIsSaving(false);
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      const response = await fetch('/api/notes/update', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          id: note.id,
+          title,
+          content,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save note');
       }
-    }, 500),
-    [note, user]
-  );
+      
+      const data = await response.json();
+      setNote(data.note);
+      setLastSaved(new Date());
+    } catch (error) {
+      console.error('Error saving note:', error);
+      toast({
+        title: 'Error saving changes',
+        description: 'Could not save your changes. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Use a stable reference to the debounced function
+  const debouncedSave = debounce(saveToDB, 500);
+  debouncedSave();
+
+  // Clean up the debounced function
+  return () => {
+    debouncedSave.cancel();
+  };
+}, [note, user, setIsSaving]);
   
   // Handle title change
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
