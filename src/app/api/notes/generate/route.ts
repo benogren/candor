@@ -3,12 +3,12 @@ import { createClient } from '@supabase/supabase-js';
 import { marked } from 'marked';
 
 // Import the handler functions directly
-import { POST as prepHandler } from '@/app/api/feedback/prep/route';
-import { POST as managerPrepHandler } from '@/app/api/feedback/manager/prep/route';
-import { POST as summarizeHandler } from '@/app/api/feedback/summarize/route';
-import { POST as managerSummarizeHandler } from '@/app/api/feedback/manager/summarize/route';
-import { POST as reviewHandler } from '@/app/api/feedback/review/route';
-import { POST as managerReviewHandler } from '@/app/api/feedback/manager/review/route';
+// import { POST as prepHandler } from '@/app/api/feedback/prep/route';
+// import { POST as managerPrepHandler } from '@/app/api/feedback/manager/prep/route';
+// import { POST as summarizeHandler } from '@/app/api/feedback/summarize/route';
+// import { POST as managerSummarizeHandler } from '@/app/api/feedback/manager/summarize/route';
+// import { POST as reviewHandler } from '@/app/api/feedback/review/route';
+// import { POST as managerReviewHandler } from '@/app/api/feedback/manager/review/route';
 
 // Define payload interfaces
 interface BasePayload {
@@ -25,6 +25,16 @@ interface ManagerPayload extends BasePayload {
   employeeId: string;
   is_invited: boolean;
 }
+
+interface FeedbackResponse {
+  summary?: string;
+  prep?: string;
+  review?: string;
+  [key: string]: unknown; // Use unknown instead of any for better type safety
+}
+
+// Define a type for errors
+// type ApiError = Error | { message: string; cause?: unknown };
 
 export async function POST(request: Request) {
   try {
@@ -85,7 +95,7 @@ export async function POST(request: Request) {
     const timeframe = note.metadata?.timeframe || 'all';
 
     // Helper function to safely handle responses
-    async function safelyHandleResponse(response: Response): Promise<any> {
+    async function safelyHandleResponse(response: Response): Promise<FeedbackResponse> {
       if (!response.ok) {
         const responseText = await response.text();
         console.error(`API response error (${response.status}): ${responseText}`);
@@ -96,22 +106,22 @@ export async function POST(request: Request) {
         return await response.json();
       } catch (err) {
         const responseText = await response.text();
-        console.error('Failed to parse JSON response:', responseText);
+        console.error('Failed to parse JSON response:', err, responseText);
         throw new Error(`Failed to parse JSON response: ${responseText.substring(0, 200)}...`);
       }
     }
 
     // Create a new request object to pass to the handler
-    function createHandlerRequest<T extends BasePayload>(payload: T): Request {
-      return new Request('https://api.internal', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${bearerToken}`
-        },
-        body: JSON.stringify(payload)
-      });
-    }
+    // function createHandlerRequest<T extends BasePayload>(payload: T): Request {
+    //   return new Request('https://api.internal', {
+    //     method: 'POST',
+    //     headers: {
+    //       'Content-Type': 'application/json',
+    //       'Authorization': `Bearer ${bearerToken}`
+    //     },
+    //     body: JSON.stringify(payload)
+    //   });
+    // }
 
     // Instead of directly calling the imported handlers, let's use actual API calls
     const apiBaseUrl = process.env.VERCEL_URL 
@@ -260,18 +270,18 @@ export async function POST(request: Request) {
         ? contentData.summary
         : contentData.summary;
       
-      const htmlContent = await marked.parse(markdownContent);
+      const htmlContent = await marked.parse(markdownContent ?? '');
       generatedContent = htmlContent;
     } else if (note.content_type === 'prep') {
       const markdownContent = isManagerNote
         ? contentData.prep
         : contentData.prep;
         
-      const htmlContent = await marked.parse(markdownContent);
+      const htmlContent = await marked.parse(markdownContent ?? '');
       generatedContent = htmlContent;
     } else if (note.content_type === 'review') {
       const markdownContent = contentData.review;
-      const htmlContent = await marked.parse(markdownContent);
+      const htmlContent = await marked.parse(markdownContent ?? '');
       generatedContent = htmlContent;
     }
 
@@ -288,8 +298,23 @@ export async function POST(request: Request) {
 
     if (error) throw error;
     return NextResponse.json({ note: data }, { status: 200 });
-  } catch (error) {
-    console.error('Error generating note content:', error);
+  } catch (error: unknown) { // Properly type the error as unknown
+    // Convert the unknown error to a more specific type for logging
+    const errorMessage = error instanceof Error 
+      ? error.message 
+      : 'An unknown error occurred';
+    
+    console.error('Error generating note content:', errorMessage);
+    
+    // If you need to access more properties from the error
+    if (error instanceof Error) {
+      console.error('Error details:', {
+        name: error.name,
+        stack: error.stack,
+        cause: error.cause
+      });
+    }
+    
     return NextResponse.json({ error: 'Failed to generate content' }, { status: 500 });
   }
 }
