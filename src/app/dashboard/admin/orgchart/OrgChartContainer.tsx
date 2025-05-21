@@ -93,6 +93,68 @@ export default function OrgChartContainer() {
     }
   }, [justCompletedImport]);
 
+  // Function to download the current org chart as CSV
+  const downloadCurrentOrgChart = useCallback(() => {
+    if (!orgChartData) return;
+    
+    // Function to escape CSV fields properly
+    const escapeCSV = (field: string) => {
+      // If the field contains commas, quotes, or newlines, wrap it in quotes
+      if (field.includes(',') || field.includes('"') || field.includes('\n')) {
+        // Double up any quotes within the field
+        return `"${field.replace(/"/g, '""')}"`;
+      }
+      return field;
+    };
+    
+    // Create the CSV header
+    let csvContent = 'email,managerEmail,name,role,title\n';
+    
+    // Function to process each user in the org chart
+    const processNode = (node: OrgChartNode, managerEmail: string | null = null) => {
+      // Add this user to the CSV
+      const email = node.user.email; // Original unescaped email for passing to children
+      const escapedEmail = escapeCSV(email);
+      const escapedManagerEmail = managerEmail ? escapeCSV(managerEmail) : '';
+      const escapedName = escapeCSV(node.user.name || '');
+      const escapedRole = escapeCSV(node.user.role || '');
+      const escapedTitle = escapeCSV(node.user.jobTitle || '');
+      
+      csvContent += `${escapedEmail},${escapedManagerEmail},${escapedName},${escapedRole},${escapedTitle}\n`;
+      
+      // Process all direct reports (using this user's email as the manager)
+      node.directReports.forEach(reportNode => {
+        processNode(reportNode, email);
+      });
+    };
+    
+    // Process hierarchical data (starting with managers who have no manager themselves)
+    orgChartData.hierarchical.forEach(node => {
+      processNode(node);
+    });
+    
+    // Add unassigned users (with no manager)
+    orgChartData.unassigned.forEach(user => {
+      const escapedEmail = escapeCSV(user.email);
+      const escapedName = escapeCSV(user.name || '');
+      const escapedRole = escapeCSV(user.role || '');
+      const escapedTitle = escapeCSV(user.jobTitle || '');
+      
+      csvContent += `${escapedEmail},,${escapedName},${escapedRole},${escapedTitle}\n`;
+    });
+    
+    // Create and download the CSV file
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'current_org_chart.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [orgChartData]);
+
   // Assign manager to user
   const assignManager = useCallback(async (empId: string, managerId: string | null): Promise<boolean> => {
     try {
@@ -540,6 +602,7 @@ export default function OrgChartContainer() {
           previewData={previewData}
           validationErrors={validationErrors}
           importing={importing}
+          onDownloadCurrentOrgChart={downloadCurrentOrgChart}
           onClose={() => {
             // Only close the modal if we're not in the middle of importing
             if (!importing) {

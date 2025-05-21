@@ -17,8 +17,8 @@ import {
   AlertCircle,
   Upload,
   CheckCircle,
-  FileText,
-  Loader2
+  Loader2,
+  FileSpreadsheet
 } from 'lucide-react';
 
 interface ImportOrgChartModalProps {
@@ -28,6 +28,7 @@ interface ImportOrgChartModalProps {
   validationErrors: ImportError[];
   importing: boolean;
   onClose: () => void;
+  onDownloadCurrentOrgChart: () => void;
 }
 
 const ImportOrgChartModal: React.FC<ImportOrgChartModalProps> = ({
@@ -37,6 +38,7 @@ const ImportOrgChartModal: React.FC<ImportOrgChartModalProps> = ({
   validationErrors,
   importing,
   onClose,
+  onDownloadCurrentOrgChart,
 }) => {
   const [file, setFile] = useState<File | null>(null);
   const [previewed, setPreviewed] = useState(false);
@@ -138,7 +140,7 @@ const ImportOrgChartModal: React.FC<ImportOrgChartModalProps> = ({
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="min-w-[900px]">
         <DialogHeader>
           <DialogTitle>Import Organization Chart</DialogTitle>
           <DialogDescription>
@@ -159,11 +161,20 @@ const ImportOrgChartModal: React.FC<ImportOrgChartModalProps> = ({
               <div className="flex justify-end">
                 <Button 
                   variant="secondary" 
+                  onClick={onDownloadCurrentOrgChart} 
+                  className="flex items-center gap-2 mr-2"
+                >
+                  
+                  <FileSpreadsheet className="h-4 w-4" />
+                  Download Current Org Chart (CSV)
+                </Button>
+                <Button 
+                  variant="secondary" 
                   onClick={downloadTemplate} 
                   className="flex items-center gap-2"
                 >
-                  <FileText className="h-4 w-4" />
-                  Download CSV Template
+                  <FileSpreadsheet className="h-4 w-4" />
+                  Download Template (CSV)
                 </Button>
               </div>
               </div>
@@ -257,25 +268,25 @@ const ImportOrgChartModal: React.FC<ImportOrgChartModalProps> = ({
                     <div className="overflow-x-auto">
                       <ScrollArea className="h-[180px] rounded border">
                         <div className="p-2">
-                          <table className="min-w-full divide-y divide-gray-200">
+                          <table className="table-auto divide-y divide-gray-200">
                             <thead className="bg-gray-50">
                               <tr>
-                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Manager Email</th>
-                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider truncate">Email</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider truncate">Manager Email</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider truncate">Name</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider truncate">Role</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider truncate">Title</th>
                               </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
                               {previewData.length > 0 ? (
                                 previewData.map((row, index) => (
                                   <tr key={index}>
-                                    <td className="px-4 py-2 whitespace-nowrap text-sm">{row.email}</td>
-                                    <td className="px-4 py-2 whitespace-nowrap text-sm">{row.managerEmail}</td>
-                                    <td className="px-4 py-2 whitespace-nowrap text-sm">{row.name}</td>
-                                    <td className="px-4 py-2 whitespace-nowrap text-sm">{row.role}</td>
-                                    <td className="px-4 py-2 whitespace-nowrap text-sm">{row.title}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap text-sm truncate">{row.email}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap text-sm truncate">{row.managerEmail}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap text-sm truncate">{row.name}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap text-sm truncate">{row.role}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap text-sm truncate">{row.title}</td>
                                   </tr>
                                 ))
                               ) : (

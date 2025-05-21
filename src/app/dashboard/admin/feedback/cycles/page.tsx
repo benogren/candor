@@ -182,6 +182,8 @@ export default function FeedbackCyclesPage() {
                 console.log('Error fetching recipients:', recipientsError);
               }
               
+              // console.log('Session IDs:', sessionIds);
+
               // Fetch response data to calculate skipped question rate
               const { data: responses, error: responsesError } = await supabase
                 .from('feedback_responses')
