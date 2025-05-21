@@ -348,6 +348,8 @@ async function fetchFeedbackData(
 ): Promise<FeedbackResponseItem[]> {
   try {
     // Check if the user is a recipient
+    console.log("Fetching feedback data for user:", targetId);
+
     const { data: recipientData, error: recipientError } = await supabase
       .from('feedback_recipients')
       .select('id')
@@ -412,6 +414,8 @@ async function fetchFeedbackData(
       console.error("Error fetching feedback data:", feedbackError);
       return []; // Return empty array instead of throwing
     }
+
+    console.log("Number of feedback responses:", feedbackData?.length || 0);
     
     return feedbackData || [];
   } catch (error) {
@@ -1168,6 +1172,8 @@ async function generatePersonalReview(
 
         ### Other Notes
     `;
+
+    console.log("Sending Prompt to OpenAI:", prompt.slice(0, 500)); // Log the first 500 characters of the prompt for debugging
     
     // Call OpenAI API
     const completion = await openai.chat.completions.create({
@@ -1193,6 +1199,7 @@ async function generatePersonalReview(
 
     try {
       for await (const chunk of completion) {
+        console.log("Received chunk from OpenAI:", chunk.choices[0]?.delta?.content); // Log the chunk for debugging
         content += chunk.choices[0]?.delta?.content || '';
       }
     } finally {
