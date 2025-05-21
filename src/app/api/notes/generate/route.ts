@@ -2,25 +2,13 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { marked } from 'marked';
 
-function getBaseUrl() {
-  // In production environment on Vercel
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
-  // In preview deployments on Vercel
-  if (process.env.VERCEL_ENV === 'preview') {
-    return `https://${process.env.VERCEL_URL}`;
-  }
-  if (process.env.VERCEL_ENV === 'staging') {
-    return `https://${process.env.VERCEL_URL}`;
-  }
-  // Use NEXT_PUBLIC_BASE_URL as fallback if set
-  if (process.env.NEXT_PUBLIC_BASE_URL) {
-    return process.env.NEXT_PUBLIC_BASE_URL;
-  }
-  // Localhost fallback to production
-  return 'https://www.candor.so';
-}
+// Import the handler functions directly
+import { POST as prepHandler } from '@/app/api/feedback/prep/route';
+import { POST as managerPrepHandler } from '@/app/api/feedback/manager/prep/route';
+import { POST as summarizeHandler } from '@/app/api/feedback/summarize/route';
+import { POST as managerSummarizeHandler } from '@/app/api/feedback/manager/summarize/route';
+import { POST as reviewHandler } from '@/app/api/feedback/review/route';
+import { POST as managerReviewHandler } from '@/app/api/feedback/manager/review/route';
 
 export async function POST(request: Request) {
   try {
@@ -72,6 +60,7 @@ export async function POST(request: Request) {
     }
 
     let generatedContent = '';
+    let contentData;
     let apiEndpoint = '';
     let apiPayload = {};
 
@@ -81,102 +70,104 @@ export async function POST(request: Request) {
     const isInvitedUser = !!note.subject_invited_id;
     const timeframe = note.metadata?.timeframe || 'all';
 
-    const baseUrl = getBaseUrl();
+    // Create a new request object to pass to the handler
+    const createHandlerRequest = (payload: any) => {
+
+      const url = process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}` 
+      : 'http://localhost:3000';
+
+
+      return new Request(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${bearerToken}`
+        },
+        body: JSON.stringify(payload)
+      });
+    };
 
     switch (note.content_type) {
       case 'summary':
         if (isManagerNote) {
-          // This is a manager summary request
-          apiEndpoint = `${baseUrl}/api/feedback/manager/summarize`;
-          apiPayload = {
+          // Manager summary
+          const managerSummaryPayload = {
             managerId: user.id,
             employeeId: employeeId,
             timeframe: timeframe,
             is_invited: isInvitedUser
           };
-
-          console.log('Manager summary request:', apiEndpoint);
+          const summaryResponse = await managerSummarizeHandler(createHandlerRequest(managerSummaryPayload));
+          contentData = await summaryResponse.json();
+          console.log('Manager summary response:', contentData);
         } else {
-          // This is a personal summary request
-          apiEndpoint = `${baseUrl}/api/feedback/summarize`;
-          apiPayload = {
+          // Personal summary
+          const summaryPayload = {
             userId: user.id,
             timeframe,
             type: 'summary'
           };
-
-          console.log('Personal summary request:', apiEndpoint);
+          const summaryResponse = await summarizeHandler(createHandlerRequest(summaryPayload));
+          contentData = await summaryResponse.json();
+          console.log('Personal summary response:', contentData);
         }
         break;
+      
       case 'prep':
         if (isManagerNote) {
-          // This is a manager 1:1 prep request
-          apiEndpoint = `${baseUrl}/api/feedback/manager/prep`;
-          apiPayload = {
+          // Manager prep
+          const managerPrepPayload = {
             managerId: user.id,
             employeeId: employeeId,
             timeframe: timeframe,
             is_invited: isInvitedUser
           };
-
-          console.log('Manager prep request:', apiEndpoint);
+          const prepResponse = await managerPrepHandler(createHandlerRequest(managerPrepPayload));
+          contentData = await prepResponse.json();
+          console.log('Manager prep response:', contentData);
         } else {
-          // This is a personal 1:1 prep request
-          apiEndpoint = `${baseUrl}/api/feedback/prep`;
-          apiPayload = {
+          // Personal prep
+          const prepPayload = {
             userId: user.id,
             timeframe: note.metadata?.timeframe || 'week',
             type: 'prep'
           };
-
-          console.log('Personal prep request:', apiEndpoint);
+          const prepResponse = await prepHandler(createHandlerRequest(prepPayload));
+          contentData = await prepResponse.json();
+          console.log('Personal prep response:', contentData);
         }
         break;
+      
       case 'review':
         if (isManagerNote) {
-          apiEndpoint = `${baseUrl}/api/feedback/manager/review`;
-          apiPayload = {
+          // Manager review
+          const managerReviewPayload = {
             managerId: user.id,
             employeeId: employeeId,
             timeframe: timeframe,
             is_invited: isInvitedUser
           };
-
-          console.log('Manager review request:', apiEndpoint);
+          const reviewResponse = await managerReviewHandler(createHandlerRequest(managerReviewPayload));
+          contentData = await reviewResponse.json();
+          console.log('Manager review response:', contentData);
         } else {
-          // This is a self review request
-          apiEndpoint = `${baseUrl}/api/feedback/review`;
-          apiPayload = {
+          // Personal review
+          const reviewPayload = {
             userId: user.id,
             timeframe: timeframe,
             type: 'review'
           };
-        };
-
-        console.log('Self review request:', apiEndpoint);
+          const reviewResponse = await reviewHandler(createHandlerRequest(reviewPayload));
+          contentData = await reviewResponse.json();
+          console.log('Personal review response:', contentData);
+        }
         break;
+      
       default:
         return NextResponse.json({ error: 'Invalid content type' }, { status: 400 });
     }
 
-    console.log('API Endpoint:', apiEndpoint);
-
-    // Call the appropriate API endpoint to generate content
-    const contentResponse = await fetch(apiEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${bearerToken}`,
-      },
-      body: JSON.stringify(apiPayload),
-    });
-    
-    if (!contentResponse.ok) {
-      throw new Error(`Failed to generate content: ${await contentResponse.text()}`);
-    }
-    
-    const contentData = await contentResponse.json();
-    
     // Format the response data based on content type
     if (note.content_type === 'summary') {
       const markdownContent = isManagerNote 
