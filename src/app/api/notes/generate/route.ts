@@ -1173,7 +1173,7 @@ async function generatePersonalReview(
         ### Other Notes
     `;
 
-    console.log("Sending Prompt to OpenAI:", prompt.slice(0, 500)); // Log the first 500 characters of the prompt for debugging
+    // console.log("Sending Self-Evaluation Prompt to OpenAI:"); // Log the first 500 characters of the prompt for debugging
     
     // Call OpenAI API
     const completion = await openai.chat.completions.create({
