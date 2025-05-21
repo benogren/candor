@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useEditor, EditorContent, BubbleMenu } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -42,10 +42,16 @@ export default function NotesPage() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   
+  // Reference to track if generation is in progress
+  const isGeneratingRef = useRef(false);
+  
+  // Create a stable reference to the debounced save function
+  const debouncedSaveRef = useRef<ReturnType<typeof debounce> | null>(null);
+  
   // Create a TipTap editor
   const editor = useEditor({
     extensions: [
-        StarterKit.configure({
+      StarterKit.configure({
         heading: {
           levels: [1, 2, 3, 4]  // Explicitly enable levels 1-4
         }
@@ -73,6 +79,8 @@ export default function NotesPage() {
   
   // Fetch the note when the page loads
   useEffect(() => {
+    let isMounted = true;
+    
     async function fetchNote() {
       if (!id || !user) return;
       
@@ -86,43 +94,62 @@ export default function NotesPage() {
           
         if (error) throw error;
         
-        setNote(data);
-        setLastSaved(new Date(data.updated_at));
-        
-        // Parse content properly before setting it in the editor
-        if (editor && data.content) {
-          try {
-            // Try to parse it if it's stored as JSON string
-            if (typeof data.content === 'string' && data.content.startsWith('{')) {
-              const parsedContent = JSON.parse(data.content);
-              editor.commands.setContent(parsedContent);
-            } else {
-              // If it's just plain text or HTML, set it directly
+        // Only update state if component is still mounted
+        if (isMounted) {
+          setNote(data);
+          setLastSaved(new Date(data.updated_at));
+          
+          // Parse content properly before setting it in the editor
+          if (editor && data.content) {
+            try {
+              // Try to parse it if it's stored as JSON string
+              if (typeof data.content === 'string' && data.content.startsWith('{')) {
+                const parsedContent = JSON.parse(data.content);
+                editor.commands.setContent(parsedContent);
+              } else {
+                // If it's just plain text or HTML, set it directly
+                editor.commands.setContent(data.content);
+              }
+            } catch (e) {
+              // If JSON parsing fails, fall back to treating it as plain text
+              console.error("Error parsing content:", e);
               editor.commands.setContent(data.content);
             }
-          } catch (e) {
-            // If JSON parsing fails, fall back to treating it as plain text
-            console.error("Error parsing content:", e);
-            editor.commands.setContent(data.content);
           }
         }
       } catch (error) {
         console.error('Error fetching note:', error);
-        setError('Could not load the note. You may not have permission to view it.');
+        if (isMounted) {
+          setError('Could not load the note. You may not have permission to view it.');
+        }
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     }
     
     fetchNote();
+    
+    // Cleanup function
+    return () => {
+      isMounted = false;
+    };
   }, [id, user, editor]);
   
   // Start generation if the note is in generating state
   useEffect(() => {
+    let isMounted = true;
+    
     async function generateContent() {
-      if (!note || !note.is_generating) return;
+      // Return early if note is null, not generating, or generation already in progress
+      if (!note || !note.is_generating || isGeneratingRef.current) return;
+      
+      // Set flag to prevent concurrent generation requests
+      isGeneratingRef.current = true;
       
       try {
+        console.log('Starting content generation for note:', note.id);
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
         
@@ -143,112 +170,136 @@ export default function NotesPage() {
         }
         
         const data = await response.json();
-        setNote(data.note);
         
-        // Update editor with new content
-        if (editor && data.note.content) {
-          try {
-            if (typeof data.note.content === 'string' && data.note.content.startsWith('{')) {
-              const parsedContent = JSON.parse(data.note.content);
-              editor.commands.setContent(parsedContent);
-            } else {
+        // Only update state if component is still mounted
+        if (isMounted) {
+          setNote(data.note);
+          
+          // Update editor with new content
+          if (editor && data.note.content) {
+            try {
+              if (typeof data.note.content === 'string' && data.note.content.startsWith('{')) {
+                const parsedContent = JSON.parse(data.note.content);
+                editor.commands.setContent(parsedContent);
+              } else {
+                editor.commands.setContent(data.note.content);
+              }
+            } catch (e) {
+              console.error("Error parsing generated content:", e);
               editor.commands.setContent(data.note.content);
             }
-          } catch (e) {
-            console.error("Error parsing generated content:", e);
-            editor.commands.setContent(data.note.content);
           }
         }
       } catch (error) {
         console.error('Error generating content:', error);
-        toast({
-          title: 'Error generating content',
-          description: 'Could not generate content. Please try again later.',
-          variant: 'destructive',
-        });
+        if (isMounted) {
+          toast({
+            title: 'Error generating content',
+            description: 'Could not generate content. Please try again later.',
+            variant: 'destructive',
+          });
+        }
+      } finally {
+        // Reset flag when done
+        isGeneratingRef.current = false;
       }
     }
     
     generateContent();
-  }, [note, editor]);
+    
+    // Cleanup function to prevent state updates after unmount
+    return () => {
+      isMounted = false;
+    };
+  }, [note?.id, note?.is_generating, editor]);
   
   // Auto-save with debounce
   const saveNote = useCallback((title: string, content: string) => {
-  if (!note || !user) return;
-  
-  // Use ref to store the debounced function to avoid recreating it on every render
-  const saveToDB = async () => {
-    try {
-      setIsSaving(true);
-      
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      
-      const response = await fetch('/api/notes/update', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          id: note.id,
-          title,
-          content,
-        }),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save note');
-      }
-      
-      const data = await response.json();
-      setNote(data.note);
-      setLastSaved(new Date());
-    } catch (error) {
-      console.error('Error saving note:', error);
-      toast({
-        title: 'Error saving changes',
-        description: 'Could not save your changes. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSaving(false);
+    if (!note?.id || !user) return;
+    
+    // Cancel any pending debounced saves
+    if (debouncedSaveRef.current) {
+      debouncedSaveRef.current.cancel();
     }
-  };
+    
+    // Define the save function
+    const saveToDB = async () => {
+      try {
+        setIsSaving(true);
+        
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        
+        const response = await fetch('/api/notes/update', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            id: note.id,
+            title,
+            content,
+          }),
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to save note');
+        }
+        
+        const data = await response.json();
+        setNote(data.note);
+        setLastSaved(new Date());
+      } catch (error) {
+        console.error('Error saving note:', error);
+        toast({
+          title: 'Error saving changes',
+          description: 'Could not save your changes. Please try again.',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsSaving(false);
+      }
+    };
 
-  // Use a stable reference to the debounced function
-  const debouncedSave = debounce(saveToDB, 500);
-  debouncedSave();
-
-  // Clean up the debounced function
-  return () => {
-    debouncedSave.cancel();
-  };
-}, [note, user, setIsSaving]);
+    // Create the debounced version and save the reference
+    debouncedSaveRef.current = debounce(saveToDB, 500);
+    
+    // Execute the debounced function
+    debouncedSaveRef.current();
+  }, [note?.id, user]); // Only depend on note.id instead of the entire note object
+  
+  // Clean up the debounced function on unmount
+  useEffect(() => {
+    return () => {
+      if (debouncedSaveRef.current) {
+        debouncedSaveRef.current.cancel();
+      }
+    };
+  }, []);
   
   // Handle title change
-  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleTitleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (!note) return;
     
     const newTitle = e.target.value;
-    setNote({ ...note, title: newTitle });
+    setNote(prevNote => prevNote ? { ...prevNote, title: newTitle } : null);
     saveNote(newTitle, note.content);
-  };
+  }, [note, saveNote]);
   
   // Handle content change
-  const handleContentChange = (content: string) => {
+  const handleContentChange = useCallback((content: string) => {
     if (!note) return;
     
-    setNote({ ...note, content });
+    setNote(prevNote => prevNote ? { ...prevNote, content } : null);
     saveNote(note.title, content);
-  };
+  }, [note, saveNote]);
   
   // Handle back navigation
-  const handleBack = () => {
-    // router.push('/dashboard/coach');
+  const handleBack = useCallback(() => {
     router.back();
-  };
+  }, [router]);
   
   if (isLoading) {
     return (

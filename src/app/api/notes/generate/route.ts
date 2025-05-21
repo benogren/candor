@@ -1,48 +1,157 @@
+// src/app/api/notes/generate/route.ts
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { marked } from 'marked';
+import OpenAI from 'openai';
 
-// Import the handler functions directly
-// import { POST as prepHandler } from '@/app/api/feedback/prep/route';
-// import { POST as managerPrepHandler } from '@/app/api/feedback/manager/prep/route';
-// import { POST as summarizeHandler } from '@/app/api/feedback/summarize/route';
-// import { POST as managerSummarizeHandler } from '@/app/api/feedback/manager/summarize/route';
-// import { POST as reviewHandler } from '@/app/api/feedback/review/route';
-// import { POST as managerReviewHandler } from '@/app/api/feedback/manager/review/route';
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-// Define payload interfaces
-interface BasePayload {
+// Track notes that are currently being generated to prevent duplicate processing
+const activeGenerations = new Map<string, Promise<{ note: Note }>>();
+
+// Request timeout in milliseconds (30 seconds)
+const REQUEST_TIMEOUT = 30000;
+
+// Define interfaces for better type safety
+interface BaseParams {
   timeframe: string;
 }
 
-interface UserPayload extends BasePayload {
+interface UserParams extends BaseParams {
   userId: string;
-  type: string;
+  type?: string;
 }
 
-interface ManagerPayload extends BasePayload {
+interface ManagerParams extends BaseParams {
   managerId: string;
   employeeId: string;
   is_invited: boolean;
 }
 
-interface FeedbackResponse {
+interface ContentResponse {
   summary?: string;
   prep?: string;
   review?: string;
-  [key: string]: unknown; // Use unknown instead of any for better type safety
+  [key: string]: unknown;
 }
 
-// Define a type for errors
-// type ApiError = Error | { message: string; cause?: unknown };
+// Define interfaces for Supabase data
+interface CompanyValue {
+  icon?: string;
+  description?: string;
+}
 
+interface FeedbackQuestion {
+  id: string;
+  question_text: string;
+  question_type: string;
+  question_subtype?: string;
+  question_description?: string;
+  company_value_id?: string;
+  company_values?: CompanyValue;
+}
+
+interface FeedbackUserIdentity {
+  id: string;
+  name?: string;
+  email?: string;
+}
+
+interface FeedbackRecipient {
+  id: string;
+  recipient_id: string;
+  feedback_user_identities: FeedbackUserIdentity;
+}
+
+interface FeedbackSession {
+  id: string;
+  status: string;
+  provider_id: string;
+}
+
+interface FeedbackResponseItem {
+  id: string;
+  recipient_id: string;
+  rating_value?: number;
+  text_response?: string;
+  comment_text?: string;
+  has_comment?: boolean;
+  skipped: boolean;
+  created_at?: string;
+  updated_at?: string;
+  session_id?: string;
+  nominated_user_id?: string;
+  feedback_questions?: FeedbackQuestion;
+  feedback_sessions?: FeedbackSession;
+  feedback_recipients?: FeedbackRecipient;
+  nominated_user?: FeedbackUserIdentity;
+}
+
+interface UserProfile {
+  id: string;
+  name?: string;
+  email?: string;
+  job_title?: string;
+  created_at?: string;
+  updated_at?: string;
+  avatar_url?: string;
+  additional_data?: Record<string, unknown>;
+}
+
+interface Company {
+  id: string;
+  name: string;
+  industry?: string;
+  created_at?: string;
+  updated_at?: string;
+  domains?: string[];
+}
+
+interface CompanyData {
+  company_id?: string;
+  companies?: Company | Company[];
+}
+
+interface Note {
+  id: string;
+  title: string;
+  content: string;
+  content_type: string;
+  creator_id: string;
+  subject_member_id?: string;
+  subject_invited_id?: string;
+  metadata?: {
+    timeframe?: string;
+    [key: string]: unknown;
+  };
+  created_at?: string;
+  updated_at?: string;
+  is_generating?: boolean;
+}
+
+interface InvitedUser {
+  id: string;
+  name?: string;
+  email: string;
+  job_title?: string;
+  role?: string;
+  company_id?: string;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Main handler function
 export async function POST(request: Request) {
   try {
     // Get the request body
     const body = await request.json();
     const { id } = body;
 
-    console.log('Received data:', { id });
+    console.log('Received generation request for note:', id);
 
     if (!id) {
       return NextResponse.json(
@@ -51,270 +160,1038 @@ export async function POST(request: Request) {
       );
     }
 
-    // Create Supabase client
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const bearerToken = authHeader.substring(7);
-    
-    // Create a direct database client that doesn't use cookies
-    const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-    
-    const { data: { user }, error: userError } = await supabase.auth.getUser(bearerToken);
-    if (userError || !user) {
-        return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-    }
-
-    const { data: note, error: noteError } = await supabase
-      .from('notes')
-      .select('*')
-      .eq('id', id)
-      .eq('creator_id', user.id)
-      .single();
-
-    if (noteError) {
-      console.error('Error fetching note:', noteError);
-      return NextResponse.json({ error: 'Failed to fetch note' }, { status: 500 });
-    }
-    if (!note) {
-      return NextResponse.json({ error: 'Note not found' }, { status: 404 });
-    }
-
-    let generatedContent = '';
-    let contentData;
-
-    // Check if this is a manager note (has subject_member_id or subject_invited_id)
-    const isManagerNote = note.subject_member_id || note.subject_invited_id;
-    const employeeId = note.subject_member_id || note.subject_invited_id;
-    const isInvitedUser = !!note.subject_invited_id;
-    const timeframe = note.metadata?.timeframe || 'all';
-
-    // Helper function to safely handle responses
-    async function safelyHandleResponse(response: Response): Promise<FeedbackResponse> {
-      if (!response.ok) {
-        const responseText = await response.text();
-        console.error(`API response error (${response.status}): ${responseText}`);
-        throw new Error(`API responded with status ${response.status}: ${responseText}`);
-      }
+    // Check if this note is already being generated
+    if (activeGenerations.has(id)) {
+      console.log(`Note ${id} is already being generated, returning existing promise`);
       
       try {
-        return await response.json();
-      } catch (err) {
-        const responseText = await response.text();
-        console.error('Failed to parse JSON response:', err, responseText);
-        throw new Error(`Failed to parse JSON response: ${responseText.substring(0, 200)}...`);
+        // Wait for the existing generation to complete
+        const result = await activeGenerations.get(id);
+        return NextResponse.json(result, { status: 200 });
+      } catch (error) {
+        // If the existing generation fails, we'll continue with a new one
+        console.error('Error in existing generation:', error);
+        activeGenerations.delete(id);
       }
     }
 
-    // Create a new request object to pass to the handler
-    // function createHandlerRequest<T extends BasePayload>(payload: T): Request {
-    //   return new Request('https://api.internal', {
-    //     method: 'POST',
-    //     headers: {
-    //       'Content-Type': 'application/json',
-    //       'Authorization': `Bearer ${bearerToken}`
-    //     },
-    //     body: JSON.stringify(payload)
-    //   });
-    // }
-
-    // Instead of directly calling the imported handlers, let's use actual API calls
-    const apiBaseUrl = process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}` 
-      : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-
-    // Call the appropriate API endpoint based on content type
-    switch (note.content_type) {
-      case 'summary':
-        if (isManagerNote) {
-          // Manager summary
-          const managerSummaryPayload: ManagerPayload = {
-            managerId: user.id,
-            employeeId,
-            timeframe,
-            is_invited: isInvitedUser
-          };
-          
-          const summaryResponse = await fetch(`${apiBaseUrl}/api/feedback/manager/summarize`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${bearerToken}`
-            },
-            body: JSON.stringify(managerSummaryPayload)
-          });
-          
-          contentData = await safelyHandleResponse(summaryResponse);
-          console.log('Manager summary response:', contentData);
-        } else {
-          // Personal summary
-          const summaryPayload: UserPayload = {
-            userId: user.id,
-            timeframe,
-            type: 'summary'
-          };
-          
-          const summaryResponse = await fetch(`${apiBaseUrl}/api/feedback/summarize`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${bearerToken}`
-            },
-            body: JSON.stringify(summaryPayload)
-          });
-          
-          contentData = await safelyHandleResponse(summaryResponse);
-          console.log('Personal summary response:', contentData);
-        }
-        break;
-      
-      // Similar pattern for prep and review cases...
-      case 'prep':
-        if (isManagerNote) {
-          // Manager prep
-          const managerPrepPayload: ManagerPayload = {
-            managerId: user.id,
-            employeeId,
-            timeframe,
-            is_invited: isInvitedUser
-          };
-          
-          const prepResponse = await fetch(`${apiBaseUrl}/api/feedback/manager/prep`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${bearerToken}`
-            },
-            body: JSON.stringify(managerPrepPayload)
-          });
-          
-          contentData = await safelyHandleResponse(prepResponse);
-          console.log('Manager prep response:', contentData);
-        } else {
-          // Personal prep
-          const prepPayload: UserPayload = {
-            userId: user.id,
-            timeframe: note.metadata?.timeframe || 'week',
-            type: 'prep'
-          };
-          
-          const prepResponse = await fetch(`${apiBaseUrl}/api/feedback/prep`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${bearerToken}`
-            },
-            body: JSON.stringify(prepPayload)
-          });
-          
-          contentData = await safelyHandleResponse(prepResponse);
-          console.log('Personal prep response:', contentData);
-        }
-        break;
-      
-      case 'review':
-        if (isManagerNote) {
-          // Manager review
-          const managerReviewPayload: ManagerPayload = {
-            managerId: user.id,
-            employeeId,
-            timeframe,
-            is_invited: isInvitedUser
-          };
-          
-          const reviewResponse = await fetch(`${apiBaseUrl}/api/feedback/manager/review`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${bearerToken}`
-            },
-            body: JSON.stringify(managerReviewPayload)
-          });
-          
-          contentData = await safelyHandleResponse(reviewResponse);
-          console.log('Manager review response:', contentData);
-        } else {
-          // Personal review
-          const reviewPayload: UserPayload = {
-            userId: user.id,
-            timeframe,
-            type: 'review'
-          };
-          
-          const reviewResponse = await fetch(`${apiBaseUrl}/api/feedback/review`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${bearerToken}`
-            },
-            body: JSON.stringify(reviewPayload)
-          });
-          
-          contentData = await safelyHandleResponse(reviewResponse);
-          console.log('Personal review response:', contentData);
-        }
-        break;
-      
-      default:
-        return NextResponse.json({ error: 'Invalid content type' }, { status: 400 });
-    }
+    // Create a new promise for this generation with timeout
+    const generationPromiseWithTimeout = Promise.race([
+      generateNote(request, id),
+      new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Generation request timed out')), REQUEST_TIMEOUT)
+      )
+    ]);
     
-    // Format the response data based on content type
-    if (note.content_type === 'summary') {
-      const markdownContent = isManagerNote 
-        ? contentData.summary
-        : contentData.summary;
-      
-      const htmlContent = await marked.parse(markdownContent ?? '');
-      generatedContent = htmlContent;
-    } else if (note.content_type === 'prep') {
-      const markdownContent = isManagerNote
-        ? contentData.prep
-        : contentData.prep;
-        
-      const htmlContent = await marked.parse(markdownContent ?? '');
-      generatedContent = htmlContent;
-    } else if (note.content_type === 'review') {
-      const markdownContent = contentData.review;
-      const htmlContent = await marked.parse(markdownContent ?? '');
-      generatedContent = htmlContent;
-    }
-
-    // Update the note with the generated content
-    const { data, error } = await supabase
-      .from('notes')
-      .update({
-        content: generatedContent,
-        is_generating: false
+    // Store the promise
+    activeGenerations.set(id, generationPromiseWithTimeout);
+    
+    // When the promise resolves or rejects, remove it from the map
+    generationPromiseWithTimeout
+      .then(result => {
+        activeGenerations.delete(id);
+        return result;
       })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return NextResponse.json({ note: data }, { status: 200 });
-  } catch (error: unknown) { // Properly type the error as unknown
-    // Convert the unknown error to a more specific type for logging
-    const errorMessage = error instanceof Error 
-      ? error.message 
-      : 'An unknown error occurred';
-    
-    console.error('Error generating note content:', errorMessage);
-    
-    // If you need to access more properties from the error
-    if (error instanceof Error) {
-      console.error('Error details:', {
-        name: error.name,
-        stack: error.stack,
-        cause: error.cause
+      .catch(error => {
+        activeGenerations.delete(id);
+        throw error;
       });
-    }
     
+    // Wait for the promise to resolve
+    const result = await generationPromiseWithTimeout;
+    console.log(`Generation completed for note: ${id}`);
+    return NextResponse.json(result, { status: 200 });
+
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+    console.error('Error generating note content:', errorMessage);
     return NextResponse.json({ error: 'Failed to generate content' }, { status: 500 });
   }
+}
+
+// Helper function containing the main note generation logic
+async function generateNote(request: Request, id: string) {
+  // Create Supabase client
+  const authHeader = request.headers.get('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    throw new Error('Unauthorized');
+  }
+
+  const bearerToken = authHeader.substring(7);
+  
+  // Create a direct database client that doesn't use cookies
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  
+  const { data: { user }, error: userError } = await supabase.auth.getUser(bearerToken);
+  if (userError || !user) {
+    throw new Error('Invalid token');
+  }
+
+  const { data: note, error: noteError } = await supabase
+    .from('notes')
+    .select('*')
+    .eq('id', id)
+    .eq('creator_id', user.id)
+    .single() as { data: Note | null, error: Error | null };
+
+  if (noteError) {
+    console.error('Error fetching note:', noteError);
+    throw new Error('Failed to fetch note');
+  }
+  if (!note) {
+    throw new Error('Note not found');
+  }
+
+  // Check if this is a manager note (has subject_member_id or subject_invited_id)
+  const isManagerNote = note.subject_member_id || note.subject_invited_id;
+  const employeeId = note.subject_member_id || note.subject_invited_id;
+  const isInvitedUser = !!note.subject_invited_id;
+  const timeframe = note.metadata?.timeframe || 'all';
+
+  let generatedContent = '';
+  let contentData: ContentResponse = {};
+
+  // Call the appropriate function based on content type
+  if (note.content_type === 'summary') {
+    if (isManagerNote && employeeId) {
+      const params: ManagerParams = {
+        managerId: user.id,
+        employeeId,
+        timeframe,
+        is_invited: isInvitedUser
+      };
+      contentData = await generateManagerSummary(supabase, params);
+    } else {
+      const params: UserParams = {
+        userId: user.id,
+        timeframe,
+        type: 'summary'
+      };
+      contentData = await generatePersonalSummary(supabase, params);
+    }
+  } else if (note.content_type === 'prep') {
+    if (isManagerNote && employeeId) {
+      const params: ManagerParams = {
+        managerId: user.id,
+        employeeId,
+        timeframe,
+        is_invited: isInvitedUser
+      };
+      contentData = await generateManagerPrep(supabase, params);
+    } else {
+      const params: UserParams = {
+        userId: user.id,
+        timeframe: note.metadata?.timeframe || 'week',
+        type: 'prep'
+      };
+      contentData = await generatePersonalPrep(supabase, params);
+    }
+  } else if (note.content_type === 'review') {
+    if (isManagerNote && employeeId) {
+      const params: ManagerParams = {
+        managerId: user.id,
+        employeeId,
+        timeframe,
+        is_invited: isInvitedUser
+      };
+      contentData = await generateManagerReview(supabase, params);
+    } else {
+      const params: UserParams = {
+        userId: user.id,
+        timeframe,
+        type: 'review'
+      };
+      contentData = await generatePersonalReview(supabase, params);
+    }
+  } else {
+    throw new Error('Invalid content type');
+  }
+  
+  // Format the response data based on content type
+  if (note.content_type === 'summary') {
+    const markdownContent = contentData.summary || '';
+    const htmlContent = await marked.parse(markdownContent);
+    generatedContent = htmlContent;
+  } else if (note.content_type === 'prep') {
+    const markdownContent = contentData.prep || '';
+    const htmlContent = await marked.parse(markdownContent);
+    generatedContent = htmlContent;
+  } else if (note.content_type === 'review') {
+    const markdownContent = contentData.review || '';
+    const htmlContent = await marked.parse(markdownContent);
+    generatedContent = htmlContent;
+  }
+
+  // Update the note with the generated content
+  const { data, error } = await supabase
+    .from('notes')
+    .update({
+      content: generatedContent,
+      is_generating: false
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return { note: data };
+}
+
+// Helper function to fetch feedback data - shared across all generators
+async function fetchFeedbackData(
+  supabase: SupabaseClient,
+  targetId: string,
+  startDate: Date
+): Promise<FeedbackResponseItem[]> {
+  // Check if the user is a recipient
+  const { data: recipientData, error: recipientError } = await supabase
+    .from('feedback_recipients')
+    .select('id')
+    .eq('recipient_id', targetId);
+  
+  if (recipientError || !recipientData || recipientData.length === 0) {
+    throw recipientError || new Error('No recipient data found');
+  }
+
+  const recipientIds = recipientData.map(r => r.id);
+
+  // Fetch feedback responses
+  const { data: feedbackData, error: feedbackError } = await supabase
+    .from('feedback_responses')
+    .select(`
+    *,
+    feedback_questions!inner(
+        id,
+        question_text,
+        question_type,
+        question_subtype,
+        question_description,
+        company_value_id,
+        company_values(
+        icon,
+        description
+        )
+    ),
+    feedback_sessions!inner(
+        id,
+        status,
+        provider_id
+    ),
+    feedback_recipients!inner(
+        id,
+        recipient_id,
+        feedback_user_identities!inner(
+        id,
+        name,
+        email
+        )
+    ),
+    nominated_user:feedback_user_identities(
+        id,
+        name,
+        email
+    )
+    `)
+    .in('recipient_id', recipientIds)
+    .eq('skipped', false)
+    .eq('feedback_sessions.status', 'completed')
+    .gte('created_at', startDate.toISOString())
+    .order('created_at', { ascending: false });
+    
+  if (feedbackError) throw feedbackError;
+  
+  return feedbackData || [];
+}
+
+// Helper function to get user details
+async function getUserDetails(
+  supabase: SupabaseClient, 
+  userId: string, 
+  isInvited = false
+): Promise<{ userName: string; jobTitle: string }> {
+  let userName = '';
+  let jobTitle = '';
+
+  if (isInvited) {
+    const { data, error } = await supabase
+      .from('invited_users')
+      .select('name, job_title')
+      .eq('id', userId) as { data: InvitedUser[] | null, error: Error | null };
+
+    if (!error && data && data.length > 0) {
+      jobTitle = data[0].job_title ? `They're a ${data[0].job_title}` : '';
+      userName = data[0].name || 'Unknown User';
+    }
+  } else {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('name, job_title')
+      .eq('id', userId) as { data: UserProfile[] | null, error: Error | null };
+
+    if (!error && data && data.length > 0) {
+      jobTitle = data[0].job_title ? `They're a ${data[0].job_title}` : '';
+      userName = data[0].name || 'Unknown User';
+    }
+  }
+
+  return { userName, jobTitle };
+}
+
+// Helper function to get company details
+async function getCompanyDetails(
+  supabase: SupabaseClient, 
+  userId: string
+): Promise<{ company: string; industry: string }> {
+  let company = '';
+  let industry = '';
+
+  try {
+    const { data } = await supabase
+      .from('company_members')
+      .select(`
+        company_id,
+        companies!inner(id, name, industry)
+      `)
+      .eq('id', userId)
+      .single() as { data: CompanyData | null };
+
+    if (data) {
+      const companyObject = Array.isArray(data.companies) 
+        ? data.companies[0] 
+        : data.companies;
+
+      if (companyObject && companyObject.name) {
+        company = `They work at ${companyObject.name}`;
+        industry = companyObject.industry ? `in the ${companyObject.industry} industry.` : '';
+      }
+    }
+  } catch (error) {
+    console.log('Error fetching company data:', error);
+  }
+
+  return { company, industry };
+}
+
+// Helper function to format feedback
+function formatFeedback(feedback: FeedbackResponseItem[], userName: string): string {
+  return feedback.map(item => {
+    let questionText = item.feedback_questions?.question_text || 'Unknown question';
+    const questionType = item.feedback_questions?.question_type || 'unknown';
+    
+    let responseText = '';
+    
+    if (questionType === 'text' || questionType === 'ai') {
+      responseText = item.text_response || '';
+    }
+
+    if (questionType === 'rating') {
+      responseText = `Rating: ${item.rating_value}/10`;
+
+      if (item.comment_text) {
+        responseText += ` - Comment: ${item.comment_text}`;
+      }
+    } 
+
+    if (questionType === 'values') {
+      questionText += `: ${item.feedback_questions?.question_description || ''}`;
+      responseText += `${userName} was nominated for this company value`;
+    }
+    
+    return `
+    Question: 
+    ${questionText.replace(/\{name\}/g, userName)}
+    Response: 
+    ${responseText}
+    `;
+  }).join('\n');
+}
+
+// Helper function to get time period text
+function getTimePeriodText(timeframe: string, isReview = false): string {
+  if (isReview) {
+    return 'over the past year';
+  }
+  
+  switch (timeframe) {
+    case 'week':
+      return 'the past week';
+    case 'month': 
+      return 'the past month';
+    default:
+      return 'across all time periods';
+  }
+}
+
+// Function to calculate start date based on timeframe
+function calculateStartDate(timeframe: string, isReview = false): Date {
+  const today = new Date();
+  const startDate = new Date();
+
+  if (isReview) {
+    startDate.setMonth(today.getMonth() - 12);
+    return startDate;
+  }
+
+  if (timeframe === 'week') {
+    startDate.setDate(today.getDate() - 7);
+  } else if (timeframe === 'month') {
+    startDate.setMonth(today.getMonth() - 1);
+  } else {
+    return new Date(2000, 0, 1); // Default to very old date for 'all'
+  }
+
+  return startDate;
+}
+
+// Implementation for personal summary
+async function generatePersonalSummary(
+  supabase: SupabaseClient,
+  params: UserParams
+): Promise<ContentResponse> {
+  const { userId, timeframe } = params;
+  
+  // Calculate start date for feedback query
+  const startDate = calculateStartDate(timeframe);
+  
+  // Get feedback data
+  const feedback = await fetchFeedbackData(supabase, userId, startDate);
+  
+  // Get user details
+  const { userName, jobTitle } = await getUserDetails(supabase, userId);
+  
+  // Get company details
+  const { company, industry } = await getCompanyDetails(supabase, userId);
+  
+  // Format feedback
+  const formattedFeedback = formatFeedback(feedback, userName);
+  
+  // If there's no feedback content, return early
+  if (!formattedFeedback.trim()) {
+    return { summary: 'No feedback content available to summarize.' };
+  }
+  
+  // Get time period text
+  const timePeriodText = getTimePeriodText(timeframe);
+  
+  // Create prompt for OpenAI
+  const prompt = `
+  Take on the role of an experienced career coach specialising in analyzing 360-degree employee feedback.
+    
+    Below is a collection of feedback for ${userName}.
+    Their current job title is: ${jobTitle}
+    They work for: ${company}
+    Industry: ${industry}
+    This feedback was received ${timePeriodText}:
+    
+    ${formattedFeedback}
+    
+    Please provide a thoughtful, constructive summary of this feedback that includes:
+    1. Major strengths identified in the feedback
+    2. Areas for potential growth or improvement
+    3. Patterns or themes across the feedback
+    4. 2-3 specific, actionable recommendations based on the feedback
+    
+    Format your response in clear sections with meaningful headings. 
+    Keep your response balanced, constructive, and growth-oriented. 
+    Focus on patterns rather than individual comments and avoid unnecessarily harsh criticism.
+    If provided, consider the individual's company and industry and focus on how companies within this industry operate; the type of work they do, the skills they need, and the challenges they face.
+    If provided, consider the individual's job title and focus on how this role typically operates; the type of work they do, the skills they need, and the challenges they face.
+    Your reponse should be written in 2nd person, ${userName} will be the recipient of this summary.
+
+      Use the following format:  
+      ### Feedback Summary:
+
+      #### Major Strengths Identified in the Feedback
+      1. [Strength 1]
+      2. [Strength 2]
+      3. [Strength 3]
+
+      #### Areas for Potential Growth or Improvement
+      1. [Area 1]
+      2. [Area 2]
+      3. [Area 3]
+
+      #### Patterns or Themes Across the Feedback
+      - [Pattern 1]
+      - [Pattern 2]
+      - [Pattern 3]
+
+      #### Specific, Actionable Recommendations
+      1. [Recommendation 1]
+      2. [Recommendation 2]
+      3. [Recommendation 3]
+  `;
+  
+  // Call OpenAI API
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4-turbo",
+    messages: [
+      { 
+        role: "system", 
+        content: "Assume the role of a career coach. You are a helpful career coach providing feedback analysis. Your summaries are balanced, constructive, and actionable."
+      },
+      { 
+        role: "user", 
+        content: prompt
+      }
+    ],
+    max_tokens: 1000
+  });
+  
+  return { summary: completion.choices[0]?.message?.content || "Unable to generate summary." };
+}
+
+// Implementation for manager summary
+async function generateManagerSummary(
+  supabase: SupabaseClient,
+  params: ManagerParams
+): Promise<ContentResponse> {
+  const { managerId, employeeId, timeframe, is_invited } = params;
+  
+  // Calculate start date for feedback query
+  const startDate = calculateStartDate(timeframe);
+  
+  // Get feedback data
+  const feedback = await fetchFeedbackData(supabase, employeeId, startDate);
+  
+  // Get employee details
+  const { userName, jobTitle } = await getUserDetails(supabase, employeeId, is_invited);
+  
+  // Get manager details
+  const { userName: managerName, jobTitle: managerJobTitle } = await getUserDetails(supabase, managerId);
+  
+  // Get company details
+  const { company, industry } = await getCompanyDetails(supabase, employeeId);
+  
+  // Format feedback
+  const formattedFeedback = formatFeedback(feedback, userName);
+  
+  // If there's no feedback content, return early
+  if (!formattedFeedback.trim()) {
+    return { summary: 'No feedback content available to summarize.' };
+  }
+  
+  // Get time period text
+  const timePeriodText = getTimePeriodText(timeframe);
+  
+  // Create prompt for OpenAI
+  const prompt = `
+  Take on the role of an experienced career coach specialising in analyzing 360-degree employee feedback.
+    
+    Below is a collection of feedback for ${userName}.
+    Their current job title is: ${jobTitle}
+    They work for: ${company}
+    Industry: ${industry}
+    This feedback was received ${timePeriodText}:
+    
+    ${formattedFeedback}
+    
+    Please provide a thoughtful, constructive summary of this feedback that includes:
+    1. Major strengths identified in the feedback
+    2. Areas for potential growth or improvement
+    3. Patterns or themes across the feedback
+    4. 2-3 specific, actionable recommendations based on the feedback
+    
+    Format your response in clear sections with meaningful headings. 
+    Keep your response balanced, constructive, and growth-oriented. 
+    Focus on patterns rather than individual comments and avoid unnecessarily harsh criticism.
+    If provided, consider the individual's company and industry and focus on how companies within this industry operate; the type of work they do, the skills they need, and the challenges they face.
+    If provided, consider the individual's job title and focus on how this role typically operates; the type of work they do, the skills they need, and the challenges they face.
+    Your reponse should be written in 2nd person, ${userName}'s manager ${managerName} will be the recipient of this summary.
+    ${managerName} is a ${managerJobTitle} at ${company}.
+
+      Use the following format:  
+      ### Feedback Summary for ${userName}:
+
+      #### Major Strengths Identified in the Feedback
+      1. [Strength 1]
+      2. [Strength 2]
+      3. [Strength 3]
+
+      #### Areas for Potential Growth or Improvement
+      1. [Area 1]
+      2. [Area 2]
+      3. [Area 3]
+
+      #### Patterns or Themes Across the Feedback
+      - [Pattern 1]
+      - [Pattern 2]
+      - [Pattern 3]
+
+      #### Specific, Actionable Recommendations
+      1. [Recommendation 1]
+      2. [Recommendation 2]
+      3. [Recommendation 3]
+  `;
+  
+  // Call OpenAI API
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4-turbo",
+    messages: [
+      { 
+        role: "system", 
+        content: "Assume the role of a career coach. You are a helpful career coach providing feedback analysis. Your summaries are balanced, constructive, and actionable."
+      },
+      { 
+        role: "user", 
+        content: prompt
+      }
+    ],
+    max_tokens: 1000
+  });
+  
+  return { summary: completion.choices[0]?.message?.content || "Unable to generate summary." };
+}
+
+// Implementation for personal prep
+async function generatePersonalPrep(
+  supabase: SupabaseClient,
+  params: UserParams
+): Promise<ContentResponse> {
+  const { userId, timeframe } = params;
+  
+  // Calculate start date for feedback query
+  const startDate = calculateStartDate(timeframe);
+  
+  // Get feedback data
+  const feedback = await fetchFeedbackData(supabase, userId, startDate);
+  
+  // Get user details
+  const { userName, jobTitle } = await getUserDetails(supabase, userId);
+  
+  // Get company details
+  const { company, industry } = await getCompanyDetails(supabase, userId);
+  
+  // Format feedback
+  const formattedFeedback = formatFeedback(feedback, userName);
+  
+  // Get time period text
+  const timePeriodText = getTimePeriodText(timeframe);
+  
+  // Create prompt for OpenAI
+  const prompt = `
+  Take on the role of an experienced career coach specialising in one-on-one meeting preperation.
+    
+    Below is a collection of feedback for ${userName}.
+    Their current job title is: ${jobTitle}
+    They work for: ${company}
+    Industry: ${industry}
+    This feedback was received ${timePeriodText}:
+    
+    ${formattedFeedback}
+    
+    Steps:
+    1.) If provided, please summarize the feedback in a way that highlights the individual's strengths and areas for improvement.
+    2.) Generate a 1-on-1 meeting agenda focused on discussing the individual's strengths and areas for improvement, identifying any challenges, and exploring professional development opportunities for a ${jobTitle} in the ${industry} industry.
+    
+    Format your response in clear sections with meaningful headings. 
+    If provided, consider the individual's company and industry and focus on how companies within this industry operate; the type of work they do, the skills they need, and the challenges they face.
+    If provided, consider the individual's job title and focus on how this role typically operates; the type of work they do, the skills they need, and the challenges they face.
+    ${userName} is the recipient of this agenda and they will use it to prepare for their 1:1 meeting with their manager, so write it in the 2nd person.
+    Suggest things they should ask their manager about, and things they should be prepared to discuss.
+    You do not need an Introduction section.
+
+      Use the following format:  
+      ### 1:1 Agenda
+
+      #### Areas for Potential Growth or Improvement
+      1. [Area 1]
+          - [Question to ask your manager about this area]
+      2. [Area 2]
+          - [Question to ask your manager about this area]
+
+      #### Challenges identified in Feedback
+      - [Challenge 1]
+          - [Question to ask your manager about this challenge]
+      - [Challenge 2]
+          - [Question to ask your manager about this challenge]
+      - [Challenge 3]
+          - [Question to ask your manager about this challenge]
+
+      #### Professional Development Opportunities
+      1. [Opportunity 1]
+          - [Question to ask your manager about this opportunity]
+      2. [Opportunity 2]
+          - [Question to ask your manager about this opportunity]
+
+      #### Other Questions to Ask Your Manager
+      1. [Question 1]
+      2. [Question 2]
+      3. [Question 3]
+  `;
+  
+  // Call OpenAI API
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4-turbo",
+    messages: [
+      { 
+        role: "system", 
+        content: "Assume the role of a career coach. You are a helpful career coach providing excellent one-on-one meeting prep. Your meeting agendas are clear, concise, and actionable. You are an expert in the field of career coaching and have a deep understanding of various industries and job roles."
+      },
+      { 
+        role: "user", 
+        content: prompt
+      }
+    ],
+    max_tokens: 1000
+  });
+  
+  return { prep: completion.choices[0]?.message?.content || "Unable to generate meeting prep." };
+}
+
+// Implementation for manager prep
+async function generateManagerPrep(
+  supabase: SupabaseClient,
+  params: ManagerParams
+): Promise<ContentResponse> {
+  const { managerId, employeeId, timeframe, is_invited } = params;
+  
+  // Calculate start date for feedback query
+  const startDate = calculateStartDate(timeframe);
+  
+  // Get feedback data
+  const feedback = await fetchFeedbackData(supabase, employeeId, startDate);
+  
+  // Get employee details
+  const { userName, jobTitle } = await getUserDetails(supabase, employeeId, is_invited);
+  
+  // Get manager details
+  const { userName: managerName, jobTitle: managerJobTitle } = await getUserDetails(supabase, managerId);
+  
+  // Get company details
+  const { company, industry } = await getCompanyDetails(supabase, employeeId);
+  
+  // Format feedback
+  const formattedFeedback = formatFeedback(feedback, userName);
+  
+  // Get time period text
+  const timePeriodText = getTimePeriodText(timeframe);
+  
+  // Create prompt for OpenAI
+  const prompt = `
+  Take on the role of an experienced career coach specialising in one-on-one meeting preperation.
+    
+    Below is a collection of feedback for ${userName}.
+    Their current job title is: ${jobTitle}
+    They work for: ${company}
+    Industry: ${industry}
+    This feedback was received ${timePeriodText}:
+    
+    ${formattedFeedback}
+    
+    Steps:
+    1.) If provided, please summarize the feedback in a way that highlights the individual's strengths and areas for improvement.
+    2.) Generate a 1-on-1 meeting agenda focused on discussing the individual's strengths and areas for improvement, identifying any challenges, and exploring professional development opportunities for a ${jobTitle} in the ${industry} industry.
+    
+    Format your response in clear sections with meaningful headings. 
+    If provided, consider the individual's company and industry and focus on how companies within this industry operate; the type of work they do, the skills they need, and the challenges they face.
+    If provided, consider the individual's job title and focus on how this role typically operates; the type of work they do, the skills they need, and the challenges they face.
+    ${userName}'s manager, ${managerName}, is the recipient of this agenda and they will use it to prepare for their 1:1 meeting with ${userName}, so write it in the 2nd person.
+    ${managerName} is a ${managerJobTitle} at ${company}.
+    Suggest things they should ask their employee about, and things they should be prepared to discuss.
+    You do not need an Introduction section.
+
+      Use the following format:  
+      ### 1:1 Agenda
+
+      #### Areas for Potential Growth or Improvement
+      1. [Area 1]
+          - [Question to ask your employee about this area]
+      2. [Area 2]
+          - [Question to ask your employee about this area]
+
+      #### Challenges identified in Feedback
+      - [Challenge 1]
+          - [Question to ask your employee about this challenge]
+      - [Challenge 2]
+          - [Question to ask your employee about this challenge]
+      - [Challenge 3]
+          - [Question to ask your employee about this challenge]
+
+      #### Professional Development Opportunities
+      1. [Opportunity 1]
+          - [Question to ask your employee about this opportunity]
+      2. [Opportunity 2]
+          - [Question to ask your employee about this opportunity]
+
+      #### Other Questions to Ask Your Employee
+      1. [Question 1]
+      2. [Question 2]
+      3. [Question 3]
+  `;
+  
+  // Call OpenAI API
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4-turbo",
+    messages: [
+      { 
+        role: "system", 
+        content: "Assume the role of a career coach. You are a helpful career coach providing excellent one-on-one meeting prep. Your meeting agendas are clear, concise, and actionable. You are an expert in the field of career coaching and have a deep understanding of various industries and job roles."
+      },
+      { 
+        role: "user", 
+        content: prompt
+      }
+    ],
+    max_tokens: 1000
+  });
+  
+  return { prep: completion.choices[0]?.message?.content || "Unable to generate meeting prep." };
+}
+
+// Implementation for personal review
+async function generatePersonalReview(
+  supabase: SupabaseClient,
+  params: UserParams
+): Promise<ContentResponse> {
+  const { userId, timeframe } = params;
+  
+  // Calculate start date for feedback query
+  const startDate = calculateStartDate(timeframe, true);
+  
+  // Get feedback data
+  const feedback = await fetchFeedbackData(supabase, userId, startDate);
+  
+  // Get user details
+  const { userName, jobTitle } = await getUserDetails(supabase, userId);
+  
+  // Get company details
+  const { company, industry } = await getCompanyDetails(supabase, userId);
+  
+  // Format feedback
+  const formattedFeedback = formatFeedback(feedback, userName);
+  
+  // Get time period text
+  const timePeriodText = getTimePeriodText(timeframe, true);
+  
+  // Create prompt for OpenAI
+  const prompt = `
+  Take on the role of an experienced career coach specialising in Performance Review meeting preperation.
+    
+    Below is a collection of feedback for ${userName}.
+    Their current job title is: ${jobTitle}
+    They work for: ${company}
+    Industry: ${industry}
+    This feedback was received ${timePeriodText}:
+    
+    ${formattedFeedback}
+    
+    Steps:
+    1.) List the key achievements of ${userName} ${timePeriodText}, focusing on contributions to projects, and any notable innovations or solutions they provided.
+    2.) Based on the feedback and performance data for ${userName}, identify three areas for improvement that align with our team goals and their personal development plan.‍
+    3.) Generate constructive feedback for ${userName} regarding their time management skills, incorporating examples from the last quarter and suggestions for improvement.
+    4.) What are the top three strengths of ${userName} as demonstrated in their recent projects, and how have these strengths positively impacted our team's performance?
+    5.) Propose three SMART goals for ${userName} for the next review period that focus on leveraging their strengths identified in step 4 and addressing their improvement areas you identified in step 3.
+    6.) Reviewing the feedback given, analyze ${userName}'s contribution to team dynamics and collaboration over the past year, including any leadership roles or initiatives they undertook to enhance team cohesion.
+    7.) Reviewing the feedback given, provide examples of how ${userName} demonstrated exceptional problem-solving skills, especially in dealing with challenges or projects, and suggest ways to further develop these skills.
+    8.) Reviewing the feedback given, create a paragraph acknowledging ${userName}'s exceptional contributions to their projects or team, highlighting their innovative approaches and the value added to the team.
+    9.) Compose a set of open-ended questions to facilitate a development discussion with ${userName}'s manager, focusing on their career aspirations, feedback on the team environment, and how management can support their growth.
+    10.) Review all of the previous steps and performance feedback for ${userName} and make edits to minimize bias, ensuring the language is neutral and focuses on specific behaviors and outcomes.
+
+    
+    Format your response in clear sections with meaningful headings. 
+    If provided, consider the individual's company and industry and focus on how companies within this industry operate; the type of work they do, the skills they need, and the challenges they face.
+    If provided, consider the individual's job title and focus on how this role typically operates; the type of work they do, the skills they need, and the challenges they face.
+    ${userName} is the recipient of this self reflection and they will use it to prepare for their career discussion with their manager, so write it in the 2nd person.
+    Suggest things they should ask their manager about, and things they should be prepared to discuss.
+    You do not need an Introduction section.
+
+      Use the following format:  
+      ### Self-Evaluation
+
+      Employee: ${userName}, ${jobTitle}
+      Company: ${company}
+
+      ----
+
+      ### Feedback
+      List feedback from the last year, including any notable achievements or contributions.
+
+      #### Feedback Questions
+      List 3 questions the employee should ask the manager to get feedback on their performance.
+
+      ### Accomplishments
+      List any accomplishments or contributions the employee made in the last year.
+
+      #### Accomplishments Questions
+      List 3 questions the employee should ask the manager about their accomplishments.
+
+      ### Results
+      List any results or outcomes from the employee's work in the last year.
+
+      #### Results Questions
+      List 3 questions the employee should ask the manager about their results.
+
+      ### Overall Impact
+      List the overall impact of the employee's work on the team or organization.
+
+      #### Overall Impact Questions
+      List 3 questions the employee should ask the manager about their overall impact.
+
+      ### What I have Learned
+      List any lessons learned or skills developed in the last year.
+
+      ### Obstacles
+      List any obstacles or challenges the employee faced in the last year.
+
+      #### Obstacles Questions
+      List 3 questions the employee should ask the manager about their obstacles.
+
+      ### Opportunities
+      List any opportunities for the employee to grow or develop in the next year.
+
+      #### Opportunities Questions
+      List 3 questions the employee should ask the manager about their opportunities for growth.
+
+      ### Goals
+      List the goals for the employee for the next year, including any specific projects or initiatives they should focus on. Examples: What were my short-term and long-term goals? What are my future goals?
+
+      #### Goals Questions
+      List 3 questions the employee should ask the manager about their goals for the next year.
+
+      ### Decisions
+      List any decisions that need to be made in the next year, including any specific projects or initiatives that need to be prioritized. Examples: What are my priorities? What steps can I take before next review?
+
+      ### Other Notes
+  `;
+  
+  // Call OpenAI API
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4-turbo",
+    messages: [
+      { 
+        role: "system", 
+        content: "Assume the role of a career coach. You are a helpful career coach providing excellent career discussion meeting prep. Your self evaluations are clear, concise, and actionable. You are an expert in the field of career coaching and have a deep understanding of various industries and job roles."
+      },
+      { 
+        role: "user", 
+        content: prompt
+      }
+    ],
+    max_tokens: 1000
+  });
+  
+  return { review: completion.choices[0]?.message?.content || "Unable to generate review." };
+}
+
+// Implementation for manager review
+async function generateManagerReview(
+  supabase: SupabaseClient,
+  params: ManagerParams
+): Promise<ContentResponse> {
+  const { managerId, employeeId, timeframe, is_invited } = params;
+  
+  // Calculate start date for feedback query
+  const startDate = calculateStartDate(timeframe, true);
+  
+  // Get feedback data
+  const feedback = await fetchFeedbackData(supabase, employeeId, startDate);
+  
+  // Get employee details
+  const { userName, jobTitle } = await getUserDetails(supabase, employeeId, is_invited);
+  
+  // Get manager details
+  const { userName: managerName, jobTitle: managerJobTitle } = await getUserDetails(supabase, managerId);
+  
+  // Get company details
+  const { company, industry } = await getCompanyDetails(supabase, employeeId);
+  
+  // Format feedback
+  const formattedFeedback = formatFeedback(feedback, userName);
+  
+  // Get time period text
+  const timePeriodText = getTimePeriodText(timeframe, true);
+  
+  // Create prompt for OpenAI
+  const prompt = `
+  Take on the role of an experienced career coach specialising in Performance Review meeting preperation.
+    
+    Below is a collection of feedback for ${userName}.
+    Their current job title is: ${jobTitle}
+    They work for: ${company}
+    Industry: ${industry}
+    This feedback was received ${timePeriodText}:
+    
+    ${formattedFeedback}
+    
+    Steps:
+    1.) List the key achievements of ${userName} ${timePeriodText}, focusing on contributions to projects, and any notable innovations or solutions they provided.
+    2.) Based on the feedback and performance data for ${userName}, identify three areas for improvement that align with our team goals and their personal development plan.‍
+    3.) Generate constructive feedback for ${userName} regarding their time management skills, incorporating examples from the last quarter and suggestions for improvement.
+    4.) What are the top three strengths of ${userName} as demonstrated in their recent projects, and how have these strengths positively impacted our team's performance?
+    5.) Propose three SMART goals for ${userName} for the next review period that focus on leveraging their strengths identified in step 4 and addressing their improvement areas you identified in step 3.
+    6.) Reviewing the feedback given, analyze ${userName}'s contribution to team dynamics and collaboration over the past year, including any leadership roles or initiatives they undertook to enhance team cohesion.
+    7.) Reviewing the feedback given, provide examples of how ${userName} demonstrated exceptional problem-solving skills, especially in dealing with challenges or projects, and suggest ways to further develop these skills.
+    8.) Reviewing the feedback given, create a paragraph acknowledging ${userName}'s exceptional contributions to their projects or team, highlighting their innovative approaches and the value added to the team.
+    9.) Compose a set of open-ended questions to facilitate a development discussion with ${userName}, focusing on their career aspirations, feedback on the team environment, and how management can support their growth.
+    10.) Review all of the previous steps and performance feedback for ${userName} and make edits to minimize bias, ensuring the language is neutral and focuses on specific behaviors and outcomes.
+
+    
+    Format your response in clear sections with meaningful headings. 
+    If provided, consider the individual's company and industry and focus on how companies within this industry operate; the type of work they do, the skills they need, and the challenges they face.
+    If provided, consider the individual's job title and focus on how this role typically operates; the type of work they do, the skills they need, and the challenges they face.
+    ${userName}'s manager, ${managerName}, is the recipient of this draft performance review and they will use it to prepare for their career discussion with ${userName}, so write it in the 2nd person.
+    ${managerName} is a ${managerJobTitle} at ${company}.
+    Suggest things they should ask their employee about, and things they should be prepared to discuss.
+    You do not need an Introduction section.
+
+      Use the following format:  
+      ### Performance Review
+
+      Employee: ${userName}, ${jobTitle}
+      Manager: ${managerName}, ${managerJobTitle}
+      Company: ${company}
+
+      ----
+
+      ### Feedback
+      List feedback from the last year, including any notable achievements or contributions.
+
+      #### Feedback Questions
+      List 3 questions the manager should ask the employee to get feedback on their performance. Examples: How have things gone since our last conversation?
+
+      ### Obstacles
+      List any obstacles or challenges the employee faced in the last year.
+
+      #### Obsticles Questions
+      List 3 questions the manager should ask the employee about the challenges they faced in the past year. Examples: What is impeding our progress? What can you do? What can I do to help?
+
+      ### Opportunities
+      List any opportunities for the employee to grow or develop in the next year.
+
+      #### Opportunities Questions
+      List 3 questions the manager should ask the employee about their opportunities for growth. Examples: What are you proud of that your co-workers don't know about? Do you feel you're growing toward your goals? How can we help you to make this your dream job?
+
+      ### Goals
+      List the goals for the employee for the next year, including any specific projects or initiatives they should focus on. Examples: What were our short-term and long-term goals? What are our future goals?
+
+      #### Goals Questions
+      List 3 questions the manager should ask the employee about their goals for the next year.
+
+      ### Decisions
+      List any decisions that need to be made in the next year, including any specific projects or initiatives that need to be prioritized. Examples: What decisions do we need to make? What are our priorities? What steps can we take before next review?
+
+      ### Other Notes
+  `;
+  
+  // Call OpenAI API
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4-turbo",
+    messages: [
+      { 
+        role: "system", 
+        content: "Assume the role of a career coach. You are a helpful career coach providing excellent one-on-one meeting prep. Your meeting agendas are clear, concise, and actionable. You are an expert in the field of career coaching and have a deep understanding of various industries and job roles."
+      },
+      { 
+        role: "user", 
+        content: prompt
+      }
+    ],
+    max_tokens: 1000
+  });
+  
+  return { review: completion.choices[0]?.message?.content || "Unable to generate review." };
 }
