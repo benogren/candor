@@ -14,6 +14,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { debounce } from 'lodash';
 import '../../../styles/editor-styles.css';
 import { overpass } from '../../../fonts';
+// import { fetchWithRetry } from '@/lib/fetchWithRetry';
 
 // Type definitions
 type Note = {
@@ -147,62 +148,137 @@ export default function NotesPage() {
       
       // Set flag to prevent concurrent generation requests
       isGeneratingRef.current = true;
+      let retries = 0;
+      const maxRetries = 3;
       
-      try {
-        console.log('Starting content generation for note:', note.id);
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        
-        const response = await fetch('/api/notes/generate', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            id: note.id
-          }),
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to generate content');
-        }
-        
-        const data = await response.json();
-        
-        // Only update state if component is still mounted
-        if (isMounted) {
-          setNote(data.note);
+      while (retries < maxRetries) {
+        try {
+          console.log(`Starting content generation for note: ${note.id} (attempt ${retries + 1})`);
+          const { data: { session } } = await supabase.auth.getSession();
+          const token = session?.access_token;
           
-          // Update editor with new content
-          if (editor && data.note.content) {
-            try {
-              if (typeof data.note.content === 'string' && data.note.content.startsWith('{')) {
-                const parsedContent = JSON.parse(data.note.content);
-                editor.commands.setContent(parsedContent);
-              } else {
-                editor.commands.setContent(data.note.content);
+          // Set a timeout to handle hung requests
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 60000); // 1 minute timeout
+          
+          const response = await fetch('/api/notes/generate', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              id: note.id
+            }),
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (!response.ok) {
+            // If it's a timeout or auth error, retry
+            if (response.status === 504 || response.status === 401 || response.status === 403) {
+              retries++;
+              if (retries < maxRetries) {
+                // Wait before retrying
+                await new Promise(resolve => setTimeout(resolve, 2000 * retries));
+                continue;
               }
-            } catch (e) {
-              console.error("Error parsing generated content:", e);
-              editor.commands.setContent(data.note.content);
+            }
+            
+            // Try to get response text for debugging
+            let errorText = '';
+            try {
+              errorText = await response.text();
+              console.error(`Error response: ${errorText.substring(0, 200)}...`);
+            } catch (textError) {
+              console.error(`Could not get error text: ${textError}`);
+            }
+            
+            throw new Error(`API responded with status ${response.status}: ${errorText.substring(0, 100)}...`);
+          }
+          
+          // Try to parse the response as JSON
+          let data;
+          try {
+            data = await response.json();
+          } catch (parseError) {
+            // If we can't parse the response as JSON, show an error with the response text
+            console.log(`Failed to parse response as JSON: ${parseError}`);
+            const responseText = await response.text();
+            throw new Error(`Failed to parse response: ${responseText.substring(0, 100)}...`);
+          }
+          
+          // Only update state if component is still mounted
+          if (isMounted) {
+            setNote(data.note);
+            
+            // Update editor with new content
+            if (editor && data.note.content) {
+              try {
+                editor.commands.setContent(data.note.content);
+              } catch (e) {
+                console.error("Error setting editor content:", e);
+              }
             }
           }
+          
+          // Success, break out of the retry loop
+          break;
+        } catch (error) {
+          console.error(`Error generating content (attempt ${retries + 1}):`, error);
+          
+          retries++;
+          if (retries < maxRetries) {
+            // Wait before retrying
+            await new Promise(resolve => setTimeout(resolve, 2000 * retries));
+            continue;
+          }
+          
+          if (isMounted) {
+            toast({
+              title: 'Error generating content',
+              description: error instanceof Error 
+                ? error.message.substring(0, 100) 
+                : 'Could not generate content. Please try again later.',
+              variant: 'destructive',
+            });
+            
+            // Reset the note generating state
+            try {
+              const { data: { session } } = await supabase.auth.getSession();
+              const token = session?.access_token;
+              
+              await fetch('/api/notes/update', {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  id: note.id,
+                  is_generating: false
+                }),
+              });
+              
+              // Update local state
+              setNote(prev => prev ? { ...prev, is_generating: false } : null);
+            } catch (updateError) {
+              console.error('Failed to update note state:', updateError);
+            }
+          }
+          
+          break;
+        } finally {
+          if (retries >= maxRetries) {
+            // Reset generating flag when retries are exhausted
+            isGeneratingRef.current = false;
+          }
         }
-      } catch (error) {
-        console.error('Error generating content:', error);
-        if (isMounted) {
-          toast({
-            title: 'Error generating content',
-            description: 'Could not generate content. Please try again later.',
-            variant: 'destructive',
-          });
-        }
-      } finally {
-        // Reset flag when done
-        isGeneratingRef.current = false;
       }
+      
+      // Reset flag when done with all retries
+      isGeneratingRef.current = false;
     }
     
     generateContent();
