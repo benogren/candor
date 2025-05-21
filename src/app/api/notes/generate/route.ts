@@ -2,6 +2,26 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { marked } from 'marked';
 
+function getBaseUrl() {
+  // In production environment on Vercel
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  // In preview deployments on Vercel
+  if (process.env.VERCEL_ENV === 'preview') {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  if (process.env.VERCEL_ENV === 'staging') {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  // Use NEXT_PUBLIC_BASE_URL as fallback if set
+  if (process.env.NEXT_PUBLIC_BASE_URL) {
+    return process.env.NEXT_PUBLIC_BASE_URL;
+  }
+  // Localhost fallback to production
+  return 'https://www.candor.so';
+}
+
 export async function POST(request: Request) {
   try {
     // Get the request body
@@ -61,11 +81,13 @@ export async function POST(request: Request) {
     const isInvitedUser = !!note.subject_invited_id;
     const timeframe = note.metadata?.timeframe || 'all';
 
+    const baseUrl = getBaseUrl();
+
     switch (note.content_type) {
       case 'summary':
         if (isManagerNote) {
           // This is a manager summary request
-          apiEndpoint = `${process.env.NEXT_PUBLIC_BASE_URL}/api/feedback/manager/summarize`;
+          apiEndpoint = `${baseUrl}/api/feedback/manager/summarize`;
           apiPayload = {
             managerId: user.id,
             employeeId: employeeId,
@@ -76,7 +98,7 @@ export async function POST(request: Request) {
           console.log('Manager summary request:', apiEndpoint);
         } else {
           // This is a personal summary request
-          apiEndpoint = `${process.env.NEXT_PUBLIC_BASE_URL}/api/feedback/summarize`;
+          apiEndpoint = `${baseUrl}/api/feedback/summarize`;
           apiPayload = {
             userId: user.id,
             timeframe,
@@ -89,7 +111,7 @@ export async function POST(request: Request) {
       case 'prep':
         if (isManagerNote) {
           // This is a manager 1:1 prep request
-          apiEndpoint = `${process.env.NEXT_PUBLIC_BASE_URL}/api/feedback/manager/prep`;
+          apiEndpoint = `${baseUrl}/api/feedback/manager/prep`;
           apiPayload = {
             managerId: user.id,
             employeeId: employeeId,
@@ -100,7 +122,7 @@ export async function POST(request: Request) {
           console.log('Manager prep request:', apiEndpoint);
         } else {
           // This is a personal 1:1 prep request
-          apiEndpoint = `${process.env.NEXT_PUBLIC_BASE_URL}/api/feedback/prep`;
+          apiEndpoint = `${baseUrl}/api/feedback/prep`;
           apiPayload = {
             userId: user.id,
             timeframe: note.metadata?.timeframe || 'week',
@@ -112,7 +134,7 @@ export async function POST(request: Request) {
         break;
       case 'review':
         if (isManagerNote) {
-          apiEndpoint = `${process.env.NEXT_PUBLIC_BASE_URL}/api/feedback/manager/review`;
+          apiEndpoint = `${baseUrl}/api/feedback/manager/review`;
           apiPayload = {
             managerId: user.id,
             employeeId: employeeId,
@@ -123,7 +145,7 @@ export async function POST(request: Request) {
           console.log('Manager review request:', apiEndpoint);
         } else {
           // This is a self review request
-          apiEndpoint = `${process.env.NEXT_PUBLIC_BASE_URL}/api/feedback/review`;
+          apiEndpoint = `${baseUrl}/api/feedback/review`;
           apiPayload = {
             userId: user.id,
             timeframe: timeframe,
