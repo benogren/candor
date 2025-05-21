@@ -72,6 +72,8 @@ export async function POST(request: Request) {
             timeframe: timeframe,
             is_invited: isInvitedUser
           };
+
+          console.log('Manager summary request:', apiEndpoint);
         } else {
           // This is a personal summary request
           apiEndpoint = `${process.env.NEXT_PUBLIC_BASE_URL}/api/feedback/summarize`;
@@ -80,6 +82,8 @@ export async function POST(request: Request) {
             timeframe,
             type: 'summary'
           };
+
+          console.log('Personal summary request:', apiEndpoint);
         }
         break;
       case 'prep':
@@ -92,6 +96,8 @@ export async function POST(request: Request) {
             timeframe: timeframe,
             is_invited: isInvitedUser
           };
+
+          console.log('Manager prep request:', apiEndpoint);
         } else {
           // This is a personal 1:1 prep request
           apiEndpoint = `${process.env.NEXT_PUBLIC_BASE_URL}/api/feedback/prep`;
@@ -100,6 +106,8 @@ export async function POST(request: Request) {
             timeframe: note.metadata?.timeframe || 'week',
             type: 'prep'
           };
+
+          console.log('Personal prep request:', apiEndpoint);
         }
         break;
       case 'review':
@@ -111,6 +119,8 @@ export async function POST(request: Request) {
             timeframe: timeframe,
             is_invited: isInvitedUser
           };
+
+          console.log('Manager review request:', apiEndpoint);
         } else {
           // This is a self review request
           apiEndpoint = `${process.env.NEXT_PUBLIC_BASE_URL}/api/feedback/review`;
@@ -120,6 +130,8 @@ export async function POST(request: Request) {
             type: 'review'
           };
         };
+
+        console.log('Self review request:', apiEndpoint);
         break;
       default:
         return NextResponse.json({ error: 'Invalid content type' }, { status: 400 });
