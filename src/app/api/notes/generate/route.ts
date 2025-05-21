@@ -10,6 +10,21 @@ import { POST as managerSummarizeHandler } from '@/app/api/feedback/manager/summ
 import { POST as reviewHandler } from '@/app/api/feedback/review/route';
 import { POST as managerReviewHandler } from '@/app/api/feedback/manager/review/route';
 
+interface BasePayload {
+  timeframe: string;
+}
+
+// interface UserPayload extends BasePayload {
+//   userId: string;
+//   type: string;
+// }
+
+// interface ManagerPayload extends BasePayload {
+//   managerId: string;
+//   employeeId: string;
+//   is_invited: boolean;
+// }
+
 export async function POST(request: Request) {
   try {
     // Get the request body
@@ -61,8 +76,8 @@ export async function POST(request: Request) {
 
     let generatedContent = '';
     let contentData;
-    let apiEndpoint = '';
-    let apiPayload = {};
+    // let apiEndpoint = '';
+    // let apiPayload = {};
 
     // Check if this is a manager note (has subject_member_id or subject_invited_id)
     const isManagerNote = note.subject_member_id || note.subject_invited_id;
@@ -71,7 +86,7 @@ export async function POST(request: Request) {
     const timeframe = note.metadata?.timeframe || 'all';
 
     // Create a new request object to pass to the handler
-    const createHandlerRequest = (payload: any) => {
+    function createHandlerRequest<T extends BasePayload>(payload: T): Request {
 
       const url = process.env.VERCEL_URL 
       ? `https://${process.env.VERCEL_URL}` 
@@ -100,7 +115,7 @@ export async function POST(request: Request) {
           };
           const summaryResponse = await managerSummarizeHandler(createHandlerRequest(managerSummaryPayload));
           contentData = await summaryResponse.json();
-          console.log('Manager summary response:', contentData);
+          // console.log('Manager summary response:', contentData);
         } else {
           // Personal summary
           const summaryPayload = {
@@ -110,7 +125,7 @@ export async function POST(request: Request) {
           };
           const summaryResponse = await summarizeHandler(createHandlerRequest(summaryPayload));
           contentData = await summaryResponse.json();
-          console.log('Personal summary response:', contentData);
+          // console.log('Personal summary response:', contentData);
         }
         break;
       
@@ -125,7 +140,7 @@ export async function POST(request: Request) {
           };
           const prepResponse = await managerPrepHandler(createHandlerRequest(managerPrepPayload));
           contentData = await prepResponse.json();
-          console.log('Manager prep response:', contentData);
+          // console.log('Manager prep response:', contentData);
         } else {
           // Personal prep
           const prepPayload = {
@@ -135,7 +150,7 @@ export async function POST(request: Request) {
           };
           const prepResponse = await prepHandler(createHandlerRequest(prepPayload));
           contentData = await prepResponse.json();
-          console.log('Personal prep response:', contentData);
+          // console.log('Personal prep response:', contentData);
         }
         break;
       
@@ -150,7 +165,7 @@ export async function POST(request: Request) {
           };
           const reviewResponse = await managerReviewHandler(createHandlerRequest(managerReviewPayload));
           contentData = await reviewResponse.json();
-          console.log('Manager review response:', contentData);
+          // console.log('Manager review response:', contentData);
         } else {
           // Personal review
           const reviewPayload = {
@@ -160,7 +175,7 @@ export async function POST(request: Request) {
           };
           const reviewResponse = await reviewHandler(createHandlerRequest(reviewPayload));
           contentData = await reviewResponse.json();
-          console.log('Personal review response:', contentData);
+          // console.log('Personal review response:', contentData);
         }
         break;
       
