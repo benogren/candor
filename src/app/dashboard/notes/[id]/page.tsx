@@ -48,6 +48,50 @@ export default function NotesPage() {
   
   // Create a stable reference to the debounced save function
   const debouncedSaveRef = useRef<ReturnType<typeof debounce> | null>(null);
+
+  const [generationFailed, setGenerationFailed] = useState(false);
+
+  // Add this function to handle retry
+const handleRetryGeneration = async () => {
+  if (!note?.id) return;
+  
+  // Reset the failure state
+  setGenerationFailed(false);
+  
+  try {
+    // Get auth token
+    // const { data: { session } } = await supabase.auth.getSession();
+    // const token = session?.access_token;
+    
+    // First update the note to set is_generating back to true
+    // await fetch('/api/notes/update', {
+    //   method: 'PUT',
+    //   headers: {
+    //     'Content-Type': 'application/json',
+    //     'Authorization': `Bearer ${token}`,
+    //   },
+    //   body: JSON.stringify({
+    //     id: note.id,
+    //     is_generating: true
+    //   }),
+    // });
+    
+    // Update local state to reflect this
+    setNote(prev => prev ? { ...prev, is_generating: true } : null);
+    
+    // Reset the generating ref so the useEffect can start the generation process again
+    isGeneratingRef.current = false;
+    
+  } catch (error) {
+    console.error('Error retrying generation:', error);
+    setGenerationFailed(true);
+    toast({
+      title: 'Error',
+      description: 'Could not restart generation. Please try again.',
+      variant: 'destructive',
+    });
+  }
+};
   
   // Create a TipTap editor
   const editor = useEditor({
@@ -224,6 +268,7 @@ export default function NotesPage() {
           }
           
           // Success, break out of the retry loop
+          isGeneratingRef.current = false;
           break;
         } catch (error) {
           console.error(`Error generating content (attempt ${retries + 1}):`, error);
@@ -236,6 +281,8 @@ export default function NotesPage() {
           }
           
           if (isMounted) {
+            setGenerationFailed(true);
+
             toast({
               title: 'Error generating content',
               description: error instanceof Error 
@@ -557,11 +604,29 @@ export default function NotesPage() {
             
             {/* Editor */}
             {note.is_generating ? (
-              <div className="flex flex-col items-center justify-center py-16">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cerulean-600 mb-4"></div>
-                <p className="text-gray-700">Generating content, please wait...</p>
-              </div>
-            ) : (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cerulean-600 mb-4"></div>
+                  <p className="text-gray-700">Generating content, please wait...</p>
+                </div>
+              ) : generationFailed ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <div className="flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Generation Failed</h3>
+                  <p className="text-gray-600 text-center mb-4 max-w-md">
+                    The content generation timed out. This could be due to server load or a complex generation task.
+                  </p>
+                  <button
+                    onClick={handleRetryGeneration}
+                    className="px-4 py-2 bg-cerulean-600 text-white rounded-md hover:bg-cerulean-700 transition-colors"
+                  >
+                    Retry Generation
+                  </button>
+                </div>
+              ) : (
               <div className={`w-full mx-auto overflow-hidden ${overpass.className}`}>
                 {editor && (
                   <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }}>

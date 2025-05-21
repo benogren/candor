@@ -663,10 +663,25 @@ async function generatePersonalSummary(
           content: prompt
         }
       ],
+      stream: true,
       max_tokens: 1000
     });
+    let content = '';
+
+    const streamTimeout = setTimeout(() => {
+      throw new Error("Streaming timed out after 45 seconds");
+    }, 45000);
+
+    try {
+      for await (const chunk of completion) {
+        content += chunk.choices[0]?.delta?.content || '';
+      }
+    } finally {
+      clearTimeout(streamTimeout);
+    }
     
-    return { summary: completion.choices[0]?.message?.content || "Unable to generate summary." };
+    return { summary: content || "Unable to generate summary." };
+
   } catch (error) {
     console.error("Error in generatePersonalSummary:", error);
     return { 
@@ -772,10 +787,25 @@ async function generateManagerSummary(
           content: prompt
         }
       ],
+      stream: true,
       max_tokens: 1000
     });
+    let content = '';
+
+    const streamTimeout = setTimeout(() => {
+      throw new Error("Streaming timed out after 45 seconds");
+    }, 45000);
+
+    try {
+      for await (const chunk of completion) {
+        content += chunk.choices[0]?.delta?.content || '';
+      }
+    } finally {
+      clearTimeout(streamTimeout);
+    }
     
-    return { summary: completion.choices[0]?.message?.content || "Unable to generate summary." };
+    return { summary: content || "Unable to generate summary." };
+
   } catch (error) {
     console.error("Error in generateManagerSummary:", error);
     return { 
@@ -875,10 +905,24 @@ async function generatePersonalPrep(
           content: prompt
         }
       ],
+      stream: true,
       max_tokens: 1000
     });
+    let content = '';
+
+    const streamTimeout = setTimeout(() => {
+      throw new Error("Streaming timed out after 45 seconds");
+    }, 45000);
+
+    try {
+      for await (const chunk of completion) {
+        content += chunk.choices[0]?.delta?.content || '';
+      }
+    } finally {
+      clearTimeout(streamTimeout);
+    }
     
-    return { prep: completion.choices[0]?.message?.content || "Unable to generate meeting prep." };
+    return { prep: content || "Unable to generate 1:1 prep." };
   } catch (error) {
     console.error("Error in generatePersonalPrep:", error);
     return { 
@@ -982,10 +1026,24 @@ async function generateManagerPrep(
           content: prompt
         }
       ],
+      stream: true,
       max_tokens: 1000
     });
+    let content = '';
+
+    const streamTimeout = setTimeout(() => {
+      throw new Error("Streaming timed out after 45 seconds");
+    }, 45000);
+
+    try {
+      for await (const chunk of completion) {
+        content += chunk.choices[0]?.delta?.content || '';
+      }
+    } finally {
+      clearTimeout(streamTimeout);
+    }
     
-    return { prep: completion.choices[0]?.message?.content || "Unable to generate meeting prep." };
+    return { prep: content || "Unable to generate 1:1 prep." };
   } catch (error) {
     console.error("Error in generateManagerPrep:", error);
     return { 
@@ -1124,10 +1182,24 @@ async function generatePersonalReview(
           content: prompt
         }
       ],
+      stream: true,
       max_tokens: 1000
     });
+    let content = '';
+
+    const streamTimeout = setTimeout(() => {
+      throw new Error("Streaming timed out after 45 seconds");
+    }, 45000);
+
+    try {
+      for await (const chunk of completion) {
+        content += chunk.choices[0]?.delta?.content || '';
+      }
+    } finally {
+      clearTimeout(streamTimeout);
+    }
     
-    return { review: completion.choices[0]?.message?.content || "Unable to generate review." };
+    return { review: content || "Unable to generate review." };
   } catch (error) {
     console.error("Error in generatePersonalReview:", error);
     return { 
@@ -1250,10 +1322,24 @@ async function generateManagerReview(
           content: prompt
         }
       ],
+      stream: true,
       max_tokens: 1000
     });
+    let content = '';
+
+    const streamTimeout = setTimeout(() => {
+      throw new Error("Streaming timed out after 45 seconds");
+    }, 45000);
+
+    try {
+      for await (const chunk of completion) {
+        content += chunk.choices[0]?.delta?.content || '';
+      }
+    } finally {
+      clearTimeout(streamTimeout);
+    }
     
-    return { review: completion.choices[0]?.message?.content || "Unable to generate review." };
+    return { review: content || "Unable to generate review." };
   } catch (error) {
     console.error("Error in generateManagerReview:", error);
     return { 
