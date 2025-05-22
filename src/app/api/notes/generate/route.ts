@@ -148,11 +148,27 @@ interface Note {
   subject_invited_id?: string;
   metadata?: {
     timeframe?: string;
+    start_date?: string;
+    end_date?: string;
+    feedback_count?: number;
     [key: string]: unknown;
   };
   created_at?: string;
   updated_at?: string;
   is_generating?: boolean;
+}
+
+interface ExistingSummary {
+  id: string;
+  content: string;
+  metadata?: {
+    timeframe?: string;
+    start_date?: string;
+    end_date?: string;
+    feedback_count?: number;
+  };
+  created_at: string;
+  updated_at: string;
 }
 
 // Main handler function
@@ -336,12 +352,22 @@ async function generateNote(request: Request, id: string) {
     generatedContent = htmlContent;
   }
 
-  // Update the note with the generated content
+  // Calculate date range for metadata
+  const startDate = calculateStartDate(timeframe, note.content_type === 'review');
+  const endDate = new Date();
+
+  // Update the note with the generated content and enhanced metadata
   const { data, error } = await supabase
     .from('notes')
     .update({
       content: generatedContent,
-      is_generating: false
+      is_generating: false,
+      metadata: {
+        ...note.metadata,
+        start_date: startDate.toISOString(),
+        end_date: endDate.toISOString(),
+        generated_at: new Date().toISOString()
+      }
     })
     .eq('id', id)
     .select()
@@ -384,6 +410,542 @@ async function fetchAllUserData(
     console.error("Error in fetchAllUserData:", error);
     throw error;
   }
+}
+
+// Function to find the previous week's 1:1 agenda for continuity
+async function findPreviousWeek1on1(
+  supabase: SupabaseClient,
+  userId: string,
+  targetUserId?: string
+): Promise<ExistingSummary | null> {
+  try {
+    // Look for prep notes from 5-10 days ago (accounting for weekends and scheduling flexibility)
+    const now = new Date();
+    const tenDaysAgo = new Date(now.getTime() - (10 * 24 * 60 * 60 * 1000));
+    const fiveDaysAgo = new Date(now.getTime() - (5 * 24 * 60 * 60 * 1000));
+    
+    console.log(`Looking for previous week's 1:1 prep between ${tenDaysAgo.toISOString()} and ${fiveDaysAgo.toISOString()}`);
+
+    let query = supabase
+      .from('notes')
+      .select('id, content, metadata, created_at, updated_at')
+      .eq('creator_id', userId)
+      .eq('content_type', 'prep')
+      .eq('is_generating', false)
+      .not('content', 'is', null)
+      .gte('created_at', tenDaysAgo.toISOString())
+      .lte('created_at', fiveDaysAgo.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    // For manager prep, filter by subject
+    if (targetUserId) {
+      query = query.or(`subject_member_id.eq.${targetUserId},subject_invited_id.eq.${targetUserId}`);
+    } else {
+      // For personal prep, no subject
+      query = query.is('subject_member_id', null).is('subject_invited_id', null);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error fetching previous week 1:1:', error);
+      return null;
+    }
+
+    if (!data || data.length === 0) {
+      console.log('No previous week 1:1 prep found');
+      return null;
+    }
+
+    const previousPrep = data[0];
+    console.log(`Found previous week's 1:1 prep from ${previousPrep.created_at}`);
+    
+    return {
+      id: previousPrep.id,
+      content: previousPrep.content,
+      metadata: previousPrep.metadata,
+      created_at: previousPrep.created_at,
+      updated_at: previousPrep.updated_at
+    };
+  } catch (error) {
+    console.error('Error in findPreviousWeek1on1:', error);
+    return null;
+  }
+}
+
+// Extract action items and key topics from previous 1:1 agenda
+function extractPrevious1on1Context(previousPrep: ExistingSummary | null): string {
+  if (!previousPrep) {
+    return '';
+  }
+
+  // Convert HTML back to text for analysis
+  const textContent = previousPrep.content
+    .replace(/<[^>]*>/g, ' ') // Remove HTML tags
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .trim();
+
+  const date = new Date(previousPrep.created_at).toLocaleDateString();
+  
+  // Extract key sections that might contain action items or important topics
+  const sections = textContent.split(/#{1,4}\s+/);
+  const keyTopics = sections
+    .filter(section => 
+      section.length > 50 && ( // Only substantial sections
+        section.toLowerCase().includes('development') || 
+        section.toLowerCase().includes('challenge') || 
+        section.toLowerCase().includes('project') ||
+        section.toLowerCase().includes('goal') ||
+        section.toLowerCase().includes('question') ||
+        section.toLowerCase().includes('opportunity')
+      )
+    )
+    .map(section => section.substring(0, 200).trim())
+    .join(' ... ');
+
+  return `PREVIOUS WEEK'S 1:1 AGENDA (${date}):\n${keyTopics || textContent.substring(0, 400)}...\n\nUse this context to provide continuity by following up on previous discussions, checking progress on action items, and building on topics that were covered. Reference previous conversations where relevant.\n\n`;
+}
+
+// Function to query existing summaries within relevant timeframe
+async function findExistingSummaries(
+  supabase: SupabaseClient,
+  userId: string,
+  targetUserId?: string,
+  timeframe: string = 'all',
+  contentType: string = 'summary'
+): Promise<ExistingSummary[]> {
+  try {
+    // Calculate the relevant date range based on current generation timeframe
+    const currentStartDate = calculateStartDate(timeframe, contentType === 'review');
+    const currentEndDate = new Date();
+    
+    console.log(`Looking for existing ${contentType} summaries from ${currentStartDate.toISOString()} to ${currentEndDate.toISOString()}`);
+
+    let query = supabase
+      .from('notes')
+      .select('id, content, metadata, created_at, updated_at')
+      .eq('creator_id', userId)
+      .eq('content_type', contentType)
+      .eq('is_generating', false)
+      .not('content', 'is', null)
+      .order('created_at', { ascending: false });
+
+    // For manager summaries, filter by subject
+    if (targetUserId) {
+      query = query.or(`subject_member_id.eq.${targetUserId},subject_invited_id.eq.${targetUserId}`);
+    } else {
+      // For personal summaries, no subject
+      query = query.is('subject_member_id', null).is('subject_invited_id', null);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error fetching existing summaries:', error);
+      return [];
+    }
+
+    if (!data || data.length === 0) {
+      return [];
+    }
+
+    // Filter summaries to only include those with relevant timeframes
+    const relevantSummaries = data.filter(item => {
+      // If metadata doesn't have start_date/end_date, check if it's recent enough to be relevant
+      if (!item.metadata?.start_date || !item.metadata?.end_date) {
+        // For summaries without date metadata, only include if created within the current timeframe
+        const createdDate = new Date(item.created_at);
+        return createdDate >= currentStartDate && createdDate <= currentEndDate;
+      }
+
+      const summaryStartDate = new Date(item.metadata.start_date);
+      const summaryEndDate = new Date(item.metadata.end_date);
+
+      // Check if there's any overlap between the summary's timeframe and current timeframe
+      const hasOverlap = 
+        (summaryStartDate <= currentEndDate && summaryEndDate >= currentStartDate) ||
+        (summaryStartDate >= currentStartDate && summaryStartDate <= currentEndDate) ||
+        (summaryEndDate >= currentStartDate && summaryEndDate <= currentEndDate);
+
+      if (hasOverlap) {
+        console.log(`Found relevant ${contentType} summary from ${summaryStartDate.toISOString()} to ${summaryEndDate.toISOString()}`);
+      }
+
+      return hasOverlap;
+    })
+    .slice(0, 3) // Limit to most recent 3 relevant summaries
+    .map(item => ({
+      id: item.id,
+      content: item.content,
+      metadata: item.metadata,
+      created_at: item.created_at,
+      updated_at: item.updated_at
+    }));
+
+    console.log(`Found ${relevantSummaries.length} relevant existing summaries for ${contentType} generation`);
+    return relevantSummaries;
+  } catch (error) {
+    console.error('Error in findExistingSummaries:', error);
+    return [];
+  }
+}
+
+// Extract insights from existing summaries with timeframe relevance
+function extractInsightsFromExistingSummaries(summaries: ExistingSummary[]): string {
+  if (!summaries || summaries.length === 0) {
+    return '';
+  }
+
+  const insights = summaries.map(summary => {
+    // Convert HTML back to text for analysis (simple approach)
+    const textContent = summary.content
+      .replace(/<[^>]*>/g, ' ') // Remove HTML tags
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .trim();
+
+    // Include timeframe information if available
+    let timeframeInfo = '';
+    if (summary.metadata?.start_date && summary.metadata?.end_date) {
+      const startDate = new Date(summary.metadata.start_date).toLocaleDateString();
+      const endDate = new Date(summary.metadata.end_date).toLocaleDateString();
+      timeframeInfo = ` (${startDate} - ${endDate})`;
+    } else {
+      const date = new Date(summary.created_at).toLocaleDateString();
+      timeframeInfo = ` (Generated: ${date})`;
+    }
+
+    // Extract key sections from the summary for more focused insights
+    const sections = textContent.split(/#{1,4}\s+/);
+    const keyInsights = sections
+      .filter(section => 
+        section.toLowerCase().includes('strength') || 
+        section.toLowerCase().includes('improvement') || 
+        section.toLowerCase().includes('recommendation') ||
+        section.toLowerCase().includes('pattern') ||
+        section.toLowerCase().includes('theme')
+      )
+      .map(section => section.substring(0, 200).trim())
+      .join(' ... ');
+
+    return `Previous Analysis${timeframeInfo}: ${keyInsights || textContent.substring(0, 250)}...`;
+  }).join('\n\n');
+
+  return `CONTEXT FROM RELEVANT PREVIOUS SUMMARIES:\n${insights}\n\nUse this context to identify patterns, track progress over time, and avoid repeating identical insights. Focus on new developments and changes since previous analyses.\n\n`;
+}
+
+// Two-stage processing function
+async function generateWithTwoStages(
+  feedback: FeedbackResponseItem[],
+  userContext: { userName: string; jobTitle: string; company: string; industry: string },
+  contentType: string,
+  existingInsights: string = '',
+  isManagerSummary: boolean = false,
+  managerContext?: { managerName: string; managerJobTitle: string }
+): Promise<string> {
+  
+  console.log(`Starting two-stage generation for ${contentType}, feedback items: ${feedback.length}`);
+  
+  // Stage 1: Extract key insights using faster model
+  const stage1Prompt = `
+    Analyze this feedback data and extract the most important insights:
+    
+    User: ${userContext.userName} (${userContext.jobTitle}) at ${userContext.company}
+    ${existingInsights}
+    
+    Feedback Data (${feedback.length} items):
+    ${formatFeedback(feedback, userContext.userName)}
+    
+    Extract and return ONLY:
+    1. Top 3 Strengths (specific examples from feedback)
+    2. Top 3 Areas for Improvement (specific examples)
+    3. Key Themes/Patterns (2-3 recurring themes)
+    4. Notable Feedback Quotes (2-3 impactful quotes)
+    5. Rating Highlights (average scores and trends if available)
+    6. Top 2 Specific Recommendations
+    
+    Be concise but specific. Focus on actionable insights that will help create a comprehensive ${contentType}.
+  `;
+
+  const stage1Completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini", // Faster, cheaper model for analysis
+    messages: [
+      { 
+        role: "system", 
+        content: "You are an expert feedback analyzer. Extract key insights concisely and objectively." 
+      },
+      { role: "user", content: stage1Prompt }
+    ],
+    max_tokens: 600,
+    temperature: 0.3
+  });
+
+  const keyInsights = stage1Completion.choices[0]?.message?.content || '';
+  console.log('Stage 1 completed, extracted insights length:', keyInsights.length);
+
+  // Stage 2: Generate final content using extracted insights
+  const stage2Prompt = createStage2Prompt(
+    keyInsights,
+    userContext,
+    contentType,
+    existingInsights,
+    isManagerSummary,
+    managerContext
+  );
+
+  const stage2Completion = await openai.chat.completions.create({
+    model: "gpt-4-turbo", // Higher quality model for final generation
+    messages: [
+      { 
+        role: "system", 
+        content: getSystemPromptForContentType(contentType)
+      },
+      { role: "user", content: stage2Prompt }
+    ],
+    stream: true,
+    max_tokens: 1000,
+    temperature: 0.4
+  });
+
+  let finalContent = '';
+  const streamTimeout = setTimeout(() => {
+    throw new Error("Stage 2 streaming timed out after 45 seconds");
+  }, 45000);
+  
+  try {
+    for await (const chunk of stage2Completion) {
+      finalContent += chunk.choices[0]?.delta?.content || '';
+    }
+  } finally {
+    clearTimeout(streamTimeout);
+  }
+
+  console.log('Stage 2 completed, final content length:', finalContent.length);
+  return finalContent;
+}
+
+// Create stage 2 prompt based on content type
+function createStage2Prompt(
+  keyInsights: string,
+  userContext: { userName: string; jobTitle: string; company: string; industry: string },
+  contentType: string,
+  existingInsights: string = '',
+  isManagerSummary: boolean = false,
+  managerContext?: { managerName: string; managerJobTitle: string }
+): string {
+  
+  const recipient = isManagerSummary 
+    ? `${userContext.userName}'s manager, ${managerContext?.managerName}` 
+    : userContext.userName;
+
+  if (contentType === 'summary') {
+    return `
+      Create a comprehensive feedback summary for ${userContext.userName} based on these key insights:
+      
+      ${keyInsights}
+      
+      Context:
+      - ${userContext.userName} is a ${userContext.jobTitle} at ${userContext.company}
+      - ${userContext.industry}
+      - Recipient: ${recipient}
+      
+      Create a well-structured summary with these sections:
+      
+      ### Feedback Summary${isManagerSummary ? ` for ${userContext.userName}` : ''}:
+
+      #### Major Strengths Identified in the Feedback
+      1. [Strength 1 with specific examples]
+      2. [Strength 2 with specific examples]
+      3. [Strength 3 with specific examples]
+
+      #### Areas for Potential Growth or Improvement
+      1. [Area 1 with specific context]
+      2. [Area 2 with specific context]
+      3. [Area 3 with specific context]
+
+      #### Patterns or Themes Across the Feedback
+      - [Pattern 1]
+      - [Pattern 2]
+      - [Pattern 3]
+
+      #### Specific, Actionable Recommendations
+      1. [Recommendation 1]
+      2. [Recommendation 2]
+      3. [Recommendation 3]
+      
+      Write in 2nd person addressing ${recipient}. Be constructive, balanced, and growth-oriented.
+    `;
+  } else if (contentType === 'prep') {
+    const hasPreviousWeekContext = existingInsights.includes('PREVIOUS WEEK');
+    
+    return `
+      Create a 1:1 meeting agenda based on these key insights:
+      
+      ${keyInsights}
+      
+      Context:
+      - ${userContext.userName} is a ${userContext.jobTitle} at ${userContext.company}
+      - Recipient: ${recipient}
+      
+      ${existingInsights ? `IMPORTANT CONTEXT FROM PREVIOUS MEETINGS:\n${existingInsights}\n` : ''}
+      
+      Create a focused agenda that builds on previous discussions and follows up on action items:
+      
+      ### 1:1 Agenda
+
+      ${hasPreviousWeekContext ? `#### Follow-up from Last Week\n- [Follow-up item based on previous agenda]\n    - [Specific question about progress or outcomes]\n- [Another follow-up topic]\n    - [Related check-in question]\n\n` : ''}#### Areas for Potential Growth or Improvement
+      1. [Area 1]
+          - [Question to ask ${isManagerSummary ? 'your employee' : 'your manager'} about this area]
+      2. [Area 2]
+          - [Question to ask ${isManagerSummary ? 'your employee' : 'your manager'} about this area]
+
+      #### Challenges identified in Feedback
+      - [Challenge 1]
+          - [Question about this challenge]
+      - [Challenge 2]
+          - [Question about this challenge]
+
+      #### Professional Development Opportunities
+      1. [Opportunity 1]
+          - [Related question]
+      2. [Opportunity 2]
+          - [Related question]
+
+      #### Other Questions to Ask ${isManagerSummary ? 'Your Employee' : 'Your Manager'}
+      1. [Question 1]
+      2. [Question 2]
+      3. [Question 3]
+      
+      ${hasPreviousWeekContext ? 'Focus on continuity: reference previous discussions, check progress on commitments, and build on topics from last week. ' : ''}Write actionable questions and talking points.
+    `;
+  } else if (contentType === 'review') {
+    return `
+      Create a performance review based on these key insights:
+      
+      ${keyInsights}
+      
+      Context:
+      - ${userContext.userName} is a ${userContext.jobTitle} at ${userContext.company}
+      - Recipient: ${recipient}
+      
+      Create a comprehensive review structure with actionable sections and relevant questions.
+    `;
+  }
+  
+  return keyInsights; // Fallback
+}
+
+// Get system prompt for content type
+function getSystemPromptForContentType(contentType: string): string {
+  if (contentType === 'summary') {
+    return "You are an experienced career coach specializing in feedback analysis. Create balanced, constructive, and actionable summaries that help people grow professionally.";
+  } else if (contentType === 'prep') {
+    return "You are an experienced career coach specializing in 1:1 meeting preparation. Create clear, actionable agendas that facilitate productive conversations.";
+  } else if (contentType === 'review') {
+    return "You are an experienced career coach specializing in performance review preparation. Create comprehensive, fair, and development-focused reviews.";
+  }
+  
+  return "You are a helpful career coach providing professional feedback analysis.";
+}
+
+// Generate a useful 1:1 agenda even when no feedback data is available
+async function generateGeneric1on1Agenda(
+  userContext: { userName: string; jobTitle: string; company: string; industry: string },
+  isManagerPrep: boolean = false,
+  existingInsights: string = '',
+  managerContext?: { managerName: string; managerJobTitle: string }
+): Promise<string> {
+  
+  const recipient = isManagerPrep 
+    ? `${userContext.userName}'s manager, ${managerContext?.managerName}` 
+    : userContext.userName;
+
+  const hasPreviousWeekContext = existingInsights.includes('PREVIOUS WEEK');
+
+  const prompt = `
+    Create a productive 1:1 meeting agenda for ${userContext.userName}, a ${userContext.jobTitle} at ${userContext.company} ${userContext.industry}.
+    
+    ${existingInsights}
+    
+    Since no recent feedback data is available, create a comprehensive agenda focusing on standard 1:1 topics relevant to their role and industry.
+    
+    Context:
+    - ${userContext.userName} is a ${userContext.jobTitle} at ${userContext.company}
+    - ${userContext.industry}
+    - Recipient: ${recipient}
+    - This is a general 1:1 meeting agenda (no specific feedback to reference)
+    ${hasPreviousWeekContext ? '- IMPORTANT: Reference and follow up on items from the previous week\'s agenda' : ''}
+    
+    Create an agenda that covers:
+    
+    ### 1:1 Agenda
+
+    ${hasPreviousWeekContext ? `#### Follow-up from Last Week
+    1. [Follow-up item based on previous agenda context]
+        - [Question about progress or outcomes from last week]
+    2. [Another follow-up topic from previous meeting]
+        - [Check-in question about commitments or action items]
+
+    ` : ''}#### Current Projects and Priorities
+    1. [Key project or responsibility discussion point]
+        - [Question to ask ${isManagerPrep ? 'your employee' : 'your manager'} about current work]
+    2. [Another priority area]
+        - [Related question about progress/challenges]
+
+    #### Professional Development and Growth
+    1. [Skill development opportunity relevant to their role]
+        - [Question about learning goals or interests]
+    2. [Career progression topic]
+        - [Question about career aspirations or next steps]
+
+    #### Challenges and Support Needed
+    - [Common challenge for someone in their role/industry]
+        - [Question about obstacles or support needed]
+    - [Resource or process improvement area]
+        - [Question about what would help them be more effective]
+
+    #### Team and Collaboration
+    1. [Team dynamics or collaboration topic]
+        - [Question about working relationships or team processes]
+    2. [Communication or alignment topic]
+        - [Question about clarity or coordination]
+
+    #### Other Questions to Ask ${isManagerPrep ? 'Your Employee' : 'Your Manager'}
+    1. [General check-in question about wellbeing/satisfaction]
+    2. [Question about goals or objectives]
+    3. [Question about feedback or recognition]
+    
+    ${hasPreviousWeekContext ? 'Focus on creating continuity with the previous meeting by following up on discussed topics and commitments. ' : ''}Make the agenda specific to their role (${userContext.jobTitle}) and industry context. Focus on actionable discussion topics that would be valuable for a productive 1:1 conversation.
+  `;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4-turbo",
+    messages: [
+      { 
+        role: "system", 
+        content: "You are an experienced career coach specializing in 1:1 meeting preparation. Create clear, actionable agendas that facilitate productive conversations and maintain continuity between meetings."
+      },
+      { role: "user", content: prompt }
+    ],
+    stream: true,
+    max_tokens: 800,
+    temperature: 0.4
+  });
+
+  let content = '';
+  const streamTimeout = setTimeout(() => {
+    throw new Error("Generic agenda generation timed out after 30 seconds");
+  }, 30000);
+  
+  try {
+    for await (const chunk of completion) {
+      content += chunk.choices[0]?.delta?.content || '';
+    }
+  } finally {
+    clearTimeout(streamTimeout);
+  }
+
+  return content;
 }
 
 // Helper function to format feedback as JSON
@@ -452,22 +1014,6 @@ function extractUserContext(data: RPCResponse): {
   };
 }
 
-// Helper function to get time period text
-function getTimePeriodText(timeframe: string, isReview = false): string {
-  if (isReview) {
-    return 'over the past year';
-  }
-  
-  switch (timeframe) {
-    case 'week':
-      return 'the past week';
-    case 'month': 
-      return 'the past month';
-    default:
-      return 'across all time periods';
-  }
-}
-
 // Function to calculate start date based on timeframe
 function calculateStartDate(timeframe: string, isReview = false): Date {
   const today = new Date();
@@ -489,7 +1035,7 @@ function calculateStartDate(timeframe: string, isReview = false): Date {
   return startDate;
 }
 
-// Implementation for personal summary
+// Implementation for personal summary with two-stage processing
 async function generatePersonalSummary(
   supabase: SupabaseClient,
   params: UserParams
@@ -506,107 +1052,25 @@ async function generatePersonalSummary(
     // Extract context from RPC response
     const { userName, jobTitle, company, industry } = extractUserContext(data);
     
-    // Format feedback as JSON
-    const formattedFeedback = formatFeedback(data.feedback_data, userName);
+    // Check for existing summaries to leverage insights
+    const existingSummaries = await findExistingSummaries(supabase, userId, undefined, timeframe, 'summary');
+    const existingInsights = extractInsightsFromExistingSummaries(existingSummaries);
     
     // If there's no feedback content, return a message
-    if (formattedFeedback === "[]") {
+    if (!data.feedback_data || data.feedback_data.length === 0) {
       return { summary: 'No feedback content available to summarize. We will generate a placeholder summary to help you get started.\n\n### Feedback Summary\n\nNo feedback data is available at this time. Check back later when feedback has been collected.' };
     }
     
-    // Get time period text
-    const timePeriodText = getTimePeriodText(timeframe);
+    console.log(`Generating personal summary for ${userName}, ${data.feedback_data.length} feedback items, ${existingSummaries.length} existing summaries`);
     
-    // Create prompt for OpenAI
-    const prompt = `
-    Take on the role of an experienced career coach specialising in analyzing 360-degree employee feedback.
-      
-      Below is feedback data for ${userName} in JSON format:
-      Their current job title is: ${jobTitle}
-      They work for: ${company}
-      Industry: ${industry}
-      This feedback was received ${timePeriodText}:
-      
-      The feedback is structured as JSON where each item contains:
-      - "question": The feedback question asked
-      - "type": Type of question (rating, text, values, ai)
-      - "rating": Numeric rating (1-10) for rating questions
-      - "response": Text response for open-ended questions  
-      - "comment": Additional comments for rating questions
-      - "company_value": Company value name for values nominations
-      - "from": Name of feedback provider (when available)
-      - "date": Date feedback was given
-
-      ${formattedFeedback}
-      
-      Please provide a thoughtful, constructive summary of this feedback that includes:
-      1. Major strengths identified in the feedback
-      2. Areas for potential growth or improvement
-      3. Patterns or themes across the feedback
-      4. 2-3 specific, actionable recommendations based on the feedback
-      
-      Format your response in clear sections with meaningful headings. 
-      Keep your response balanced, constructive, and growth-oriented. 
-      Focus on patterns rather than individual comments and avoid unnecessarily harsh criticism.
-      If provided, consider the individual's company and industry and focus on how companies within this industry operate; the type of work they do, the skills they need, and the challenges they face.
-      If provided, consider the individual's job title and focus on how this role typically operates; the type of work they do, the skills they need, and the challenges they face.
-      Your response should be written in 2nd person, ${userName} will be the recipient of this summary.
-
-        Use the following format:  
-        ### Feedback Summary:
-
-        #### Major Strengths Identified in the Feedback
-        1. [Strength 1]
-        2. [Strength 2]
-        3. [Strength 3]
-
-        #### Areas for Potential Growth or Improvement
-        1. [Area 1]
-        2. [Area 2]
-        3. [Area 3]
-
-        #### Patterns or Themes Across the Feedback
-        - [Pattern 1]
-        - [Pattern 2]
-        - [Pattern 3]
-
-        #### Specific, Actionable Recommendations
-        1. [Recommendation 1]
-        2. [Recommendation 2]
-        3. [Recommendation 3]
-    `;
-    
-    // Call OpenAI API with streaming
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4-turbo",
-      messages: [
-        { 
-          role: "system", 
-          content: "Assume the role of a career coach. You are a helpful career coach providing feedback analysis. Your summaries are balanced, constructive, and actionable."
-        },
-        { 
-          role: "user", 
-          content: prompt
-        }
-      ],
-      stream: true,
-      max_tokens: 1000
-    });
-
-    let content = '';
-    
-    // Set a timeout for the entire streaming process
-    const streamTimeout = setTimeout(() => {
-      throw new Error("Streaming timed out after 45 seconds");
-    }, 45000);
-    
-    try {
-      for await (const chunk of completion) {
-        content += chunk.choices[0]?.delta?.content || '';
-      }
-    } finally {
-      clearTimeout(streamTimeout);
-    }
+    // Use two-stage processing
+    const content = await generateWithTwoStages(
+      data.feedback_data,
+      { userName, jobTitle, company, industry },
+      'summary',
+      existingInsights,
+      false
+    );
     
     return { summary: content || "Unable to generate summary." };
   } catch (error) {
@@ -617,7 +1081,7 @@ async function generatePersonalSummary(
   }
 }
 
-// Implementation for manager summary
+// Implementation for manager summary with two-stage processing
 async function generateManagerSummary(
   supabase: SupabaseClient,
   params: ManagerParams
@@ -636,107 +1100,26 @@ async function generateManagerSummary(
     const managerName = data.manager_profile?.name || 'Manager';
     const managerJobTitle = data.manager_profile?.job_title || 'Manager';
     
-    // Format feedback as JSON
-    const formattedFeedback = formatFeedback(data.feedback_data, userName);
+    // Check for existing summaries for this employee
+    const existingSummaries = await findExistingSummaries(supabase, managerId, employeeId, timeframe, 'summary');
+    const existingInsights = extractInsightsFromExistingSummaries(existingSummaries);
     
     // If there's no feedback content, return a message
-    if (formattedFeedback === "[]") {
+    if (!data.feedback_data || data.feedback_data.length === 0) {
       return { summary: `No feedback content available to summarize for ${userName}. We will generate a placeholder summary to help you get started.\n\n### Feedback Summary\n\nNo feedback data is available for ${userName} at this time. Check back later when feedback has been collected.` };
     }
     
-    // Get time period text
-    const timePeriodText = getTimePeriodText(timeframe);
+    console.log(`Generating manager summary for ${userName} by ${managerName}, ${data.feedback_data.length} feedback items, ${existingSummaries.length} existing summaries`);
     
-    // Create prompt for OpenAI
-    const prompt = `
-    Take on the role of an experienced career coach specialising in analyzing 360-degree employee feedback.
-      
-      Below is feedback data for ${userName} in JSON format:
-      Their current job title is: ${jobTitle}
-      They work for: ${company}
-      Industry: ${industry}
-      This feedback was received ${timePeriodText}:
-      
-      The feedback is structured as JSON where each item contains:
-      - "question": The feedback question asked
-      - "type": Type of question (rating, text, values, ai)
-      - "rating": Numeric rating (1-10) for rating questions
-      - "response": Text response for open-ended questions  
-      - "comment": Additional comments for rating questions
-      - "company_value": Company value name for values nominations
-      - "from": Name of feedback provider (when available)
-      - "date": Date feedback was given
-
-      ${formattedFeedback}
-      
-      Please provide a thoughtful, constructive summary of this feedback that includes:
-      1. Major strengths identified in the feedback
-      2. Areas for potential growth or improvement
-      3. Patterns or themes across the feedback
-      4. 2-3 specific, actionable recommendations based on the feedback
-      
-      Format your response in clear sections with meaningful headings. 
-      Keep your response balanced, constructive, and growth-oriented. 
-      Focus on patterns rather than individual comments and avoid unnecessarily harsh criticism.
-      If provided, consider the individual's company and industry and focus on how companies within this industry operate; the type of work they do, the skills they need, and the challenges they face.
-      If provided, consider the individual's job title and focus on how this role typically operates; the type of work they do, the skills they need, and the challenges they face.
-      Your response should be written in 2nd person, ${userName}'s manager ${managerName} will be the recipient of this summary.
-      ${managerName} is a ${managerJobTitle} at ${company}.
-
-        Use the following format:  
-        ### Feedback Summary for ${userName}:
-
-        #### Major Strengths Identified in the Feedback
-        1. [Strength 1]
-        2. [Strength 2]
-        3. [Strength 3]
-
-        #### Areas for Potential Growth or Improvement
-        1. [Area 1]
-        2. [Area 2]
-        3. [Area 3]
-
-        #### Patterns or Themes Across the Feedback
-        - [Pattern 1]
-        - [Pattern 2]
-        - [Pattern 3]
-
-        #### Specific, Actionable Recommendations
-        1. [Recommendation 1]
-        2. [Recommendation 2]
-        3. [Recommendation 3]
-    `;
-    
-    // Call OpenAI API with streaming
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4-turbo",
-      messages: [
-        { 
-          role: "system", 
-          content: "Assume the role of a career coach. You are a helpful career coach providing feedback analysis. Your summaries are balanced, constructive, and actionable."
-        },
-        { 
-          role: "user", 
-          content: prompt
-        }
-      ],
-      stream: true,
-      max_tokens: 1000
-    });
-
-    let content = '';
-    
-    const streamTimeout = setTimeout(() => {
-      throw new Error("Streaming timed out after 45 seconds");
-    }, 45000);
-    
-    try {
-      for await (const chunk of completion) {
-        content += chunk.choices[0]?.delta?.content || '';
-      }
-    } finally {
-      clearTimeout(streamTimeout);
-    }
+    // Use two-stage processing
+    const content = await generateWithTwoStages(
+      data.feedback_data,
+      { userName, jobTitle, company, industry },
+      'summary',
+      existingInsights,
+      true,
+      { managerName, managerJobTitle }
+    );
     
     return { summary: content || "Unable to generate summary." };
   } catch (error) {
@@ -747,7 +1130,7 @@ async function generateManagerSummary(
   }
 }
 
-// Implementation for personal prep (using similar RPC pattern)
+// Implementation for personal prep (using two-stage processing with previous week context)
 async function generatePersonalPrep(
   supabase: SupabaseClient,
   params: UserParams
@@ -758,90 +1141,37 @@ async function generatePersonalPrep(
     const startDate = calculateStartDate(timeframe);
     const data = await fetchAllUserData(supabase, userId, undefined, startDate, false);
     const { userName, jobTitle, company, industry } = extractUserContext(data);
-    const formattedFeedback = formatFeedback(data.feedback_data, userName);
-    const timePeriodText = getTimePeriodText(timeframe);
     
-    const prompt = `
-    Take on the role of an experienced career coach specialising in one-on-one meeting preparation.
-      
-      Below is feedback data for ${userName} in JSON format:
-      Their current job title is: ${jobTitle}
-      They work for: ${company}
-      Industry: ${industry}
-      This feedback was received ${timePeriodText}:
-      
-      The feedback is structured as JSON where each item contains:
-      - "question": The feedback question asked
-      - "type": Type of question (rating, text, values, ai)
-      - "rating": Numeric rating (1-10) for rating questions
-      - "response": Text response for open-ended questions  
-      - "comment": Additional comments for rating questions
-      - "company_value": Company value name for values nominations
-      - "from": Name of feedback provider (when available)
-      - "date": Date feedback was given
-
-      ${formattedFeedback}
-      
-      Generate a 1-on-1 meeting agenda focused on discussing the individual's strengths and areas for improvement, identifying any challenges, and exploring professional development opportunities for a ${jobTitle} in the ${industry} industry.
-      
-      Format your response in clear sections with meaningful headings. 
-      ${userName} is the recipient of this agenda and they will use it to prepare for their 1:1 meeting with their manager, so write it in the 2nd person.
-      Do not include an introduction or conclusion section.
-
-        Use the following format:  
-        ### 1:1 Agenda
-
-        #### Areas for Potential Growth or Improvement
-        1. [Area 1]
-            - [Question to ask your manager about this area]
-        2. [Area 2]
-            - [Question to ask your manager about this area]
-
-        #### Challenges identified in Feedback
-        - [Challenge 1]
-            - [Question to ask your manager about this challenge]
-        - [Challenge 2]
-            - [Question to ask your manager about this challenge]
-
-        #### Professional Development Opportunities
-        1. [Opportunity 1]
-            - [Question to ask your manager about this opportunity]
-        2. [Opportunity 2]
-            - [Question to ask your manager about this opportunity]
-
-        #### Other Questions to Ask Your Manager
-        1. [Question 1]
-        2. [Question 2]
-        3. [Question 3]
-    `;
+    // Get previous week's 1:1 agenda for continuity
+    const previousWeek1on1 = await findPreviousWeek1on1(supabase, userId);
+    const previous1on1Context = extractPrevious1on1Context(previousWeek1on1);
     
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4-turbo",
-      messages: [
-        { 
-          role: "system", 
-          content: "Assume the role of a career coach. You are a helpful career coach providing excellent one-on-one meeting prep. Your meeting agendas are clear, concise, and actionable."
-        },
-        { 
-          role: "user", 
-          content: prompt
-        }
-      ],
-      stream: true,
-      max_tokens: 1000
-    });
-
-    let content = '';
-    const streamTimeout = setTimeout(() => {
-      throw new Error("Streaming timed out after 45 seconds");
-    }, 45000);
+    // Check for existing prep notes (excluding the previous week we just found)
+    const existingSummaries = await findExistingSummaries(supabase, userId, undefined, timeframe, 'prep');
+    const existingInsights = extractInsightsFromExistingSummaries(existingSummaries);
     
-    try {
-      for await (const chunk of completion) {
-        content += chunk.choices[0]?.delta?.content || '';
-      }
-    } finally {
-      clearTimeout(streamTimeout);
+    // Combine all context
+    const fullContext = previous1on1Context + existingInsights;
+    
+    let content: string;
+    
+    if (!data.feedback_data || data.feedback_data.length === 0) {
+      // Generate agenda with previous week context even when no new feedback is available
+      content = await generateGeneric1on1Agenda({
+        userName,
+        jobTitle,
+        company,
+        industry
+      }, false, fullContext);
+    } else {
+      // Use two-stage processing with feedback data and previous week context
+      content = await generateWithTwoStages(
+        data.feedback_data,
+        { userName, jobTitle, company, industry },
+        'prep',
+        fullContext,
+        false
+      );
     }
     
     return { prep: content || "Unable to generate meeting prep." };
@@ -853,7 +1183,7 @@ async function generatePersonalPrep(
   }
 }
 
-// Implementation for manager prep
+// Implementation for manager prep with previous week context
 async function generateManagerPrep(
   supabase: SupabaseClient,
   params: ManagerParams
@@ -866,90 +1196,38 @@ async function generateManagerPrep(
     const { userName, jobTitle, company, industry } = extractUserContext(data);
     const managerName = data.manager_profile?.name || 'Manager';
     const managerJobTitle = data.manager_profile?.job_title || 'Manager';
-    const formattedFeedback = formatFeedback(data.feedback_data, userName);
-    const timePeriodText = getTimePeriodText(timeframe);
     
-    const prompt = `
-    Take on the role of an experienced career coach specialising in one-on-one meeting preparation.
-      
-      Below is feedback data for ${userName} in JSON format:
-      Their current job title is: ${jobTitle}
-      They work for: ${company}
-      Industry: ${industry}
-      This feedback was received ${timePeriodText}:
-
-      The feedback is structured as JSON where each item contains:
-      - "question": The feedback question asked
-      - "type": Type of question (rating, text, values, ai)
-      - "rating": Numeric rating (1-10) for rating questions
-      - "response": Text response for open-ended questions  
-      - "comment": Additional comments for rating questions
-      - "company_value": Company value name for values nominations
-      - "from": Name of feedback provider (when available)
-      - "date": Date feedback was given
-      
-      ${formattedFeedback}
-      
-      Generate a 1-on-1 meeting agenda focused on discussing the individual's strengths and areas for improvement.
-      
-      ${userName}'s manager, ${managerName}, is the recipient of this agenda and they will use it to prepare for their 1:1 meeting with ${userName}, so write it in the 2nd person.
-      ${managerName} is a ${managerJobTitle} at ${company}.
-      Do not include an introduction or conclusion section.
-
-        Use the following format:  
-        ### 1:1 Agenda
-
-        #### Areas for Potential Growth or Improvement
-        1. [Area 1]
-            - [Question to ask your employee about this area]
-        2. [Area 2]
-            - [Question to ask your employee about this area]
-
-        #### Challenges identified in Feedback
-        - [Challenge 1]
-            - [Question to ask your employee about this challenge]
-        - [Challenge 2]
-            - [Question to ask your employee about this challenge]
-
-        #### Professional Development Opportunities
-        1. [Opportunity 1]
-            - [Question to ask your employee about this opportunity]
-        2. [Opportunity 2]
-            - [Question to ask your employee about this opportunity]
-
-        #### Other Questions to Ask Your Employee
-        1. [Question 1]
-        2. [Question 2]
-        3. [Question 3]
-    `;
+    // Get previous week's 1:1 agenda for this employee
+    const previousWeek1on1 = await findPreviousWeek1on1(supabase, managerId, employeeId);
+    const previous1on1Context = extractPrevious1on1Context(previousWeek1on1);
     
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4-turbo",
-      messages: [
-        { 
-          role: "system", 
-          content: "Assume the role of a career coach. You are a helpful career coach providing excellent one-on-one meeting prep. Your meeting agendas are clear, concise, and actionable."
-        },
-        { 
-          role: "user", 
-          content: prompt
-        }
-      ],
-      stream: true,
-      max_tokens: 1000
-    });
-
-    let content = '';
-    const streamTimeout = setTimeout(() => {
-      throw new Error("Streaming timed out after 45 seconds");
-    }, 45000);
+    // Check for existing prep notes (excluding the previous week we just found)
+    const existingSummaries = await findExistingSummaries(supabase, managerId, employeeId, timeframe, 'prep');
+    const existingInsights = extractInsightsFromExistingSummaries(existingSummaries);
     
-    try {
-      for await (const chunk of completion) {
-        content += chunk.choices[0]?.delta?.content || '';
-      }
-    } finally {
-      clearTimeout(streamTimeout);
+    // Combine all context
+    const fullContext = previous1on1Context + existingInsights;
+    
+    let content: string;
+    
+    if (!data.feedback_data || data.feedback_data.length === 0) {
+      // Generate a general manager 1:1 agenda with previous week context
+      content = await generateGeneric1on1Agenda({
+        userName,
+        jobTitle,
+        company,
+        industry
+      }, true, fullContext, { managerName, managerJobTitle });
+    } else {
+      // Use two-stage processing with feedback data and previous week context
+      content = await generateWithTwoStages(
+        data.feedback_data,
+        { userName, jobTitle, company, industry },
+        'prep',
+        fullContext,
+        true,
+        { managerName, managerJobTitle }
+      );
     }
     
     return { prep: content || "Unable to generate meeting prep." };
@@ -972,107 +1250,21 @@ async function generatePersonalReview(
     const startDate = calculateStartDate(timeframe, true);
     const data = await fetchAllUserData(supabase, userId, undefined, startDate, false);
     const { userName, jobTitle, company, industry } = extractUserContext(data);
-    const formattedFeedback = formatFeedback(data.feedback_data, userName);
-    const timePeriodText = getTimePeriodText(timeframe, true);
     
-    const prompt = `
-    Take on the role of an experienced career coach specialising in Performance Review meeting preparation.
-      
-      Below is feedback data for ${userName} in JSON format:
-      Their current job title is: ${jobTitle}
-      They work for: ${company}
-      Industry: ${industry}
-      This feedback was received ${timePeriodText}:
-
-      The feedback is structured as JSON where each item contains:
-      - "question": The feedback question asked
-      - "type": Type of question (rating, text, values, ai)
-      - "rating": Numeric rating (1-10) for rating questions
-      - "response": Text response for open-ended questions  
-      - "comment": Additional comments for rating questions
-      - "company_value": Company value name for values nominations
-      - "from": Name of feedback provider (when available)
-      - "date": Date feedback was given
-      
-      ${formattedFeedback}
-      
-      Generate a comprehensive self-evaluation based on the feedback data. Focus on achievements, areas for improvement, and development goals.
-      
-      ${userName} is the recipient of this self reflection and they will use it to prepare for their career discussion with their manager. Write this in the 1st person and in the past tense.
-
-        Use the following format:  
-        ### Self-Evaluation
-
-        Employee: ${userName}, ${jobTitle}
-        Company: ${company}
-
-        ----
-
-        ### Feedback
-        Summarize feedback from the last year, including any notable achievements or contributions. Keep it concise and focused on the most impactful feedback.
-
-        ### Accomplishments
-        List any accomplishments or contributions the employee made in the last year.
-
-        ### Results
-        List any results or outcomes from the employee's work in the last year.
-
-        ### Overall Impact
-        List the overall impact of the employee's work on the team or organization.
-
-        ### What I have Learned
-        List any lessons learned or skills developed in the last year.
-
-        ### Obstacles
-        List any obstacles or challenges the employee faced in the last year.
-
-        ### Opportunities
-        List any opportunities for the employee to grow or develop in the next year.
-
-        ### Goals
-        List the goals for the employee for the next year, including any specific projects or initiatives they should focus on.
-
-        ### Decisions
-        List any decisions that need to be made in the next year, including any specific projects or initiatives that need to be prioritized.
-
-        ### Other Notes
-        List any other interesting or relevant information about the employee's performance found in the feedback data. 
-        Provide a quote from the feedback that highlighs the employee's performance.
-
-        ----
-
-        ### Questions & Discussion Points
-        List 3-5 questions to ask or topics to discuss with their manager during their performance review.
-    `;
+    const existingSummaries = await findExistingSummaries(supabase, userId, undefined, timeframe, 'review');
+    const existingInsights = extractInsightsFromExistingSummaries(existingSummaries);
     
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4-turbo",
-      messages: [
-        { 
-          role: "system", 
-          content: "Assume the role of a career coach. You are a helpful career coach providing excellent career discussion meeting prep."
-        },
-        { 
-          role: "user", 
-          content: prompt
-        }
-      ],
-      stream: true,
-      max_tokens: 1000
-    });
-
-    let content = '';
-    const streamTimeout = setTimeout(() => {
-      throw new Error("Streaming timed out after 45 seconds");
-    }, 45000);
-    
-    try {
-      for await (const chunk of completion) {
-        content += chunk.choices[0]?.delta?.content || '';
-      }
-    } finally {
-      clearTimeout(streamTimeout);
+    if (!data.feedback_data || data.feedback_data.length === 0) {
+      return { review: 'No feedback available to create review prep. Check back when feedback has been collected.' };
     }
+    
+    const content = await generateWithTwoStages(
+      data.feedback_data,
+      { userName, jobTitle, company, industry },
+      'review',
+      existingInsights,
+      false
+    );
     
     return { review: content || "Unable to generate review." };
   } catch (error) {
@@ -1096,106 +1288,22 @@ async function generateManagerReview(
     const { userName, jobTitle, company, industry } = extractUserContext(data);
     const managerName = data.manager_profile?.name || 'Manager';
     const managerJobTitle = data.manager_profile?.job_title || 'Manager';
-    const formattedFeedback = formatFeedback(data.feedback_data, userName);
-    const timePeriodText = getTimePeriodText(timeframe, true);
     
-    const prompt = `
-    Take on the role of an experienced career coach specialising in Performance Review meeting preparation.
-      
-      Below is feedback data for ${userName} in JSON format:
-      Their current job title is: ${jobTitle}
-      They work for: ${company}
-      Industry: ${industry}
-      This feedback was received ${timePeriodText}:
-
-      The feedback is structured as JSON where each item contains:
-      - "question": The feedback question asked
-      - "type": Type of question (rating, text, values, ai)
-      - "rating": Numeric rating (1-10) for rating questions
-      - "response": Text response for open-ended questions  
-      - "comment": Additional comments for rating questions
-      - "company_value": Company value name for values nominations
-      - "from": Name of feedback provider (when available)
-      - "date": Date feedback was given
-      
-      ${formattedFeedback}
-      
-      Generate a comprehensive performance review draft based on the feedback data.
-      
-      ${userName}'s manager, ${managerName}, is the recipient of this draft performance review and they will use it to prepare for their career discussion with ${userName}. Write this in the 2nd person and in the past tense.
-      ${managerName} is a ${managerJobTitle} at ${company}.
-
-        Use the following format:  
-        ### Performance Review
-
-        Employee: ${userName}, ${jobTitle}
-        Manager: ${managerName}, ${managerJobTitle}
-        Company: ${company}
-
-        ----
-
-        ### Feedback
-        Summarize feedback from the last year, including any notable achievements or contributions. Call out strengths and areas for improvement. Keep it concise and focused on the most impactful feedback.
-
-        ### Accomplishments
-        List any accomplishments or contributions the employee made in the last year.
-
-        ### Results
-        List any results or outcomes from the employee's work in the last year.
-
-        ### Overall Impact
-        List the overall impact of the employee's work on the team or organization.
-
-        ### Obstacles
-        List any obstacles or challenges the employee faced in the last year.
-
-        ### Opportunities
-        List any opportunities for the employee to grow or develop in the next year.
-
-        ### Goals
-        List the goals for the employee for the next year, including any specific projects or initiatives they should focus on.
-
-        ### Decisions
-        List any decisions that need to be made in the next year, including any specific projects or initiatives that need to be prioritized.
-
-        ### Other Notes
-        List any other interesting or relevant information about the employee's performance found in the feedback data. 
-        Provide a quote from the feedback that highlighs the employee's performance.
-
-        ----
-
-        ### Questions & Discussion Points
-        List 3-5 questions to ask or topics to discuss with the employee during their performance review.
-    `;
+    const existingSummaries = await findExistingSummaries(supabase, managerId, employeeId, timeframe, 'review');
+    const existingInsights = extractInsightsFromExistingSummaries(existingSummaries);
     
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4-turbo",
-      messages: [
-        { 
-          role: "system", 
-          content: "Assume the role of a career coach. You are a helpful career coach providing excellent one-on-one meeting prep."
-        },
-        { 
-          role: "user", 
-          content: prompt
-        }
-      ],
-      stream: true,
-      max_tokens: 1000
-    });
-
-    let content = '';
-    const streamTimeout = setTimeout(() => {
-      throw new Error("Streaming timed out after 45 seconds");
-    }, 45000);
-    
-    try {
-      for await (const chunk of completion) {
-        content += chunk.choices[0]?.delta?.content || '';
-      }
-    } finally {
-      clearTimeout(streamTimeout);
+    if (!data.feedback_data || data.feedback_data.length === 0) {
+      return { review: `No feedback available to create review for ${userName}. Check back when feedback has been collected.` };
     }
+    
+    const content = await generateWithTwoStages(
+      data.feedback_data,
+      { userName, jobTitle, company, industry },
+      'review',
+      existingInsights,
+      true,
+      { managerName, managerJobTitle }
+    );
     
     return { review: content || "Unable to generate review." };
   } catch (error) {

@@ -58,24 +58,7 @@ const handleRetryGeneration = async () => {
   // Reset the failure state
   setGenerationFailed(false);
   
-  try {
-    // Get auth token
-    // const { data: { session } } = await supabase.auth.getSession();
-    // const token = session?.access_token;
-    
-    // First update the note to set is_generating back to true
-    // await fetch('/api/notes/update', {
-    //   method: 'PUT',
-    //   headers: {
-    //     'Content-Type': 'application/json',
-    //     'Authorization': `Bearer ${token}`,
-    //   },
-    //   body: JSON.stringify({
-    //     id: note.id,
-    //     is_generating: true
-    //   }),
-    // });
-    
+  try {    
     // Update local state to reflect this
     setNote(prev => prev ? { ...prev, is_generating: true } : null);
     
