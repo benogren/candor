@@ -786,6 +786,7 @@ async function generatePersonalPrep(
       
       Format your response in clear sections with meaningful headings. 
       ${userName} is the recipient of this agenda and they will use it to prepare for their 1:1 meeting with their manager, so write it in the 2nd person.
+      Do not include an introduction or conclusion section.
 
         Use the following format:  
         ### 1:1 Agenda
@@ -893,6 +894,7 @@ async function generateManagerPrep(
       
       ${userName}'s manager, ${managerName}, is the recipient of this agenda and they will use it to prepare for their 1:1 meeting with ${userName}, so write it in the 2nd person.
       ${managerName} is a ${managerJobTitle} at ${company}.
+      Do not include an introduction or conclusion section.
 
         Use the following format:  
         ### 1:1 Agenda
@@ -996,7 +998,7 @@ async function generatePersonalReview(
       
       Generate a comprehensive self-evaluation based on the feedback data. Focus on achievements, areas for improvement, and development goals.
       
-      ${userName} is the recipient of this self reflection and they will use it to prepare for their career discussion with their manager.
+      ${userName} is the recipient of this self reflection and they will use it to prepare for their career discussion with their manager. Write this in the 1st person and in the past tense.
 
         Use the following format:  
         ### Self-Evaluation
@@ -1007,10 +1009,7 @@ async function generatePersonalReview(
         ----
 
         ### Feedback
-        List feedback from the last year, including any notable achievements or contributions.
-
-        #### Feedback Questions
-        List 3 questions the employee should ask the manager to get feedback on their performance.
+        Summarize feedback from the last year, including any notable achievements or contributions. Keep it concise and focused on the most impactful feedback.
 
         ### Accomplishments
         List any accomplishments or contributions the employee made in the last year.
@@ -1037,6 +1036,13 @@ async function generatePersonalReview(
         List any decisions that need to be made in the next year, including any specific projects or initiatives that need to be prioritized.
 
         ### Other Notes
+        List any other interesting or relevant information about the employee's performance found in the feedback data. 
+        Provide a quote from the feedback that highlighs the employee's performance.
+
+        ----
+
+        ### Questions & Discussion Points
+        List 3-5 questions to ask or topics to discuss with their manager during their performance review.
     `;
     
     const completion = await openai.chat.completions.create({
@@ -1116,7 +1122,7 @@ async function generateManagerReview(
       
       Generate a comprehensive performance review draft based on the feedback data.
       
-      ${userName}'s manager, ${managerName}, is the recipient of this draft performance review and they will use it to prepare for their career discussion with ${userName}.
+      ${userName}'s manager, ${managerName}, is the recipient of this draft performance review and they will use it to prepare for their career discussion with ${userName}. Write this in the 2nd person and in the past tense.
       ${managerName} is a ${managerJobTitle} at ${company}.
 
         Use the following format:  
@@ -1129,7 +1135,16 @@ async function generateManagerReview(
         ----
 
         ### Feedback
-        List feedback from the last year, including any notable achievements or contributions.
+        Summarize feedback from the last year, including any notable achievements or contributions. Call out strengths and areas for improvement. Keep it concise and focused on the most impactful feedback.
+
+        ### Accomplishments
+        List any accomplishments or contributions the employee made in the last year.
+
+        ### Results
+        List any results or outcomes from the employee's work in the last year.
+
+        ### Overall Impact
+        List the overall impact of the employee's work on the team or organization.
 
         ### Obstacles
         List any obstacles or challenges the employee faced in the last year.
@@ -1144,6 +1159,13 @@ async function generateManagerReview(
         List any decisions that need to be made in the next year, including any specific projects or initiatives that need to be prioritized.
 
         ### Other Notes
+        List any other interesting or relevant information about the employee's performance found in the feedback data. 
+        Provide a quote from the feedback that highlighs the employee's performance.
+
+        ----
+
+        ### Questions & Discussion Points
+        List 3-5 questions to ask or topics to discuss with the employee during their performance review.
     `;
     
     const completion = await openai.chat.completions.create({
