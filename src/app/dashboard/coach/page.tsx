@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Sparkles, NotepadText, Calendar, FileText, Plus, Trash2, AlertCircle, Users, NotebookPen } from 'lucide-react';
+import { radley } from '../../fonts';
+import { Sparkles, NotepadText, Calendar, FileText, Plus, Trash2, AlertCircle, Users, NotebookPen, BotMessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 import { 
@@ -64,6 +65,8 @@ export default function FeedbackCoachPage() {
     const { user } = useAuth();
     const router = useRouter();
     const { toast } = useToast();
+
+    const [userName, setUserName] = useState<string>('');
     
     // State for summaries and preps from notes table
     const [isSummarizing, setIsSummarizing] = useState(false);
@@ -86,10 +89,32 @@ export default function FeedbackCoachPage() {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [directReports, setDirectReports] = useState<{id: string}[]>([]);
 
+    const getUserName = useCallback(async () => {
+        if (!user?.id) return;
+
+        try {
+            const { data: userData, error: userError } = await supabase
+                .from('user_profiles')
+                .select('name')
+                .eq('id', user.id)
+                .single();
+
+            if (userError) throw userError;
+
+            if (userData?.name) {
+                setUserName(userData.name);
+            }
+        } catch (error) {
+            console.log('Error getting user name:', error);
+        }
+    }, [user?.id]);
+
+
     const checkIfManager = useCallback(async () => {
         if (!user) return;
         
         try {
+
             const { data: reportsData, error: reportsError } = await supabase
             .from('org_structure')
             .select('id')
@@ -272,7 +297,8 @@ export default function FeedbackCoachPage() {
     fetchRecentNotes();
     fetchAllNotes();
     checkIfManager();
-    }, [fetchSummaries, fetchPreps, fetchRecentNotes, fetchAllNotes, checkIfManager]);
+    getUserName();
+    }, [fetchSummaries, fetchPreps, fetchRecentNotes, fetchAllNotes, checkIfManager, getUserName]);
 
     // Handle clicking on a note
     const handleNoteClick = (note: Note) => {
@@ -513,19 +539,113 @@ export default function FeedbackCoachPage() {
 
     return (
         <div className="container mx-auto px-4 py-6">
-            <div className='flex items-center justify-between mb-8'>
-            <h2 className='text-4xl font-light text-berkeleyblue mb-6'>Feedback Coach</h2>
-            {isManager && (
-                <Button
-                variant="outline"
-                className="flex items-center gap-2"
-                onClick={() => router.push('/dashboard/coach/manager')}
-                >
-                <Users className="h-5 w-5 text-cerulean-400" />
-                Switch to Manager View
-                </Button>
-            )}
+            <div className='bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-100'>
+                <div className='flex items-center justify-between'>
+                    <div className='flex items-center'>
+                        <div className='bg-cerulean rounded-md p-2 mr-4 items-center'>
+                            <BotMessageSquare className="h-12 w-12 text-cerulean-100" />
+                        </div>
+                        <div>
+                            <h2 className={`text-4xl font-light text-cerulean ${radley.className}`}>{userName || 'Loading...'}</h2>
+                            <p className='text-cerulean-300'>Feedback Coach</p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                        {isManager && (
+                            <Button
+                            variant="secondary"
+                            className="flex items-center gap-2"
+                            onClick={() => router.push('/dashboard/coach/manager')}
+                            >
+                            <Users className="h-5 w-5 text-cerulean-400" />
+                            Switch to Manager View
+                            </Button>
+                        )}
+                    </div>
+                </div>
             </div>
+
+            {/* Quick Actions */}
+            <div className="mb-10">
+                {/* <h2 className='text-2xl font-light text-berkeleyblue mb-4'>Generate New</h2> */}
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button 
+                            variant="secondary" 
+                            className="w-full flex items-center justify-between px-4 py-12 text-left"
+                            disabled={isSummarizing}
+                            >
+                                <div className="flex items-center">
+                                    <Sparkles className="h-7 w-7 text-cerulean-400 mr-4" />
+                                    <div>
+                                        <div className="font-light text-lg text-cerulean">Feedback Summary</div>
+                                        <div className="text-sm text-gray-500">Analyze your received feedback</div>
+                                    </div>
+                                </div>
+                                <Plus className="h-5 w-5 text-cerulean" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuItem 
+                                onClick={() => handleSummarizeFeedback('week')} 
+                                className="cursor-pointer"
+                                disabled={isSummarizing}
+                            >
+                                {isSummarizing ? 'Checking feedback...' : 'Last Week\'s Feedback'}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                                onClick={() => handleSummarizeFeedback('month')} 
+                                className="cursor-pointer"
+                                disabled={isSummarizing}
+                            >
+                                {isSummarizing ? 'Checking feedback...' : 'Last Month\'s Feedback'}
+                            </DropdownMenuItem>
+                            {/* <DropdownMenuItem 
+                                onClick={() => handleSummarizeFeedback('all')} 
+                                className="cursor-pointer"
+                                disabled={isSummarizing}
+                            >
+                                {isSummarizing ? 'Checking feedback...' : 'All Feedback'}
+                            </DropdownMenuItem> */}
+                            </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    <Button 
+                        variant="secondary" 
+                        className="w-full flex items-center justify-between px-4 py-12 text-left"
+                        onClick={() => handlePrep()}
+                        disabled={isGeneratingPrep}
+                    >
+                        <div className="flex items-center">
+                            <NotepadText className="h-7 w-7 text-cerulean-400 mr-4" />
+                            <div>
+                                <div className="font-light text-lg text-cerulean">1:1 Preparation</div>
+                                <div className="text-sm text-gray-500">Create notes for your next meeting</div>
+                            </div>
+                        </div>
+                        <Plus className="h-5 w-5 text-cerulean" />
+                    </Button>
+
+                    <Button 
+                        variant="secondary" 
+                        className="w-full flex items-center justify-between px-4 py-12 text-left"
+                        onClick={() => handleReview()}
+                        disabled={isGeneratingReview}
+                    >
+                        <div className="flex items-center">
+                            <NotebookPen className="h-7 w-7 text-cerulean-400 mr-4" />
+                            <div>
+                                <div className="font-light text-lg text-cerulean">Self-Evaluation Preparation</div>
+                                <div className="text-sm text-gray-500">Create notes for your next career discussion</div>
+                            </div>
+                        </div>
+                        <Plus className="h-5 w-5 text-cerulean" />
+                    </Button>
+                </div>
+            </div>
+
             {/* Recent Activity Section */}
             {recentNotes.length > 0 && (
                 <div className="mb-10">
@@ -579,87 +699,8 @@ export default function FeedbackCoachPage() {
                 </div>
             )}
 
-            {/* Quick Actions */}
-            <div className="mb-4">
-                <h2 className='text-2xl font-light text-berkeleyblue mb-4'>Generate New</h2>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button 
-                            variant="secondary" 
-                            className="w-full flex items-center justify-between px-4 py-12 text-left"
-                            disabled={isSummarizing}
-                            >
-                                <div className="flex items-center">
-                                    <Sparkles className="h-7 w-7 text-cerulean-400 mr-4" />
-                                    <div>
-                                        <div className="font-light text-lg text-cerulean">Feedback Summary</div>
-                                        <div className="text-sm text-gray-500">Analyze your received feedback</div>
-                                    </div>
-                                </div>
-                                <Plus className="h-5 w-5 text-cerulean" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-56">
-                            <DropdownMenuItem 
-                                onClick={() => handleSummarizeFeedback('week')} 
-                                className="cursor-pointer"
-                                disabled={isSummarizing}
-                            >
-                                {isSummarizing ? 'Checking feedback...' : 'Last Week\'s Feedback'}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                                onClick={() => handleSummarizeFeedback('month')} 
-                                className="cursor-pointer"
-                                disabled={isSummarizing}
-                            >
-                                {isSummarizing ? 'Checking feedback...' : 'Last Month\'s Feedback'}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                                onClick={() => handleSummarizeFeedback('all')} 
-                                className="cursor-pointer"
-                                disabled={isSummarizing}
-                            >
-                                {isSummarizing ? 'Checking feedback...' : 'All Feedback'}
-                            </DropdownMenuItem>
-                            </DropdownMenuContent>
-                    </DropdownMenu>
-
-                    <Button 
-                        variant="secondary" 
-                        className="w-full flex items-center justify-between px-4 py-12 text-left"
-                        onClick={() => handlePrep()}
-                        disabled={isGeneratingPrep}
-                    >
-                        <div className="flex items-center">
-                            <NotepadText className="h-7 w-7 text-cerulean-400 mr-4" />
-                            <div>
-                                <div className="font-light text-lg text-cerulean">1:1 Preparation</div>
-                                <div className="text-sm text-gray-500">Create notes for your next meeting</div>
-                            </div>
-                        </div>
-                        <Plus className="h-5 w-5 text-cerulean" />
-                    </Button>
-
-                    <Button 
-                        variant="secondary" 
-                        className="w-full flex items-center justify-between px-4 py-12 text-left"
-                        onClick={() => handleReview()}
-                        disabled={isGeneratingReview}
-                    >
-                        <div className="flex items-center">
-                            <NotebookPen className="h-7 w-7 text-cerulean-400 mr-4" />
-                            <div>
-                                <div className="font-light text-lg text-cerulean">Self-Evaluation Preparation</div>
-                                <div className="text-sm text-gray-500">Create notes for your next career discussion</div>
-                            </div>
-                        </div>
-                        <Plus className="h-5 w-5 text-cerulean" />
-                    </Button>
-                </div>
-            </div>
-
             <div className='mb-8'>
+                <h2 className='text-2xl font-light text-berkeleyblue mb-4'>All My Notes</h2>
                 <div className='rounded-lg bg-white shadow-md border border-gray-100'>
                     {allNotes.length > 0 ? (
                         <>
