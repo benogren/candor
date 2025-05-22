@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent} from '@/components/ui/card';
 import {
   Table,
   TableBody,
@@ -14,11 +14,12 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toast } from '@/components/ui/use-toast';
-import { Loader2, Plus, MessageSquare, Edit, Trash } from 'lucide-react';
+import { Loader2, Plus, MessageSquare, Edit, Trash, LucideMessageCircleQuestion } from 'lucide-react';
 import supabase from '@/lib/supabase/client';
 import { useAuth, useIsAdmin } from '@/lib/context/auth-context';
 import { FeedbackQuestion } from '@/app/types/feedback';
 import CreateQuestionModal from '@/components/admin/CreateQuestionModal';
+import { radley } from '../../../../fonts';
 
 export default function QuestionsContent() {
   const router = useRouter();
@@ -175,21 +176,44 @@ export default function QuestionsContent() {
   
   return (
     <div className="container mx-auto py-8 px-4">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className='text-4xl font-light text-berkeleyblue'>Feedback Questions</h2>
-        <Button onClick={() => setShowCreateModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Question
-        </Button>
+      <div className='bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-100'>
+        <div className='flex items-center justify-between'>
+            <div className='flex items-center'>
+                <div className='bg-nonphotoblue-600 rounded-md p-2 mr-4 items-center'>
+                    <LucideMessageCircleQuestion className="h-12 w-12 text-nonphotoblue-100" />
+                </div>
+                <div>
+                    <h2 className={`text-4xl font-light text-nonphotoblue-600 ${radley.className}`}>
+                      Manage Feedback Questions
+                    </h2>
+                    <p className='text-slate-500'>
+                      Company Admin
+                    </p>
+                </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              
+                <Button
+                variant="secondary"
+                className="flex items-center gap-2"
+                onClick={() => setShowCreateModal(true)}
+              >
+                  <Plus className="h-5 w-5 text-cerulean-400" />
+                  Create Question
+                </Button>
+              
+              </div>
+          </div>
       </div>
       
       <Card>
-        <CardHeader>
+        {/* <CardHeader>
           <CardTitle>All Questions</CardTitle>
           <CardDescription>
             Manage feedback questions used in your cycles.
           </CardDescription>
-        </CardHeader>
+        </CardHeader> */}
         <CardContent>
           {questions.length === 0 ? (
             <div className="text-center py-8">

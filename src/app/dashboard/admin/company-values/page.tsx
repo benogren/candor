@@ -16,6 +16,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { library, IconName } from '@fortawesome/fontawesome-svg-core';
 import { fas } from '@fortawesome/free-solid-svg-icons';
 import supabase from '@/lib/supabase/client';
+import { radley } from '../../../fonts';
 
 // Add all FontAwesome solid icons to the library
 library.add(fas);
@@ -744,12 +745,36 @@ export default function CompanyValuesPage() {
   
   return (
     <div className="container mx-auto py-8 px-4">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className='text-4xl font-light text-berkeleyblue'>Company Values</h2>
-        <Button onClick={() => setShowAddDialog(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add New Value
-        </Button>
+
+      <div className='bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-100'>
+        <div className='flex items-center justify-between'>
+            <div className='flex items-center'>
+                <div className='bg-nonphotoblue-600 rounded-md p-2 mr-4 items-center'>
+                    <Medal className="h-12 w-12 text-nonphotoblue-100" />
+                </div>
+                <div>
+                    <h2 className={`text-4xl font-light text-nonphotoblue-600 ${radley.className}`}>
+                      Manage Company Values
+                    </h2>
+                    <p className='text-slate-500'>
+                      Company Admin
+                    </p>
+                </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              
+                <Button
+                variant="secondary"
+                className="flex items-center gap-2"
+                onClick={() => setShowAddDialog(true)}
+              >
+                  <Plus className="h-5 w-5 text-cerulean-400" />
+                  Create Value
+                </Button>
+              
+              </div>
+          </div>
       </div>
       
       {/* Top Nominations Metrics Section */}
@@ -763,8 +788,103 @@ export default function CompanyValuesPage() {
       ) : topNomineesState.length > 0 ? (
         <TopNomineesMetrics topNominees={topNomineesState} />
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Company Values</CardTitle>
+          <CardDescription>
+            Manage the values that define your company culture.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Tabs
+            defaultValue="active" 
+            className="mb-4"
+          >
+            <TabsList className="mb-4">
+            <TabsTrigger value="active">Active</TabsTrigger>
+            <TabsTrigger value="inactive">Inactive</TabsTrigger>
+            <TabsTrigger value="all">All</TabsTrigger>
+          </TabsList>
+          {['active', 'inactive', 'all'].map((tab) => (
+            <TabsContent key={tab} value={tab}>
+                  {values.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <p>No company values found. Click &quot;Add New Value&quot; to create one.</p>
+                  </div>
+                ) : (
+                  
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Icon</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead className="hidden md:table-cell">Description</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {values
+                        .filter(value => 
+                          tab === 'all' || 
+                          (tab === 'active' && value.active) || 
+                          (tab === 'inactive' && !value.active)
+                        )
+                        .map((value) => (
+                          <TableRow key={value.id}>
+                            <TableCell>
+                              <div className="w-10 h-10 flex items-center justify-center">
+                                {value.icon ? (
+                                  <FontAwesomeIcon 
+                                    icon={['fas', value.icon as IconName]} 
+                                    className="h-5 w-5 text-cerulean" 
+                                  />
+                                ) : (
+                                  <span className="text-gray-400">—</span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-medium">{value.name}</TableCell>
+                            <TableCell className="hidden md:table-cell max-w-xs truncate">
+                              {value.description}
+                            </TableCell>
+                            <TableCell>
+                              <span className={`px-2 py-1 rounded-full text-xs ${value.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                                {value.active ? 'Active' : 'Inactive'}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end space-x-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setEditValue(value)}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant={value.active ? "destructive" : "outline"}
+                                  size="sm"
+                                  onClick={() => handleToggleActive(value)}
+                                >
+                                  {value.active ? 'Deactivate' : 'Activate'}
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+
+                )}
+            </TabsContent>
+          ))}
+          </Tabs>
+        </CardContent>
+      </Card>
       
-      <Tabs defaultValue="active">
+      {/* <Tabs defaultValue="active">
         <TabsList className="mb-4">
           <TabsTrigger value="active">Active</TabsTrigger>
           <TabsTrigger value="inactive">Inactive</TabsTrigger>
@@ -857,7 +977,7 @@ export default function CompanyValuesPage() {
             </Card>
           </TabsContent>
         ))}
-      </Tabs>
+      </Tabs> */}
       
       {/* Add Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>

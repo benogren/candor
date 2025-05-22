@@ -639,6 +639,7 @@ export default function ManagerCoachPage() {
                                         {teamMembers.map(member => (
                                             <SelectItem key={member.id} value={member.id}>
                                                 {member.full_name}
+                                                {member.is_invited_user && " (Invited)"}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>

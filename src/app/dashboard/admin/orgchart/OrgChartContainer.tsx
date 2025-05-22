@@ -11,7 +11,8 @@ import supabase from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { UploadIcon } from 'lucide-react';
+import { Network, UploadIcon } from 'lucide-react';
+import { radley } from '../../../fonts';
 
 interface CsvRow {
   email: string;
@@ -428,24 +429,42 @@ export default function OrgChartContainer() {
   }
 
   return (
-    <div className="relative w-full">
-      {/* Fixed header section */}
-      <div className="flex justify-between items-center mb-6 top-0 left-0 right-0 z-40 bg-white py-2">
-        <h2 className='text-3xl font-light text-berkeleyblue pr-4'>Organization Chart</h2>
-        <div className="flex-shrink-0">
-          <Button variant="outline" onClick={() => setIsImportModalOpen(true)}>
-            <UploadIcon className="h-4 w-4 mr-2" />
-            Import
-          </Button>
-          {/* <Button
-            variant="outline"
-            className="ml-4"
-            onClick={() => setIsCreateUserModalOpen(true)}
-          >
-            <PlusIcon className="h-4 w-4 mr-2" />
-            Add User
-          </Button> */}
-        </div>
+    <div className="">
+      <div className='bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-100'>
+        <div className='flex items-center justify-between'>
+            <div className='flex items-center'>
+                <div className='bg-nonphotoblue-600 rounded-md p-2 mr-4 items-center'>
+                    <Network className="h-12 w-12 text-nonphotoblue-100" />
+                </div>
+                <div>
+                    <h2 className={`text-4xl font-light text-nonphotoblue-600 ${radley.className}`}>
+                      Manage Org Chart
+                    </h2>
+                    <p className='text-slate-500'>
+                      Company Admin
+                    </p>
+                </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+                <Button
+                      variant="secondary"
+                      className="flex items-center gap-2"
+                      onClick={() => setIsImportModalOpen(true)}
+                  >
+                      <UploadIcon className="h-5 w-5 text-cerulean-400" />
+                      Import
+                  </Button>
+                  {/* <Button
+                      variant="outline"
+                      className="ml-4"
+                      onClick={() => setIsCreateUserModalOpen(true)}
+                    >
+                      <PlusIcon className="h-4 w-4 mr-2" />
+                      Add User
+                    </Button> */}
+              </div>
+          </div>
       </div>
 
       {/* Bulk Actions (visible when users are selected) */}
@@ -480,7 +499,7 @@ export default function OrgChartContainer() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           {/* Scrollable container for org chart */}
           <div className="overflow-x-auto">
-            <div className="p-6 min-w-max">
+            <div className="p-6">
               <OrgChartView
                 data={orgChartData.hierarchical}
                 onSelectUser={handleSelectUser}

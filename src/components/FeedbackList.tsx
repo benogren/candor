@@ -13,21 +13,17 @@ import { fas } from '@fortawesome/free-solid-svg-icons';
 // Add all FontAwesome solid icons to the library
 library.add(fas);
 
-// Define interfaces that match the database structure exactly
+// Define interfaces that match the RPC response structure
 interface FeedbackQuestion {
   id: string;
   question_text: string;
   question_type: string;
   question_subtype?: string;
-  company_id?: string;
-  scope?: string;
-  active?: boolean;
-  created_at?: string;
-  updated_at?: string;
   question_description?: string;
   company_value_id?: string;
   company_values?: {
     icon?: string | null;
+    description?: string;
   };
 }
 
@@ -35,7 +31,6 @@ interface FeedbackUserIdentity {
   id: string;
   name: string | null;
   email: string | null;
-  user_id: string | null;
 }
 
 interface FeedbackRecipient {
@@ -44,10 +39,15 @@ interface FeedbackRecipient {
   feedback_user_identities: FeedbackUserIdentity;
 }
 
+interface FeedbackSession {
+  id: string;
+  status: string;
+  provider_id: string;
+}
+
 interface FeedbackResponse {
   id: string;
   recipient_id: string;
-  question_id: string;
   session_id: string;
   rating_value: number | null;
   text_response: string | null;
@@ -56,13 +56,50 @@ interface FeedbackResponse {
   skipped: boolean | null;
   created_at: string;
   updated_at: string | null;
+  nominated_user_id?: string | null;
+  feedback_questions: FeedbackQuestion;
+  feedback_recipients: FeedbackRecipient;
+  feedback_sessions: FeedbackSession;
+  nominated_user?: FeedbackUserIdentity;
   is_flagged?: boolean | null;
   flagged_by?: string | null;
   flagged_at?: string | null;
-  nominated_user_id?: string | null;
-  feedback_questions?: FeedbackQuestion;
-  feedback_recipients?: FeedbackRecipient;
-  nominated_user?: FeedbackUserIdentity;
+}
+
+interface UserProfile {
+  id: string;
+  name: string | null;
+  email: string | null;
+  job_title?: string | null;
+  role?: string;
+  company_id?: string;
+  status?: string;
+  created_at: string;
+  updated_at?: string | null;
+  avatar_url?: string | null;
+  additional_data?: Record<string, unknown>;
+}
+
+interface CompanyInfo {
+  id: string;
+  name: string;
+  industry?: string;
+  created_at: string;
+  updated_at: string;
+  domains?: string[];
+}
+
+interface RpcResponse {
+  user_profile: UserProfile;
+  manager_profile?: UserProfile;
+  company_info: CompanyInfo;
+  feedback_data: FeedbackResponse[];
+  metadata: {
+    is_invited_user: boolean;
+    query_executed_at: string;
+    start_date_filter?: string;
+    feedback_count: number;
+  };
 }
 
 interface FeedbackListProps {
@@ -70,19 +107,27 @@ interface FeedbackListProps {
   employeeId?: string; // For filtering in manager view (specific employee)
   managerId?: string;  // For manager viewing all their direct reports
   includeValues?: boolean; // Whether to include value nominations
+  startDate?: Date;    // Optional date filter
+  isInvitedUser?: boolean; // Whether the target user is an invited user
 }
 
 export default function FeedbackList({ 
   userId, 
   employeeId, 
   managerId, 
-  includeValues = true 
+  includeValues = true,
+  startDate,
+  isInvitedUser = false
 }: FeedbackListProps) {
-  const [feedback, setFeedback] = useState<FeedbackResponse[]>([]);
-  const [valueNominations, setValueNominations] = useState<FeedbackResponse[]>([]);
+  const [allFeedback, setAllFeedback] = useState<FeedbackResponse[]>([]);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [managerProfile, setManagerProfile] = useState<UserProfile | null>(null);
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [loading, setLoading] = useState(true);
-  
-  // Fetch feedback
+
+  console.log('feedback for:', userProfile?.id, 'manager: ', managerProfile?.id, 'company: ', companyInfo?.id);
+
+  // Fetch feedback using RPC
   useEffect(() => {
     const fetchFeedback = async () => {
       setLoading(true);
@@ -90,84 +135,40 @@ export default function FeedbackList({
       try {
         // Handle different scenarios:
         // 1. Employee viewing their own feedback (userId provided)
-        // 2. Manager viewing a specific employee's feedback (employeeId provided)
+        // 2. Manager viewing a specific employee's feedback (employeeId provided)  
         // 3. Manager viewing all direct reports' feedback (managerId provided)
         
-        // CASE 1 & 2: Get feedback for a specific user (either self or a specific employee)
         if (userId || employeeId) {
+          // CASE 1 & 2: Get feedback for a specific user
           const targetId = userId || employeeId;
           
-          // For this type of query - use the targetId directly with feedback_user_identities
-          // as it appears id is the primary identifier in your database
-          const { data: recipientData, error: recipientError } = await supabase
-            .from('feedback_recipients')
-            .select('id')
-            .eq('recipient_id', targetId);
-            
-          if (recipientError) throw recipientError;
+          const { data, error } = await supabase.rpc('get_user_feedback_summary', {
+            target_user_id: targetId,
+            manager_user_id: managerId || null,
+            start_date: startDate?.toISOString() || null,
+            is_invited_user: isInvitedUser
+          });
           
-          const recipientIds = (recipientData || []).map(r => r.id);
+          if (error) throw error;
           
-          if (recipientIds.length === 0) {
-            setFeedback([]);
-            setLoading(false);
-            return;
-          }
+          const response = data as RpcResponse;
           
-          // Now get feedback responses for these recipients, joining with questions
-          const { data: feedbackData, error: feedbackError } = await supabase
-            .from('feedback_responses')
-            .select(`
-              *,
-              feedback_questions!inner(
-                id,
-                question_text,
-                question_type,
-                question_subtype,
-                company_value_id,
-                company_values(
-                  icon
-                )
-              ),
-              feedback_sessions!inner(
-                id,
-                status
-              ),
-              feedback_recipients!inner(
-                id,
-                recipient_id,
-                feedback_user_identities!inner(
-                  id,
-                  name,
-                  email
-                )
-              ),
-              nominated_user:feedback_user_identities(
-                id,
-                name,
-                email
-              )
-            `)
-            .in('recipient_id', recipientIds)
-            .eq('skipped', false)
-            .eq('feedback_sessions.status', 'completed') // dont show in progress answers
-            .in('feedback_questions.question_type', ['text', 'rating', 'ai']) // exclude values
-            .order('created_at', { ascending: false });
-            
-          if (feedbackError) throw feedbackError;
+          // Set all the data from RPC response
+          setUserProfile(response.user_profile);
+          setManagerProfile(response.manager_profile || null);
+          setCompanyInfo(response.company_info);
           
-          // Set the feedback
-          setFeedback(feedbackData || []);
+          // Filter feedback based on includeValues flag
+          const filteredFeedback = includeValues 
+            ? response.feedback_data 
+            : response.feedback_data.filter(item => 
+                !['values'].includes(item.feedback_questions.question_type)
+              );
           
-          // If includeValues is true, also fetch value nominations for this user
-          if (includeValues) {
-            if (targetId) {
-              await fetchValueNominations(targetId);
-            }
-          }
-        }
-        // CASE 3: Manager viewing all their direct reports' feedback
-        else if (managerId) {
+          setAllFeedback(filteredFeedback);
+          
+        } else if (managerId) {
+          // CASE 3: Manager viewing all their direct reports' feedback
           // First get IDs of all direct reports from org_structure
           const { data: directReports, error: directReportsError } = await supabase
             .from('org_structure')
@@ -177,78 +178,45 @@ export default function FeedbackList({
           if (directReportsError) throw directReportsError;
           
           if (!directReports || directReports.length === 0) {
-            setFeedback([]);
+            setAllFeedback([]);
             setLoading(false);
             return;
           }
           
-          const directReportIds = directReports.map(dr => dr.id);
+          // Get feedback for each direct report using RPC and combine
+          const allTeamFeedback: FeedbackResponse[] = [];
           
-          // Get recipient IDs for these direct reports
-          const { data: recipientData, error: recipientError } = await supabase
-            .from('feedback_recipients')
-            .select('id')
-            .in('recipient_id', directReportIds);
+          for (const directReport of directReports) {
+            const { data, error } = await supabase.rpc('get_user_feedback_summary', {
+              target_user_id: directReport.id,
+              manager_user_id: managerId,
+              start_date: startDate?.toISOString() || null,
+              is_invited_user: false // Direct reports are typically not invited users
+            });
             
-          if (recipientError) throw recipientError;
-          
-          if (!recipientData || recipientData.length === 0) {
-            setFeedback([]);
-            setLoading(false);
-            return;
+            if (error) {
+              console.error(`Error fetching feedback for user ${directReport.id}:`, error);
+              continue;
+            }
+            
+            const response = data as RpcResponse;
+            
+            // Filter feedback based on includeValues flag
+            const filteredFeedback = includeValues 
+              ? response.feedback_data 
+              : response.feedback_data.filter(item => 
+                  !['values'].includes(item.feedback_questions.question_type)
+                );
+            
+            allTeamFeedback.push(...filteredFeedback);
           }
           
-          const recipientIds = recipientData.map(r => r.id);
+          // Sort all feedback by created_at descending
+          allTeamFeedback.sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
           
-          // Now get feedback responses for all these recipients
-          const { data: feedbackData, error: feedbackError } = await supabase
-            .from('feedback_responses')
-            .select(`
-              *,
-              feedback_questions!inner(
-                id,
-                question_text,
-                question_type,
-                question_subtype,
-                company_value_id,
-                company_values(
-                  icon
-                )
-              ),
-              feedback_sessions!inner(
-                id,
-                status
-              ),
-              feedback_recipients!inner(
-                id,
-                recipient_id,
-                feedback_user_identities!inner(
-                  id,
-                  name,
-                  email
-                )
-              ),
-              nominated_user:feedback_user_identities(
-                id,
-                name,
-                email
-              )
-            `)
-            .in('recipient_id', recipientIds)
-            .eq('skipped', false)
-            .in('feedback_questions.question_type', ['text', 'rating', 'ai']) // exclude values
-            .eq('feedback_sessions.status', 'completed') // dont show in progress answers
-            .order('created_at', { ascending: false });
-            
-          if (feedbackError) throw feedbackError;
-          
-          // Set the feedback
-          setFeedback(feedbackData || []);
-          
-          // If includeValues is true, fetch value nominations for all direct reports
-          if (includeValues) {
-            await fetchValueNominationsForTeam(directReportIds);
-          }
+          setAllFeedback(allTeamFeedback);
         }
       } catch (error) {
         console.error('Error fetching feedback:', error);
@@ -262,93 +230,8 @@ export default function FeedbackList({
       }
     };
     
-    // Fetch value nominations for a specific user
-    const fetchValueNominations = async (userId: string) => {
-      try {
-        // Get value nominations where this user is nominated
-        const { data: nominations, error } = await supabase
-          .from('feedback_responses')
-          .select(`
-            *,
-            feedback_questions!inner(
-              id,
-              question_text,
-              question_type,
-              question_description,
-              company_value_id,
-              company_values(
-                icon
-              )
-            ),
-            feedback_sessions!inner(
-              id,
-              status
-            ),
-            nominated_user:feedback_user_identities!inner(
-              id,
-              name,
-              email
-            )
-          `)
-          .eq('nominated_user_id', userId)
-          .eq('skipped', false)
-          .eq('feedback_sessions.status', 'completed')
-          .in('feedback_questions.question_type', ['values'])
-          .order('created_at', { ascending: false });
-          
-        if (error) throw error;
-        
-        setValueNominations(nominations || []);
-      } catch (error) {
-        console.error('Error fetching value nominations:', error);
-      }
-    };
-    
-    // Fetch value nominations for a team
-    const fetchValueNominationsForTeam = async (teamMemberIds: string[]) => {
-      try {
-        // Get value nominations where any team member is nominated
-        const { data: nominations, error } = await supabase
-          .from('feedback_responses')
-          .select(`
-            *,
-            feedback_questions!inner(
-              id,
-              question_text,
-              question_type,
-              question_subtype,
-              question_description,
-              company_value_id,
-              company_values(
-                icon
-              )
-            ),
-            feedback_sessions!inner(
-              id,
-              status
-            ),
-            nominated_user:feedback_user_identities!inner(
-              id,
-              name,
-              email
-            )
-          `)
-          .in('nominated_user_id', teamMemberIds)
-          .eq('skipped', false)
-          .eq('feedback_sessions.status', 'completed')
-          .in('feedback_questions.question_type', ['values'])
-          .order('created_at', { ascending: false });
-          
-        if (error) throw error;
-        
-        setValueNominations(nominations || []);
-      } catch (error) {
-        console.error('Error fetching value nominations for team:', error);
-      }
-    };
-    
     fetchFeedback();
-  }, [userId, employeeId, managerId, includeValues]);
+  }, [userId, employeeId, managerId, includeValues, startDate, isInvitedUser]);
   
   // Flag feedback as inappropriate
   const handleFlag = async (feedbackId: string) => {
@@ -365,7 +248,7 @@ export default function FeedbackList({
       if (error) throw error;
       
       // Update local state
-      setFeedback(prev => 
+      setAllFeedback(prev => 
         prev.map(item => 
           item.id === feedbackId ? { ...item, is_flagged: true } : item
         )
@@ -375,11 +258,6 @@ export default function FeedbackList({
       throw error;
     }
   };
-  
-  // Combine regular feedback and value nominations
-  const combinedFeedback = [...feedback, ...valueNominations].sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
   
   if (loading) {
     return (
@@ -399,7 +277,7 @@ export default function FeedbackList({
     );
   }
   
-  if (combinedFeedback.length === 0) {
+  if (allFeedback.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500 flex flex-col items-center">
         <FontAwesomeIcon 
@@ -418,20 +296,16 @@ export default function FeedbackList({
   }
   
   return (
-    <div className="space-y-4">
-      {combinedFeedback.map(item => {
+    <div className="space-y-4">      
+      {allFeedback.map(item => {
         // Extract icon from company_values if it exists
         const icon = item.feedback_questions?.company_values?.icon || null;
-        // Create a copy of feedback_questions with the icon
-        const questionsWithIcon = item.feedback_questions 
-        ? {
-            ...item.feedback_questions,
-            // Ensure the icon is properly structured according to your interface
-            icon: icon // If FeedbackQuestion has a direct icon property
-            // OR if icon should stay in company_values:
-            // company_values: {...item.feedback_questions.company_values, icon}
-          } 
-        : undefined;
+        
+        // Create a copy of feedback_questions with the icon properly structured
+        const questionsWithIcon = {
+          ...item.feedback_questions,
+          icon: icon // Add icon directly to the question object for FeedbackCard
+        };
           
         return (
           <FeedbackCard

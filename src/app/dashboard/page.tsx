@@ -10,7 +10,8 @@ import { ProfileModal } from '@/components/ProfileModal';
 import supabase from '@/lib/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 import { useRouter } from 'next/navigation';
-import { MessagesSquare } from 'lucide-react';
+import { Home, MessagesSquare, Users } from 'lucide-react';
+import { radley } from '../fonts';
 
 export default function DashboardPage() {
   const { user, memberStatus } = useAuth();
@@ -385,9 +386,38 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-      <div className="container mx-auto py-8 px-4">
+      <div className="container mx-auto px-4">
+        <div className='bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-100'>
+          <div className='flex items-center justify-between'>
+              <div className='flex items-center'>
+                  <div className='bg-cerulean rounded-md p-2 mr-4 items-center'>
+                      <Home className="h-12 w-12 text-cerulean-100" />
+                  </div>
+                  <div>
+                      <h2 className={`text-4xl font-light text-cerulean ${radley.className}`}>Your Feedback</h2>
+                      <p className='text-cerulean-300'>Dashboard</p>
+                  </div>
+              </div>
+
+              <div className="flex items-center gap-4">
+                  {(isManager || isAdmin) && (
+                    <Button 
+                      variant="secondary" 
+                      size="sm" 
+                      asChild
+                    >
+                      <Link href="/dashboard/manager/feedback">
+                        <Users className="h-5 w-5 text-cerulean-400" />
+                        Switch to Manager View
+                      </Link>
+                    </Button>
+                  )}
+              </div>
+          </div>
+        </div>
+
         {needsFeedback && (
-          <div className='bg-cerulean-400 p-4 rounded-md gap-4 shadow-md mb-12'>
+          <div className='bg-cerulean-400 p-8 rounded-md gap-4 shadow-md mb-4'>
             <div className='flex items-center gap-4 mb-2 text-white'>
               <MessagesSquare className="h-8 w-8" />
               <h4 className='text-lg font-light'>
@@ -397,7 +427,7 @@ export default function DashboardPage() {
                 </>
               ) : (
                 <>
-                Hey {firstName}, your colleagues are waiting on your feedback!
+                Hey {firstName}, your teammates are waiting on your feedback!
                 </>
               )}
               </h4>
@@ -440,24 +470,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <div className="flex justify-between items-center mb-6">
-          <h2 className='text-4xl font-light text-berkeleyblue'>Your Feedback</h2>
-
-            
-            {/* Show team feedback button to managers or admins */}
-            {(isManager || isAdmin) && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                asChild
-              >
-                <Link href="/dashboard/manager/feedback">
-                  View Your Team&#39;s Feedback
-                </Link>
-              </Button>
-            )}
-
-        </div>
+        
         <FeedbackList userId={user?.id} />
       </div>
     </>

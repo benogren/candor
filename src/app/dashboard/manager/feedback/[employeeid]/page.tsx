@@ -8,9 +8,9 @@ import supabase from '@/lib/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 import { useRouter } from "next/navigation";
 import { Button } from '@/components/ui/button';
-import { ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
+import { ArrowLeft, UserCircle, Users } from 'lucide-react';
 import { useParams } from 'next/navigation';
+import { radley } from '../../../../fonts';
 
 interface EmployeeProfile {
   id: string;
@@ -132,27 +132,63 @@ export default function EmployeeFeedbackPage() {
   
   return (
     <>
-    <Link href="/dashboard/manager/feedback" passHref>
-      <Button variant="ghost" className="mb-2">
+    <div className="container mx-auto px-4">
+    <Button
+        variant="ghost"
+        className="flex items-center gap-2"
+        onClick={() => router.push('/dashboard/manager/feedback/')}
+    >
         <ArrowLeft className="h-4 w-4 mr-2" />
         Back to All Team Feedback
-      </Button>
-    </Link>
+    </Button>
+    <div className='bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-100'>
+      <div className='flex items-center justify-between'>
+          <div className='flex items-center'>
+              <div className='bg-berkeleyblue rounded-md p-2 mr-4 items-center'>
+                  <Users className="h-12 w-12 text-berkeleyblue-100" />
+              </div>
+              <div>
+                  <h2 className={`text-4xl font-light text-berkeleyblue ${radley.className}`}>
+                    {employeeProfile?.name || (employeeProfile?.email ? employeeProfile.email.split('@')[0] : 'Employee')}
+                  </h2>
+                  <p className='text-berkeleyblue-300'>
+                    Feedback
+                  </p>
+              </div>
+          </div>
 
-    <div className="container mx-auto px-4">
-      <h2 className='text-4xl font-light text-berkeleyblue mb-4'>
-        {employeeProfile?.name || (employeeProfile?.email ? employeeProfile.email.split('@')[0] : 'Employee')}
-      </h2>
+          <div className="flex items-center gap-4">
+              {/* <Button
+                    variant="secondary"
+                    className="flex items-center gap-2"
+                    onClick={() => router.push('/dashboard/coach/manager/')}
+                >
+                    <BotMessageSquare className="h-5 w-5 text-cerulean-400" />
+                    Feedback Coach
+                </Button> */}
+
+              <Button
+                    variant="secondary"
+                    className="flex items-center gap-2"
+                    onClick={() => router.push('/dashboard/')}
+                >
+                    <UserCircle className="h-5 w-5 text-cerulean-400" />
+                    Personal View
+                </Button>
+          </div>
+      </div>
     </div>
 
-    <div className="container mx-auto py-8 px-4">
+    <div>
       <h2 className='text-2xl font-light text-berkeleyblue mb-4'>
-        Feedback
+        {employeeProfile?.name || (employeeProfile?.email ? employeeProfile.email.split('@')[0] : 'Employee')}&apos;s Feedback
       </h2>
       
       <FeedbackList 
-        employeeId={employeeId} 
+        employeeId={employeeId}
+        managerId={user?.id}
       />
+    </div>
     </div>
     </>
   );

@@ -13,12 +13,12 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toast } from '@/components/ui/use-toast';
-import { Loader2, Plus, CalendarIcon, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, Plus, CalendarIcon, ChevronDown, ChevronUp, Shell, Info } from 'lucide-react';
 import supabase from '@/lib/supabase/client';
 import { useAuth, useIsAdmin } from '@/lib/context/auth-context';
 import CreateCycleModal from '@/components/admin/CreateCycleModal';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { radley } from '../../../../fonts';
 
 export default function FeedbackCyclesPage() {
   interface PastOccurrence {
@@ -348,32 +348,53 @@ export default function FeedbackCyclesPage() {
   
   return (
     <div className='container mx-auto py-8 px-4'>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className='text-4xl font-light text-berkeleyblue'>Feedback Cycles</h2>
-        {!hasActiveOrDraftCycle && (
-          <Button onClick={() => setShowCreateModal(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Create New Cycle
-          </Button>
-        )}
+      <div className='bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-100'>
+        <div className='flex items-center justify-between'>
+            <div className='flex items-center'>
+                <div className='bg-nonphotoblue-600 rounded-md p-2 mr-4 items-center'>
+                    <Shell className="h-12 w-12 text-nonphotoblue-100" />
+                </div>
+                <div>
+                    <h2 className={`text-4xl font-light text-nonphotoblue-600 ${radley.className}`}>
+                      Manage Feedback Cycles
+                    </h2>
+                    <p className='text-slate-500'>
+                      Company Admin
+                    </p>
+                </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              {!hasActiveOrDraftCycle && (
+                <Button
+                variant="secondary"
+                className="flex items-center gap-2"
+                onClick={() => setShowCreateModal(true)}
+              >
+                  <Plus className="h-5 w-5 text-cerulean-400" />
+                  Create New Cycle
+                </Button>
+              )}
+              </div>
+          </div>
       </div>
       
       {cycles.some(c => c.status === 'active') && (
-        <Alert className="mb-6 bg-blue-50 border-blue-200">
-          <AlertDescription className="text-blue-700">
-            <strong>Active Cycles:</strong> Each active cycle will automatically send feedback requests according to its frequency. 
-            The next emails will be sent on the upcoming Friday.
-          </AlertDescription>
-        </Alert>
+        <>
+        <div className="p-4 bg-nonphotoblue-100 border-nonphotoblue-600 border rounded-md mb-6 text-nonphotoblue-700 items-center">
+          <Info className="h-5 w-5 inline-block mr-2" />
+          <strong>Active Cycles:</strong> Each active cycle will automatically send feedback requests according to its frequency.
+        </div>
+        </>
       )}
       
       <Card>
-        <CardHeader>
+        {/* <CardHeader>
           <CardTitle>All Feedback Cycles</CardTitle>
           <CardDescription>
             Manage your company&apos;s feedback cycles and their status.
           </CardDescription>
-        </CardHeader>
+        </CardHeader> */}
         <CardContent>
           {cycles.length === 0 ? (
             <div className="text-center py-8">
