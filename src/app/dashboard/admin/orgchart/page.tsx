@@ -32,7 +32,7 @@ export default function OrgChartPage() {
 
   // Show org chart if admin
   return (
-    <div className="container mx-auto px-4 max-w-[85%] absolute top-30 left-30">
+    <div className="container mx-auto max-w-[80%] absolute top-30 left-30">
       <OrgChartContainer />
     </div>
   );

@@ -199,6 +199,7 @@ export default function ManagerFeedbackPage() {
           </div>
 
           <div>
+            <h2 className='text-2xl font-light text-berkeleyblue mt-10 mb-4'>Recent Feedback</h2>
             <FeedbackList 
               employeeId={selectedEmployee !== 'all' ? selectedEmployee : undefined} 
               managerId={user?.id} 

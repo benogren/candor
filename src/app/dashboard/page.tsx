@@ -10,8 +10,11 @@ import { ProfileModal } from '@/components/ProfileModal';
 import supabase from '@/lib/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 import { useRouter } from 'next/navigation';
-import { Home, MessagesSquare, Users } from 'lucide-react';
+import { ArrowRight, Building2, Home, Users } from 'lucide-react';
 import { radley } from '../fonts';
+import { Badge } from '@/components/ui/badge';
+import { InfoCircledIcon } from '@radix-ui/react-icons';
+import Image from 'next/image';
 
 export default function DashboardPage() {
   const { user, memberStatus } = useAuth();
@@ -368,25 +371,8 @@ export default function DashboardPage() {
         />
       )}
       
-      {isAdmin && !activeCycle && (
-        <div className='container mx-auto py-8 px-4'>
-          <div className="mb-6 p-4 bg-cerulean-200 border border-cerulean-500 rounded-md text-sm text-center">
-          <p className="text-cerulean-700">
-            You&#39;re a company admin &mdash; manage your company settings and feedback cycles in your <Link className='text-cerulean-800 underline underline-offset-4 hover:text-cerulean-900' href='/dashboard/admin/'>Admin Dashboard</Link>
-          </p>
-          </div>
-        </div>
-      )}
-      {memberStatus === 'pending' && !isAdmin && (
-        <div className='container mx-auto py-8 px-4'>
-          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-md text-sm text-center">
-          <p className="text-amber-700">
-            <strong>Account Pending Approval.</strong> Your account is waiting for admin approval. Some features may be limited until your account is approved.
-          </p>
-          </div>
-        </div>
-      )}
-      <div className="container mx-auto px-4">
+    
+      <div className="container mx-auto">
         <div className='bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-100'>
           <div className='flex items-center justify-between'>
               <div className='flex items-center'>
@@ -394,7 +380,7 @@ export default function DashboardPage() {
                       <Home className="h-12 w-12 text-cerulean-100" />
                   </div>
                   <div>
-                      <h2 className={`text-4xl font-light text-cerulean ${radley.className}`}>Your Feedback</h2>
+                      <h2 className={`text-4xl font-light text-cerulean ${radley.className}`}>Welcome Back, {firstName}!</h2>
                       <p className='text-cerulean-300'>Dashboard</p>
                   </div>
               </div>
@@ -416,61 +402,78 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {needsFeedback && (
-          <div className='bg-cerulean-400 p-8 rounded-md gap-4 shadow-md mb-4'>
-            <div className='flex items-center gap-4 mb-2 text-white'>
-              <MessagesSquare className="h-8 w-8" />
-              <h4 className='text-lg font-light'>
-              {feedbackStarted ? (
-                <>
-                Hey {firstName}, finish your feedback!
-                </>
-              ) : (
-                <>
-                Hey {firstName}, your teammates are waiting on your feedback!
-                </>
-              )}
-              </h4>
-            </div>
-            <p className='text-cerulean-100 text-base font-light mb-4'>
-              Feedback is a great way to acknowledge and help a colleague identify their strengths and areas for improvement.
+        {isAdmin && !activeCycle && (
+          <div className='relative overflow-hidden bg-gradient-to-bl from-cerulean-500 via-berkleyblue-500 to-cerulean-700 p-8 rounded-md gap-4 shadow-md mb-4'>
+            <Building2 className="h-[400px] w-[400px] text-cerulean-100/10 absolute -bottom-28 -right-6 -rotate-45" />
+            <Badge className='bg-cerulean-400 text-cerulean-700 font-semibold mb-2 text-xs py-1 relative z-10'>
+              Company Setup
+            </Badge>
+
+            <h2 className={`text-4xl font-light text-cerulean-100 max-w-xl mb-4 relative z-10 ${radley.className}`}>
+              Hey {firstName}, finish setting up your company!
+            </h2>
+            <p className='text-cerulean-100 text-base font-light mb-4 max-w-xl relative z-10'>
+              You&#39;re a company admin &mdash; manage your company settings, org chart, feedback cycles, and more in your Admin Dashboard.
             </p>
-            {feedbackStarted ? (
-              <Button 
-              onClick={inProgressSession ? handleContinueFeedback : handleStartFeedback} 
-              variant={inProgressSession ? "default" : "outline"}
-              disabled={isButtonLoading}
+            <Button 
+              size="lg"
+              variant="outline"
+              className="relative z-10"
             >
-              {isButtonLoading ? (
-                <>
-                  Loading...
-                </>
-              ) 
-              : "Continue your Feedback"
-              }
+              <Link href="/dashboard/admin">
+              Go to Admin Dashboard
+              </Link>
+                <ArrowRight className="h-5 w-5 ml-2" />
             </Button>
-            ) : (
-              <>
-              <Button 
-              onClick={inProgressSession ? handleContinueFeedback : handleStartFeedback} 
-              variant={inProgressSession ? "default" : "outline"}
-              disabled={isButtonLoading}
-            >
-              {isButtonLoading ? (
-                <>
-                  Loading...
-                </>
-              ) 
-              : "Get Started"
-              }
-            </Button>
-              </>
-            )
-          }
+          </div>
+        )}
+        
+        {memberStatus === 'pending' && !isAdmin && (
+          <div className='relative overflow-hidden bg-gradient-to-bl from-cerulean-500 via-berkleyblue-500 to-cerulean-700 p-8 rounded-md gap-4 shadow-md mb-4'>
+            <InfoCircledIcon className="h-[400px] w-[400px] text-cerulean-100/10 absolute -bottom-28 -right-6 -rotate-45" />
+            <Badge className='bg-cerulean-400 text-cerulean-700 font-semibold mb-2 text-xs py-1 relative z-10'>
+              Account Pending
+            </Badge>
+
+            <h2 className={`text-4xl font-light text-cerulean-100 max-w-xl mb-4 relative z-10 ${radley.className}`}>
+              Hey {firstName}, your account is pending!
+            </h2>
+            <p className='text-cerulean-100 text-base font-light mb-4 max-w-xl relative z-10'>
+              Your account is waiting for admin approval. Some features may be limited until your account is approved
+            </p>
           </div>
         )}
 
-        
+        {needsFeedback && (
+          <div className='relative overflow-hidden bg-gradient-to-bl from-cerulean-500 via-berkleyblue-500 to-cerulean-700 p-8 rounded-md gap-4 shadow-md mb-4'>
+            {/* <MessagesSquare className="h-[400px] w-[400px] text-cerulean-100/10 absolute -bottom-28 -right-6 -rotate-45" /> */}
+            <Image src="/candor-coach-hero.png" alt="Candor" width={500} height={333} priority className="h-[333px] w-[500px] absolute -bottom-10 -right-2 " />
+            <Badge className='bg-cerulean-400 text-cerulean-700 font-semibold mb-2 text-xs py-1 relative z-10'>
+              Give Feedback
+            </Badge>
+
+            <h2 className={`text-4xl font-light text-cerulean-100 max-w-xl mb-4 relative z-10 ${radley.className}`}>
+              Hey {firstName}, {feedbackStarted ? " finish your feedback!": " your teammates are waiting on your feedback!"}
+            </h2>
+            <p className='text-cerulean-100 text-base font-light mb-4 max-w-xl relative z-10'>
+              Feedback is a great way to acknowledge and help your teammates identify their strengths and areas for improvement.
+            </p>
+            <Button 
+              size="lg"
+              onClick={inProgressSession ? handleContinueFeedback : handleStartFeedback} 
+              variant={inProgressSession ? "default" : "outline"}
+              disabled={isButtonLoading}
+              className="relative z-10"
+            >
+              {feedbackStarted
+                ? (isButtonLoading ? "Loading..." : "Continue your Feedback")
+                : (isButtonLoading ? "Loading..." : "Get Started")}
+                <ArrowRight className="h-5 w-5 ml-2" />
+            </Button>
+          </div>
+        )}
+
+        <h2 className='text-2xl font-light text-berkeleyblue mt-10 mb-4'>Your Recent Feedback</h2>
         <FeedbackList userId={user?.id} />
       </div>
     </>

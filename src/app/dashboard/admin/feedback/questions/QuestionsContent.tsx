@@ -175,7 +175,7 @@ export default function QuestionsContent() {
   }
   
   return (
-    <div className="container mx-auto py-8 px-4">
+    <div className="container mx-auto">
       <div className='bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-100'>
         <div className='flex items-center justify-between'>
             <div className='flex items-center'>

@@ -744,7 +744,7 @@ export default function CompanyValuesPage() {
   }
   
   return (
-    <div className="container mx-auto py-8 px-4">
+    <div className="container mx-auto">
 
       <div className='bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-100'>
         <div className='flex items-center justify-between'>
@@ -883,101 +883,6 @@ export default function CompanyValuesPage() {
           </Tabs>
         </CardContent>
       </Card>
-      
-      {/* <Tabs defaultValue="active">
-        <TabsList className="mb-4">
-          <TabsTrigger value="active">Active</TabsTrigger>
-          <TabsTrigger value="inactive">Inactive</TabsTrigger>
-          <TabsTrigger value="all">All</TabsTrigger>
-        </TabsList>
-        
-        {['active', 'inactive', 'all'].map((tab) => (
-          <TabsContent key={tab} value={tab}>
-            <Card>
-              <CardHeader>
-                <CardTitle>{tab === 'active' ? 'Active' : tab === 'inactive' ? 'Inactive' : 'All'} Values</CardTitle>
-                <CardDescription>
-                  {tab === 'active' 
-                    ? 'Values currently being used in feedback sessions.' 
-                    : tab === 'inactive' 
-                      ? 'Deactivated values not currently in use.' 
-                      : 'All company values.'}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {values.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <p>No company values found. Click &quot;Add New Value&quot; to create one.</p>
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Icon</TableHead>
-                        <TableHead>Name</TableHead>
-                        <TableHead className="hidden md:table-cell">Description</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {values
-                        .filter(value => 
-                          tab === 'all' || 
-                          (tab === 'active' && value.active) || 
-                          (tab === 'inactive' && !value.active)
-                        )
-                        .map((value) => (
-                          <TableRow key={value.id}>
-                            <TableCell>
-                              <div className="w-10 h-10 flex items-center justify-center">
-                                {value.icon ? (
-                                  <FontAwesomeIcon 
-                                    icon={['fas', value.icon as IconName]} 
-                                    className="h-5 w-5 text-cerulean" 
-                                  />
-                                ) : (
-                                  <span className="text-gray-400">—</span>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="font-medium">{value.name}</TableCell>
-                            <TableCell className="hidden md:table-cell max-w-xs truncate">
-                              {value.description}
-                            </TableCell>
-                            <TableCell>
-                              <span className={`px-2 py-1 rounded-full text-xs ${value.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                                {value.active ? 'Active' : 'Inactive'}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end space-x-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setEditValue(value)}
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant={value.active ? "destructive" : "outline"}
-                                  size="sm"
-                                  onClick={() => handleToggleActive(value)}
-                                >
-                                  {value.active ? 'Deactivate' : 'Activate'}
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        ))}
-      </Tabs> */}
       
       {/* Add Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>

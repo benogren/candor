@@ -6,7 +6,7 @@ import { useEditor, EditorContent, BubbleMenu } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import TextAlign from '@tiptap/extension-text-align';
-import { ArrowLeft, Bold, Italic, Heading1, Heading2, Heading3, Heading4, List, ListOrdered, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
+import { ArrowLeft, Bold, Italic, Heading1, Heading2, Heading3, Heading4, List, ListOrdered, AlignLeft, AlignCenter, AlignRight, NotebookPen, NotepadText, Sparkles } from 'lucide-react';
 import { useAuth } from '@/lib/context/auth-context';
 import supabase from '@/lib/supabase/client';
 import { toast } from '@/components/ui/use-toast';
@@ -14,6 +14,8 @@ import { formatDistanceToNow } from 'date-fns';
 import { debounce } from 'lodash';
 import '../../../styles/editor-styles.css';
 import { overpass } from '../../../fonts';
+import { radley } from '../../../fonts';
+import Link from 'next/link';
 // import { fetchWithRetry } from '@/lib/fetchWithRetry';
 
 // Type definitions
@@ -440,42 +442,55 @@ const handleRetryGeneration = async () => {
   }
   
   return (
-    <div className="flex flex-col min-h-screen px-12">
-      {/* Header */}
-      <header className="sticky top-0 border-b border-gray-200 z-10 bg-white pb-4 pt-0">
-        <div className="container mx-auto px-4 py-2 flex items-center justify-between">
-          <div className='flex items-center'>
-            <button
-              onClick={handleBack}
-              className="flex items-center text-gray-600 hover:text-gray-900 h-8"
-            >
-              <ArrowLeft className="h-5 w-5 mr-2" />
-              Back
-            </button>
+    <div className='container mx-auto'>
 
-            {/* Title */}
-            <input
-                type="text"
-                value={note.title}
-                onChange={handleTitleChange}
-                className={` border-none focus:outline-none min-w-[460px] mt-1 focus:ring-0 m-0 p-0 ml-8 ${overpass.className}`}
-                disabled={note.is_generating}
-                placeholder="Enter title..."
-            />
+      <div className='bg-white rounded-lg shadow-md p-6 mb-2 border border-gray-100'>
+          <div className='flex items-center'>
+            <div className='flex-none'>
+              <div className='bg-gray-100 rounded-md p-2 items-center'>
+                <Link 
+                onClick={handleBack}
+                href={``}
+                aria-label='Back to notes'
+                >
+                {note.content_type === 'prep' && (
+                  <NotepadText className="h-12 w-12 text-cerulean-400" />
+                )}
+                {note.content_type === 'review' && (
+                  <NotebookPen className="h-12 w-12 text-cerulean-400" />
+                )}
+                {note.content_type === 'summary' && (
+                  <Sparkles className="h-12 w-12 text-cerulean-400" />
+                )}
+                </Link>
+              </div>
+            </div>
+            <div className='grow mr-4 ml-4'>
+              <div className={`text-3xl font-light text-cerulean ${radley.className} w-full  `}>
+                <input
+                    type="text"
+                    value={note.title}
+                    onChange={handleTitleChange}
+                    className={`border-none rounded-md focus:outline hover:outline w-full focus:ring-0 m-0 p-0`}
+                    disabled={note.is_generating}
+                    placeholder="Enter title..."
+                />
+                {/* Manage: {note.content_type} */}
+                <p className='text-cerulean-300 text-sm font-light'>
+                  {isSaving ? (
+                    'Saving...'
+                  ) : lastSaved ? (
+                    `Last saved ${formatDistanceToNow(lastSaved, { addSuffix: true })}`
+                  ) : (
+                    ''
+                  )}
+                </p>
+              </div>
+            </div>
           </div>
-        
-          
-          <div className="text-sm text-gray-500">
-            {isSaving ? (
-              'Saving...'
-            ) : lastSaved ? (
-              `Last saved ${formatDistanceToNow(lastSaved, { addSuffix: true })}`
-            ) : (
-              ''
-            )}
-          </div>
-        </div>
-      </header>
+      </div>
+      
+    <div className="flex flex-col min-h-screen">
       
       {/* Main content */}
       <main className="flex-1 container mx-auto px-0">
@@ -638,6 +653,7 @@ const handleRetryGeneration = async () => {
           </div>
         </div>
       </main>
+    </div>
     </div>
   );
 }

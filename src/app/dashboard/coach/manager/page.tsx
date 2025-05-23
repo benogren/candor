@@ -602,7 +602,7 @@ export default function ManagerCoachPage() {
 }, [fetchTeamMembers, fetchManagerNotes]);
 
     return (
-        <div className="container mx-auto px-4 py-6">
+        <div className="container mx-auto">
             
             <div className='bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-100'>
                 <div className='flex items-center justify-between'>

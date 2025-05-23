@@ -115,8 +115,9 @@ export default function TeamManagementPage() {
 
   return (
     <>
+    <div className='container mx-auto'>
     {!isIndustrySet && companyData && (
-      <div className='container mx-auto py-8 px-4'>
+      <div className="">
         <div className="mb-6 p-4 bg-pantonered-200 border border-pantonered-500 rounded-md text-sm text-center">
         <p className="text-pantonered-700">
         <FontAwesomeIcon icon={faTriangleExclamation} className="mr-2" />
@@ -133,7 +134,6 @@ export default function TeamManagementPage() {
         </div>
       </div>
     )}
-    <div className="container mx-auto py-8 px-4">
       
       <div className='bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-100'>
         <div className='flex items-center justify-between'>
@@ -239,10 +239,11 @@ export default function TeamManagementPage() {
           
       </div>
   </div>
-  
-  <MemberManagementPanel key={refreshKey} />
+  <div className="w-full overflow-x-auto">
+    <MemberManagementPanel key={refreshKey} />
+  </div>
 
-    </div>
+
     {/* Company Modal */}
     {companyData && (
       <CompanyModal
@@ -254,7 +255,7 @@ export default function TeamManagementPage() {
         defaultValues={companyData}
       />
     )}
-
+    </div>
     </>
   );
 }

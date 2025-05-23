@@ -29,17 +29,21 @@ function MainContent({ children }: { children: ReactNode; company: Company }) {
   
   return (
     <div className={`flex-1 transition-all duration-300 ${isCollapsed ? 'ml-16' : 'ml-64'}`}>
-      <div className="flex items-center p-4">
-        <Button variant="ghost" size="icon" asChild>
+      <div className="flex items-center">
+        <Button 
+        variant="ghost" 
+        size="icon"
+        className={`absolute top-4 left-90 z-10 ml-4`} 
+        asChild
+        >
           <SidebarTrigger>
             <Menu className="h-5 w-5" />
           </SidebarTrigger>
         </Button>
-        {/* <h1 className="ml-4 text-xl font-base text-slate-500">{company.name}</h1> */}
       </div>
-      <main className="mx-auto px-4 sm:px-6 lg:px-8 py-6 overflow-y-scroll">
+      <div className="w-full mt-16 px-8 pb-10">
         {children}
-      </main>
+      </div>
     </div>
   );
 }
@@ -139,7 +143,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   // When we have both user and company, render the full layout
   return (
     <SidebarProvider>
-      <div className="flex h-screen overflow-scroll w-full mt-0 pt-0">
+      {/* <div className="flex h-screen overflow-scroll w-full mt-0 pt-0"> */}
+      <div className='flex h-screen w-full'>
         <DashSidebar user={user} company={company} />
         <MainContent company={company}>
           {children}
