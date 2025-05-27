@@ -693,6 +693,8 @@ async function generateWithTwoStages(
     managerContext
   );
 
+  // console.log("*****Stage 2 prompt:", stage2Prompt);
+
   const stage2Completion = await openai.chat.completions.create({
     model: "gpt-4-turbo", // Higher quality model for final generation
     messages: [
@@ -786,6 +788,8 @@ function createStage2Prompt(
       Context:
       - ${userContext.userName} is a ${userContext.jobTitle} at ${userContext.company}
       - Recipient: ${recipient}
+      - ${isManagerSummary ? `This is a manager's preparation for a 1:1 meeting with their employee, make this relevant to the manager` : `This is an employee's preparation for a 1:1 meeting with their manager, make this relevant to the employee and write it in the 1st person`}
+      - Do not include Date/Time or Location sections, focus on discussion topics.
       
       ${existingInsights ? `IMPORTANT CONTEXT FROM PREVIOUS MEETINGS:\n${existingInsights}\n` : ''}
       
@@ -793,7 +797,14 @@ function createStage2Prompt(
       
       ### 1:1 Agenda
 
-      ${hasPreviousWeekContext ? `#### Follow-up from Last Week\n- [Follow-up item based on previous agenda]\n    - [Specific question about progress or outcomes]\n- [Another follow-up topic]\n    - [Related check-in question]\n\n` : ''}#### Areas for Potential Growth or Improvement
+      ${hasPreviousWeekContext ? `
+      #### Follow-up from Last Week\n- 
+      [Follow-up item based on previous agenda]\n    
+      - ${isManagerSummary ? `[Specific question  to ask your employee about their progress or outcomes]` : `[Share your progress or outcomes]`}
+      - ${isManagerSummary ? `[Another follow-up topic to ask your employee]` : `[Another follow-up topic to share with your manager]`}  
+      - ${isManagerSummary ? `[Another follow-up topic to ask your employee]` : `[Another follow-up topic to share with your manager]`}` : ''}
+
+      #### Areas for Potential Growth or Improvement
       1. [Area 1]
           - [Question to ask ${isManagerSummary ? 'your employee' : 'your manager'} about this area]
       2. [Area 2]
@@ -801,15 +812,15 @@ function createStage2Prompt(
 
       #### Challenges identified in Feedback
       - [Challenge 1]
-          - [Question about this challenge]
+          - [Question to ask ${isManagerSummary ? 'your employee' : 'your manager'} about this challenge]
       - [Challenge 2]
-          - [Question about this challenge]
+          - [Question to ask ${isManagerSummary ? 'your employee' : 'your manager'} about this challenge]
 
       #### Professional Development Opportunities
       1. [Opportunity 1]
-          - [Related question]
+          - [Related question to ask ${isManagerSummary ? 'your employee' : 'your manager'}]
       2. [Opportunity 2]
-          - [Related question]
+          - [Related question to ask ${isManagerSummary ? 'your employee' : 'your manager'}]
 
       #### Other Questions to Ask ${isManagerSummary ? 'Your Employee' : 'Your Manager'}
       1. [Question 1]
@@ -827,6 +838,7 @@ function createStage2Prompt(
       Context:
       - ${userContext.userName} is a ${userContext.jobTitle} at ${userContext.company}
       - Recipient: ${recipient}
+      - ${isManagerSummary ? `This is a manager's preformance review of their employee, make this relevant to the manager and write it in the 2nd person about the employee` : `This is an employee's self-reflection that they will share with their manager, make this relevant to the employee and write it in the 1st person`}
       
       Create a comprehensive review structure with actionable sections and relevant questions.
     `;
@@ -873,8 +885,9 @@ async function generateGeneric1on1Agenda(
     - ${userContext.userName} is a ${userContext.jobTitle} at ${userContext.company}
     - ${userContext.industry}
     - Recipient: ${recipient}
-    - This is a general 1:1 meeting agenda (no specific feedback to reference)
+    - ${isManagerPrep ? `This is a manager's preparation for a 1:1 meeting with their employee, make this relevant to the manager` : `This is an employee's preparation for a 1:1 meeting with their manager, make this relevant to the employee`}
     ${hasPreviousWeekContext ? '- IMPORTANT: Reference and follow up on items from the previous week\'s agenda' : ''}
+    - Do not include Date/Time or Location sections, focus on discussion topics.
     
     Create an agenda that covers:
     
@@ -882,41 +895,43 @@ async function generateGeneric1on1Agenda(
 
     ${hasPreviousWeekContext ? `#### Follow-up from Last Week
     1. [Follow-up item based on previous agenda context]
-        - [Question about progress or outcomes from last week]
+        ${isManagerPrep ? `- [Question about employee's progress or outcomes from last week]` : `- [Share your progress or outcomes from last week]`}
     2. [Another follow-up topic from previous meeting]
-        - [Check-in question about commitments or action items]
+        ${isManagerPrep ? `- [Check-in question about employee's progress or action items from last week]` : `- [Share your progress or outcomes from last week]`}
 
     ` : ''}#### Current Projects and Priorities
     1. [Key project or responsibility discussion point]
-        - [Question to ask ${isManagerPrep ? 'your employee' : 'your manager'} about current work]
+        - [Question to ask ${isManagerPrep ? 'your employee about their' : 'your manager about your'} current work]
     2. [Another priority area]
-        - [Related question about progress/challenges]
+        - [Related question to ask ${isManagerPrep ? 'your employee about their' : 'your manager about your'} progress/challenges]
 
     #### Professional Development and Growth
     1. [Skill development opportunity relevant to their role]
-        - [Question about learning goals or interests]
+        - [Question to ask ${isManagerPrep ? 'your employee about their' : 'your manager about your'} learning goals or interests]
     2. [Career progression topic]
-        - [Question about career aspirations or next steps]
+        - [Question to ask ${isManagerPrep ? 'your employee about their' : 'your manager about your'} career aspirations or next steps]
 
     #### Challenges and Support Needed
     - [Common challenge for someone in their role/industry]
-        - [Question about obstacles or support needed]
+        - [Question to ask ${isManagerPrep ? 'your employee about their' : 'your manager about your'} obstacles or support needed]
     - [Resource or process improvement area]
-        - [Question about what would help them be more effective]
+        - [Question to ask ${isManagerPrep ? 'your employee about what would help them' : 'your manager about what would help you'} be more effective]
 
     #### Team and Collaboration
     1. [Team dynamics or collaboration topic]
-        - [Question about working relationships or team processes]
+        - [Question to ask ${isManagerPrep ? 'your employee about their' : 'your manager about your'} working relationships or team processes]
     2. [Communication or alignment topic]
-        - [Question about clarity or coordination]
+        - [Question to ask ${isManagerPrep ? 'your employee what clarity or coordination they need from you' : 'your manager what clarity or coordination you need from them'}]
 
     #### Other Questions to Ask ${isManagerPrep ? 'Your Employee' : 'Your Manager'}
-    1. [General check-in question about wellbeing/satisfaction]
+    ${isManagerPrep ? '1. [General check-in question about wellbeing or satisfaction]' : '1. [General check-in question]'}
     2. [Question about goals or objectives]
     3. [Question about feedback or recognition]
     
     ${hasPreviousWeekContext ? 'Focus on creating continuity with the previous meeting by following up on discussed topics and commitments. ' : ''}Make the agenda specific to their role (${userContext.jobTitle}) and industry context. Focus on actionable discussion topics that would be valuable for a productive 1:1 conversation.
   `;
+
+  // console.log("*****Regular prompt:", prompt);
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4-turbo",
