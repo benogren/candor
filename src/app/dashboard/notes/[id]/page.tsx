@@ -329,7 +329,7 @@ export default function NotesPage() {
     // Start progress simulation
     startProgressSimulation();
     
-    // Start polling for note updates
+    // Start polling for note updates immediately
     startPollingForUpdates();
 
     try {
@@ -347,7 +347,12 @@ export default function NotesPage() {
         message: 'Connecting to generation service...'
       }));
 
-      const response = await fetch('/api/notes/generate', {
+      // Set a shorter timeout for the request to handle Vercel timeouts gracefully
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout - continuing in background')), 25000)
+      );
+
+      const fetchPromise = fetch('/api/notes/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -357,26 +362,58 @@ export default function NotesPage() {
         signal: abortControllerRef.current.signal
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Request failed: ${response.statusText}`);
+      try {
+        const response = await Promise.race([fetchPromise, timeoutPromise]);
+        
+        if (response instanceof Response) {
+          if (!response.ok) {
+            // If it's a 504 timeout, don't treat it as an error - continue polling
+            if (response.status === 504) {
+              console.log('Gateway timeout detected - continuing with background polling');
+              setGenerationProgress(prev => ({
+                ...prev,
+                progress: 30,
+                message: 'Request timed out, but generation continues in background...'
+              }));
+              return; // Let polling handle the rest
+            }
+            
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Request failed: ${response.statusText}`);
+          }
+
+          // Generation completed successfully via direct response
+          setGenerationProgress(prev => ({
+            ...prev,
+            progress: 100,
+            message: 'Content generation completed!',
+            isGenerating: false
+          }));
+
+          await fetchUpdatedNote();
+
+          toast({
+            title: 'Generation Complete',
+            description: 'Your content has been generated successfully!',
+          });
+        }
+      } catch (timeoutError) {
+        // Handle timeout gracefully - let polling continue
+        console.log('Request timed out, continuing with background polling', timeoutError);
+        setGenerationProgress(prev => ({
+          ...prev,
+          progress: 25,
+          message: 'Generation continues in background - polling for updates...'
+        }));
+        
+        toast({
+          title: 'Generation In Progress',
+          description: 'Generation is taking longer than usual but continues in the background. You\'ll see updates automatically.',
+        });
+        
+        // Don't throw - let polling handle completion
+        return;
       }
-
-      // Generation completed successfully
-      setGenerationProgress(prev => ({
-        ...prev,
-        progress: 100,
-        message: 'Content generation completed!',
-        isGenerating: false
-      }));
-
-      // Fetch the updated note
-      await fetchUpdatedNote();
-
-      toast({
-        title: 'Generation Complete',
-        description: 'Your content has been generated successfully!',
-      });
 
     } catch (generationError: unknown) {
       if (generationError instanceof Error && generationError.name === 'AbortError') {
@@ -389,6 +426,16 @@ export default function NotesPage() {
       const errorMessage = generationError instanceof Error 
         ? generationError.message 
         : 'Generation failed';
+      
+      // If it's a timeout error, don't show as failed - continue polling
+      if (errorMessage.includes('timeout') || errorMessage.includes('Request timeout')) {
+        setGenerationProgress(prev => ({
+          ...prev,
+          progress: 30,
+          message: 'Generation continues in background...'
+        }));
+        return;
+      }
       
       setGenerationProgress({
         isGenerating: false,
@@ -403,16 +450,6 @@ export default function NotesPage() {
         description: errorMessage,
         variant: 'destructive',
       });
-    } finally {
-      // Clean up timers
-      if (progressTimerRef.current) {
-        clearInterval(progressTimerRef.current);
-        progressTimerRef.current = null;
-      }
-      if (pollingTimerRef.current) {
-        clearInterval(pollingTimerRef.current);
-        pollingTimerRef.current = null;
-      }
     }
   }, [note?.id, generationProgress.isGenerating, startProgressSimulation, startPollingForUpdates, fetchUpdatedNote]);
   
