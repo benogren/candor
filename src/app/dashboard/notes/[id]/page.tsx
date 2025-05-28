@@ -6,7 +6,7 @@ import { useEditor, EditorContent, BubbleMenu } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import TextAlign from '@tiptap/extension-text-align';
-import { ArrowLeft, Bold, Italic, Heading1, Heading2, Heading3, Heading4, List, ListOrdered, AlignLeft, AlignCenter, AlignRight, NotebookPen, NotepadText, Sparkles } from 'lucide-react';
+import { ArrowLeft, Bold, Italic, Heading1, Heading2, Heading3, Heading4, List, ListOrdered, AlignLeft, AlignCenter, AlignRight, NotebookPen, NotepadText, Sparkles, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
 import { useAuth } from '@/lib/context/auth-context';
 import supabase from '@/lib/supabase/client';
 import { toast } from '@/components/ui/use-toast';
@@ -16,7 +16,6 @@ import '../../../styles/editor-styles.css';
 import { overpass } from '../../../fonts';
 import { radley } from '../../../fonts';
 import Link from 'next/link';
-// import { fetchWithRetry } from '@/lib/fetchWithRetry';
 
 // Type definitions
 type Note = {
@@ -33,6 +32,27 @@ type Note = {
   is_generating: boolean;
 };
 
+interface GenerationProgress {
+  isGenerating: boolean;
+  startTime?: Date;
+  progress: number;
+  message: string;
+  hasError: boolean;
+  errorMessage?: string;
+}
+
+interface ProgressStage {
+  progress: number;
+  message: string;
+  duration: number;
+}
+
+interface NoteUpdateData {
+  content: string;
+  is_generating: boolean;
+  updated_at: string;
+}
+
 export default function NotesPage() {
   const router = useRouter();
   const params = useParams();
@@ -45,45 +65,26 @@ export default function NotesPage() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   
-  // Reference to track if generation is in progress
-  const isGeneratingRef = useRef(false);
+  // Generation progress tracking
+  const [generationProgress, setGenerationProgress] = useState<GenerationProgress>({
+    isGenerating: false,
+    progress: 0,
+    message: '',
+    hasError: false
+  });
   
-  // Create a stable reference to the debounced save function
+  // References for timers and generation control
+  const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const debouncedSaveRef = useRef<ReturnType<typeof debounce> | null>(null);
 
-  const [generationFailed, setGenerationFailed] = useState(false);
-
-  // Add this function to handle retry
-const handleRetryGeneration = async () => {
-  if (!note?.id) return;
-  
-  // Reset the failure state
-  setGenerationFailed(false);
-  
-  try {    
-    // Update local state to reflect this
-    setNote(prev => prev ? { ...prev, is_generating: true } : null);
-    
-    // Reset the generating ref so the useEffect can start the generation process again
-    isGeneratingRef.current = false;
-    
-  } catch (error) {
-    console.error('Error retrying generation:', error);
-    setGenerationFailed(true);
-    toast({
-      title: 'Error',
-      description: 'Could not restart generation. Please try again.',
-      variant: 'destructive',
-    });
-  }
-};
-  
   // Create a TipTap editor
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
         heading: {
-          levels: [1, 2, 3, 4]  // Explicitly enable levels 1-4
+          levels: [1, 2, 3, 4]
         }
       }),
       Placeholder.configure({
@@ -102,235 +103,21 @@ const handleRetryGeneration = async () => {
     },
     content: '',
     onUpdate: ({ editor }) => {
-      const html = editor.getHTML();
-      handleContentChange(html);
+      if (!generationProgress.isGenerating) {
+        const html = editor.getHTML();
+        handleContentChange(html);
+      }
     },
   });
-  
-  // Fetch the note when the page loads
-  useEffect(() => {
-    let isMounted = true;
-    
-    async function fetchNote() {
-      if (!id || !user) return;
-      
-      try {
-        setIsLoading(true);
-        const { data, error } = await supabase
-          .from('notes')
-          .select('*')
-          .eq('id', id)
-          .single();
-          
-        if (error) throw error;
-        
-        // Only update state if component is still mounted
-        if (isMounted) {
-          setNote(data);
-          setLastSaved(new Date(data.updated_at));
-          
-          // Parse content properly before setting it in the editor
-          if (editor && data.content) {
-            try {
-              // Try to parse it if it's stored as JSON string
-              if (typeof data.content === 'string' && data.content.startsWith('{')) {
-                const parsedContent = JSON.parse(data.content);
-                editor.commands.setContent(parsedContent);
-              } else {
-                // If it's just plain text or HTML, set it directly
-                editor.commands.setContent(data.content);
-              }
-            } catch (e) {
-              // If JSON parsing fails, fall back to treating it as plain text
-              console.error("Error parsing content:", e);
-              editor.commands.setContent(data.content);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching note:', error);
-        if (isMounted) {
-          setError('Could not load the note. You may not have permission to view it.');
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    }
-    
-    fetchNote();
-    
-    // Cleanup function
-    return () => {
-      isMounted = false;
-    };
-  }, [id, user, editor]);
-  
-  // Start generation if the note is in generating state
-  useEffect(() => {
-    let isMounted = true;
-    
-    async function generateContent() {
-      // Return early if note is null, not generating, or generation already in progress
-      if (!note || !note.is_generating || isGeneratingRef.current) return;
-      
-      // Set flag to prevent concurrent generation requests
-      isGeneratingRef.current = true;
-      let retries = 0;
-      const maxRetries = 3;
-      
-      while (retries < maxRetries) {
-        try {
-          console.log(`Starting content generation for note: ${note.id} (attempt ${retries + 1})`);
-          const { data: { session } } = await supabase.auth.getSession();
-          const token = session?.access_token;
-          
-          // Set a timeout to handle hung requests
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 60000); // 1 minute timeout
-          
-          const response = await fetch('/api/notes/generate', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              id: note.id
-            }),
-            signal: controller.signal
-          });
-          
-          clearTimeout(timeoutId);
-          
-          if (!response.ok) {
-            // If it's a timeout or auth error, retry
-            if (response.status === 504 || response.status === 401 || response.status === 403) {
-              retries++;
-              if (retries < maxRetries) {
-                // Wait before retrying
-                await new Promise(resolve => setTimeout(resolve, 2000 * retries));
-                continue;
-              }
-            }
-            
-            // Try to get response text for debugging
-            let errorText = '';
-            try {
-              errorText = await response.text();
-              console.error(`Error response: ${errorText.substring(0, 200)}...`);
-            } catch (textError) {
-              console.error(`Could not get error text: ${textError}`);
-            }
-            
-            throw new Error(`API responded with status ${response.status}: ${errorText.substring(0, 100)}...`);
-          }
-          
-          // Try to parse the response as JSON
-          let data;
-          try {
-            data = await response.json();
-          } catch (parseError) {
-            // If we can't parse the response as JSON, show an error with the response text
-            console.log(`Failed to parse response as JSON: ${parseError}`);
-            const responseText = await response.text();
-            throw new Error(`Failed to parse response: ${responseText.substring(0, 100)}...`);
-          }
-          
-          // Only update state if component is still mounted
-          if (isMounted) {
-            setNote(data.note);
-            
-            // Update editor with new content
-            if (editor && data.note.content) {
-              try {
-                editor.commands.setContent(data.note.content);
-              } catch (e) {
-                console.error("Error setting editor content:", e);
-              }
-            }
-          }
-          
-          // Success, break out of the retry loop
-          isGeneratingRef.current = false;
-          break;
-        } catch (error) {
-          console.error(`Error generating content (attempt ${retries + 1}):`, error);
-          
-          retries++;
-          if (retries < maxRetries) {
-            // Wait before retrying
-            await new Promise(resolve => setTimeout(resolve, 2000 * retries));
-            continue;
-          }
-          
-          if (isMounted) {
-            setGenerationFailed(true);
 
-            toast({
-              title: 'Error generating content',
-              description: error instanceof Error 
-                ? error.message.substring(0, 100) 
-                : 'Could not generate content. Please try again later.',
-              variant: 'destructive',
-            });
-            
-            // Reset the note generating state
-            try {
-              const { data: { session } } = await supabase.auth.getSession();
-              const token = session?.access_token;
-              
-              await fetch('/api/notes/update', {
-                method: 'PUT',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                  id: note.id,
-                  is_generating: false
-                }),
-              });
-              
-              // Update local state
-              setNote(prev => prev ? { ...prev, is_generating: false } : null);
-            } catch (updateError) {
-              console.error('Failed to update note state:', updateError);
-            }
-          }
-          
-          break;
-        } finally {
-          if (retries >= maxRetries) {
-            // Reset generating flag when retries are exhausted
-            isGeneratingRef.current = false;
-          }
-        }
-      }
-      
-      // Reset flag when done with all retries
-      isGeneratingRef.current = false;
-    }
-    
-    generateContent();
-    
-    // Cleanup function to prevent state updates after unmount
-    return () => {
-      isMounted = false;
-    };
-  }, [note?.id, note?.is_generating, editor]);
-  
   // Auto-save with debounce
   const saveNote = useCallback((title: string, content: string) => {
-    if (!note?.id || !user) return;
+    if (!note?.id || !user || generationProgress.isGenerating) return;
     
-    // Cancel any pending debounced saves
     if (debouncedSaveRef.current) {
       debouncedSaveRef.current.cancel();
     }
     
-    // Define the save function
     const saveToDB = async () => {
       try {
         setIsSaving(true);
@@ -359,8 +146,8 @@ const handleRetryGeneration = async () => {
         const data = await response.json();
         setNote(data.note);
         setLastSaved(new Date());
-      } catch (error) {
-        console.error('Error saving note:', error);
+      } catch (saveError) {
+        console.error('Error saving note:', saveError);
         toast({
           title: 'Error saving changes',
           description: 'Could not save your changes. Please try again.',
@@ -371,44 +158,510 @@ const handleRetryGeneration = async () => {
       }
     };
 
-    // Create the debounced version and save the reference
     debouncedSaveRef.current = debounce(saveToDB, 500);
-    
-    // Execute the debounced function
     debouncedSaveRef.current();
-  }, [note?.id, user]); // Only depend on note.id instead of the entire note object
+  }, [note?.id, user, generationProgress.isGenerating]);
+
+  // Handle title change
+  const handleTitleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!note || generationProgress.isGenerating) return;
+    
+    const newTitle = e.target.value;
+    setNote(prevNote => prevNote ? { ...prevNote, title: newTitle } : null);
+    saveNote(newTitle, note.content);
+  }, [note, saveNote, generationProgress.isGenerating]);
   
-  // Clean up the debounced function on unmount
+  // Handle content change
+  const handleContentChange = useCallback((content: string) => {
+    if (!note || generationProgress.isGenerating) return;
+    
+    setNote(prevNote => prevNote ? { ...prevNote, content } : null);
+    saveNote(note.title, content);
+  }, [note, saveNote, generationProgress.isGenerating]);
+
+  // Fetch updated note after generation
+  const fetchUpdatedNote = useCallback(async () => {
+    if (!id) return;
+
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('notes')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      setNote(data);
+      setLastSaved(new Date(data.updated_at));
+      
+      // Update editor with new content
+      if (editor && data.content) {
+        try {
+          editor.commands.setContent(data.content);
+        } catch (editorError) {
+          console.error("Error setting editor content:", editorError);
+        }
+      }
+
+    } catch (fetchError) {
+      console.error('Error fetching updated note:', fetchError);
+    }
+  }, [id, editor]);
+
+  // Simulate progress for better UX during generation
+  const startProgressSimulation = useCallback(() => {
+    if (progressTimerRef.current) {
+      clearInterval(progressTimerRef.current);
+    }
+
+    const stages: ProgressStage[] = [
+      { progress: 25, message: 'Gathering feedback data...', duration: 3000 },
+      { progress: 45, message: 'Analyzing responses...', duration: 5000 },
+      { progress: 65, message: 'Processing with AI...', duration: 10000 },
+      { progress: 85, message: 'Finalizing content...', duration: 8000 },
+    ];
+
+    let stageIndex = 0;
+    let currentProgress = 15;
+
+    const updateProgress = () => {
+      if (stageIndex < stages.length) {
+        const stage = stages[stageIndex];
+        const increment = (stage.progress - currentProgress) / (stage.duration / 2000);
+        
+        const timer = setInterval(() => {
+          currentProgress = Math.min(currentProgress + increment, stage.progress);
+          
+          setGenerationProgress(prev => {
+            if (!prev.isGenerating) return prev;
+            return {
+              ...prev,
+              progress: Math.round(currentProgress),
+              message: stage.message
+            };
+          });
+
+          if (currentProgress >= stage.progress) {
+            clearInterval(timer);
+            stageIndex++;
+            if (stageIndex < stages.length) {
+              setTimeout(updateProgress, 1000);
+            }
+          }
+        }, 2000);
+
+        progressTimerRef.current = timer;
+      }
+    };
+
+    setTimeout(updateProgress, 2000);
+  }, []);
+
+  // Poll for note updates during generation
+  const startPollingForUpdates = useCallback(() => {
+    if (pollingTimerRef.current) {
+      clearInterval(pollingTimerRef.current);
+    }
+
+    pollingTimerRef.current = setInterval(async () => {
+      try {
+        const { data, error: pollError } = await supabase
+          .from('notes')
+          .select('content, is_generating, updated_at')
+          .eq('id', id)
+          .single();
+
+        if (pollError) throw pollError;
+
+        const noteData = data as NoteUpdateData;
+
+        // If generation is complete (is_generating is false and we have content)
+        if (!noteData.is_generating && noteData.content && noteData.content !== note?.content) {
+          // Stop polling
+          if (pollingTimerRef.current) {
+            clearInterval(pollingTimerRef.current);
+            pollingTimerRef.current = null;
+          }
+
+          // Update note and editor
+          setNote(prev => prev ? { ...prev, ...noteData } : null);
+          setLastSaved(new Date(noteData.updated_at));
+          
+          if (editor && noteData.content) {
+            editor.commands.setContent(noteData.content);
+          }
+
+          // Update progress to completed
+          setGenerationProgress({
+            isGenerating: false,
+            progress: 100,
+            message: 'Content generation completed!',
+            hasError: false
+          });
+
+          toast({
+            title: 'Generation Complete',
+            description: 'Your content has been generated and is now available for editing!',
+          });
+        }
+      } catch (pollError) {
+        console.error('Error polling for updates:', pollError);
+      }
+    }, 3000); // Poll every 3 seconds
+  }, [id, note?.content, editor]);
+
+  // Enhanced generation with progress tracking
+  const startGenerationWithProgress = useCallback(async () => {
+    if (!note?.id || generationProgress.isGenerating) return;
+
+    // Create abort controller for this request
+    abortControllerRef.current = new AbortController();
+
+    setGenerationProgress({
+      isGenerating: true,
+      startTime: new Date(),
+      progress: 5,
+      message: 'Starting content generation...',
+      hasError: false
+    });
+
+    // Start progress simulation
+    startProgressSimulation();
+    
+    // Start polling for note updates
+    startPollingForUpdates();
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
+      // Update progress
+      setGenerationProgress(prev => ({
+        ...prev,
+        progress: 15,
+        message: 'Connecting to generation service...'
+      }));
+
+      const response = await fetch('/api/notes/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ id: note.id }),
+        signal: abortControllerRef.current.signal
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Request failed: ${response.statusText}`);
+      }
+
+      // Generation completed successfully
+      setGenerationProgress(prev => ({
+        ...prev,
+        progress: 100,
+        message: 'Content generation completed!',
+        isGenerating: false
+      }));
+
+      // Fetch the updated note
+      await fetchUpdatedNote();
+
+      toast({
+        title: 'Generation Complete',
+        description: 'Your content has been generated successfully!',
+      });
+
+    } catch (generationError: unknown) {
+      if (generationError instanceof Error && generationError.name === 'AbortError') {
+        console.log('Generation was cancelled');
+        return;
+      }
+
+      console.error('Error generating content:', generationError);
+      
+      const errorMessage = generationError instanceof Error 
+        ? generationError.message 
+        : 'Generation failed';
+      
+      setGenerationProgress({
+        isGenerating: false,
+        progress: 0,
+        message: '',
+        hasError: true,
+        errorMessage: errorMessage
+      });
+      
+      toast({
+        title: 'Generation Failed',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      // Clean up timers
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
+      if (pollingTimerRef.current) {
+        clearInterval(pollingTimerRef.current);
+        pollingTimerRef.current = null;
+      }
+    }
+  }, [note?.id, generationProgress.isGenerating, startProgressSimulation, startPollingForUpdates, fetchUpdatedNote]);
+  
+  // Fetch the note when the page loads
+  useEffect(() => {
+    let isMounted = true;
+    
+    async function fetchNote() {
+      if (!id || !user) return;
+      
+      try {
+        setIsLoading(true);
+        const { data, error: fetchError } = await supabase
+          .from('notes')
+          .select('*')
+          .eq('id', id)
+          .single();
+          
+        if (fetchError) throw fetchError;
+        
+        if (isMounted) {
+          setNote(data);
+          setLastSaved(new Date(data.updated_at));
+          
+          // Set editor content if available
+          if (editor && data.content) {
+            try {
+              if (typeof data.content === 'string' && data.content.startsWith('{')) {
+                const parsedContent = JSON.parse(data.content);
+                editor.commands.setContent(parsedContent);
+              } else {
+                editor.commands.setContent(data.content);
+              }
+            } catch (parseError) {
+              console.error("Error parsing content:", parseError);
+              editor.commands.setContent(data.content);
+            }
+          }
+
+          // If note is generating, start the generation process
+          if (data.is_generating) {
+            startGenerationWithProgress();
+          }
+        }
+      } catch (fetchError) {
+        console.error('Error fetching note:', fetchError);
+        if (isMounted) {
+          setError('Could not load the note. You may not have permission to view it.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+    
+    fetchNote();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [id, user, editor, startGenerationWithProgress]);
+
+  // Handle retry generation
+  const handleRetryGeneration = useCallback(async () => {
+    if (!note?.id) return;
+    
+    // Reset error state
+    setGenerationProgress({
+      isGenerating: false,
+      progress: 0,
+      message: '',
+      hasError: false
+    });
+    
+    // Mark note as generating if it isn't already
+    if (!note.is_generating) {
+      const { error: updateError } = await supabase
+        .from('notes')
+        .update({ is_generating: true })
+        .eq('id', note.id);
+      
+      if (updateError) {
+        console.error('Error updating note status:', updateError);
+        return;
+      }
+      
+      setNote(prev => prev ? { ...prev, is_generating: true } : null);
+    }
+    
+    // Start generation
+    await startGenerationWithProgress();
+  }, [note, startGenerationWithProgress]);
+
+  // Cancel generation
+  const handleCancelGeneration = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    // Clean up timers
+    if (progressTimerRef.current) {
+      clearInterval(progressTimerRef.current);
+      progressTimerRef.current = null;
+    }
+    if (pollingTimerRef.current) {
+      clearInterval(pollingTimerRef.current);
+      pollingTimerRef.current = null;
+    }
+
+    setGenerationProgress({
+      isGenerating: false,
+      progress: 0,
+      message: '',
+      hasError: false
+    });
+
+    toast({
+      title: 'Generation Cancelled',
+      description: 'Content generation has been cancelled.',
+    });
+  }, []);
+
+  // Handle back navigation
+  const handleBack = useCallback(() => {
+    // Clean up before leaving
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    router.back();
+  }, [router]);
+
+  // Auto-start generation when note is in generating state
+  useEffect(() => {
+    if (note?.is_generating && !generationProgress.isGenerating && !generationProgress.hasError) {
+      startGenerationWithProgress();
+    }
+  }, [note?.is_generating, generationProgress.isGenerating, generationProgress.hasError, startGenerationWithProgress]);
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current);
+      }
+      if (pollingTimerRef.current) {
+        clearInterval(pollingTimerRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
       if (debouncedSaveRef.current) {
         debouncedSaveRef.current.cancel();
       }
     };
   }, []);
-  
-  // Handle title change
-  const handleTitleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!note) return;
+
+  // Render generation status
+  const renderGenerationStatus = () => {
+    const { isGenerating, hasError, progress, message, errorMessage, startTime } = generationProgress;
     
-    const newTitle = e.target.value;
-    setNote(prevNote => prevNote ? { ...prevNote, title: newTitle } : null);
-    saveNote(newTitle, note.content);
-  }, [note, saveNote]);
-  
-  // Handle content change
-  const handleContentChange = useCallback((content: string) => {
-    if (!note) return;
-    
-    setNote(prevNote => prevNote ? { ...prevNote, content } : null);
-    saveNote(note.title, content);
-  }, [note, saveNote]);
-  
-  // Handle back navigation
-  const handleBack = useCallback(() => {
-    router.back();
-  }, [router]);
-  
+    if (!isGenerating && !hasError) return null;
+
+    const elapsed = startTime ? Math.round((Date.now() - startTime.getTime()) / 1000) : 0;
+    const estimatedTotal = 60; // seconds
+    const estimatedRemaining = Math.max(0, estimatedTotal - elapsed);
+
+    return (
+      <div className="flex flex-col items-center justify-center py-16 px-4">
+        {/* Progress Bar */}
+        <div className="w-full max-w-md mb-6">
+          <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
+            <span className="font-medium">{message || (hasError ? 'Generation failed' : 'Processing...')}</span>
+            <div className="flex items-center space-x-2">
+              {elapsed > 0 && !hasError && <span>{elapsed}s</span>}
+              {isGenerating && estimatedRemaining > 0 && (
+                <span className="text-gray-500">
+                  (~{estimatedRemaining}s remaining)
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+            <div 
+              className={`h-3 rounded-full transition-all duration-500 ease-out ${
+                hasError ? 'bg-red-500' : 'bg-cerulean-600'
+              }`}
+              style={{ width: `${Math.max(5, progress)}%` }}
+            ></div>
+          </div>
+          <div className="text-xs text-gray-500 mt-1 text-right">
+            {hasError ? 'Failed' : `${progress}% complete`}
+          </div>
+        </div>
+
+        {/* Status Content */}
+        <div className="flex flex-col items-center max-w-md text-center">
+          <div className="flex items-center justify-center h-16 w-16 rounded-full bg-gray-50 mb-4">
+            {hasError ? (
+              <XCircle className="h-6 w-6 text-red-600" />
+            ) : isGenerating ? (
+              <RefreshCw className="h-6 w-6 text-blue-600 animate-spin" />
+            ) : (
+              <CheckCircle className="h-6 w-6 text-green-600" />
+            )}
+          </div>
+
+          {hasError ? (
+            <>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Generation Failed</h3>
+              <p className="text-gray-600 mb-4">{errorMessage}</p>
+              <div className="flex space-x-3">
+                <button
+                  onClick={handleRetryGeneration}
+                  className="px-4 py-2 bg-cerulean-600 text-white rounded-md hover:bg-cerulean-700 transition-colors flex items-center"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Retry Generation
+                </button>
+                <button
+                  onClick={handleBack}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+                >
+                  Go Back
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Generating Content</h3>
+              <p className="text-gray-600 mb-2">{message}</p>
+              {elapsed > 30 && (
+                <p className="text-sm text-yellow-600 mb-4">
+                  This is taking longer than usual. Please wait...
+                </p>
+              )}
+              <button
+                onClick={handleCancelGeneration}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+              >
+                Cancel Generation
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -443,16 +696,16 @@ const handleRetryGeneration = async () => {
   
   return (
     <div className='container mx-auto'>
-
+      {/* Header */}
       <div className='bg-white rounded-lg shadow-md p-6 mb-2 border border-gray-100'>
-          <div className='flex items-center'>
-            <div className='flex-none'>
-              <div className='bg-gray-100 rounded-md p-2 items-center'>
-                <Link 
+        <div className='flex items-center'>
+          <div className='flex-none'>
+            <div className='bg-gray-100 rounded-md p-2 items-center'>
+              <Link 
                 onClick={handleBack}
                 href={``}
                 aria-label='Back to notes'
-                >
+              >
                 {note.content_type === 'prep' && (
                   <NotepadText className="h-12 w-12 text-cerulean-400" />
                 )}
@@ -462,198 +715,183 @@ const handleRetryGeneration = async () => {
                 {note.content_type === 'summary' && (
                   <Sparkles className="h-12 w-12 text-cerulean-400" />
                 )}
-                </Link>
-              </div>
-            </div>
-            <div className='grow mr-4 ml-4'>
-              <div className={`text-3xl font-light text-cerulean ${radley.className} w-full  `}>
-                <input
-                    type="text"
-                    value={note.title}
-                    onChange={handleTitleChange}
-                    className={`border-none rounded-md focus:outline hover:outline w-full focus:ring-0 m-0 p-0`}
-                    disabled={note.is_generating}
-                    placeholder="Enter title..."
-                />
-                {/* Manage: {note.content_type} */}
-                <p className='text-cerulean-300 text-sm font-light'>
-                  {isSaving ? (
-                    'Saving...'
-                  ) : lastSaved ? (
-                    `Last saved ${formatDistanceToNow(lastSaved, { addSuffix: true })}`
-                  ) : (
-                    ''
-                  )}
-                </p>
-              </div>
+              </Link>
             </div>
           </div>
-      </div>
-      
-    <div className="flex flex-col min-h-screen">
-      
-      {/* Main content */}
-      <main className="flex-1 container mx-auto px-0">
-        <div className="bg-white overflow-hidden">
-          {/* Editor Top Toolbar */}
-          <div className="border-b border-gray-200 py-2 px-4 flex items-center gap-1 bg-gray-50">
-            <span className="text-sm text-gray-500 mr-2 hidden sm:inline">Format:</span>
-            
-            {editor && (
-              <>
-                <button
-                  onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-                  className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('heading', { level: 1 }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
-                  title="Heading 1"
-                >
-                  <Heading1 className="h-4 w-4" />
-                </button>
-                
-                <button
-                  onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-                  className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('heading', { level: 2 }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
-                  title="Heading 2"
-                >
-                  <Heading2 className="h-4 w-4" />
-                </button>
-
-                <button
-                  onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-                  className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('heading', { level: 3 }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
-                  title="Heading 3"
-                >
-                  <Heading3 className="h-4 w-4" />
-                </button>
-
-                <button
-                  onClick={() => editor.chain().focus().toggleHeading({ level: 4 }).run()}
-                  className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('heading', { level: 4 }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
-                  title="Heading 4"
-                >
-                  <Heading4 className="h-4 w-4" />
-                </button>
-                
-                <div className="h-4 w-px bg-gray-300 mx-1"></div>
-                
-                <button
-                  onClick={() => editor.chain().focus().toggleBold().run()}
-                  className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('bold') ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
-                  title="Bold"
-                >
-                  <Bold className="h-4 w-4" />
-                </button>
-                
-                <button
-                  onClick={() => editor.chain().focus().toggleItalic().run()}
-                  className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('italic') ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
-                  title="Italic"
-                >
-                  <Italic className="h-4 w-4" />
-                </button>
-                
-                <div className="h-4 w-px bg-gray-300 mx-1"></div>
-                
-                <button
-                  onClick={() => editor.chain().focus().toggleBulletList().run()}
-                  className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('bulletList') ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
-                  title="Bullet List"
-                >
-                  <List className="h-4 w-4" />
-                </button>
-                
-                <button
-                  onClick={() => editor.chain().focus().toggleOrderedList().run()}
-                  className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('orderedList') ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
-                  title="Numbered List"
-                >
-                  <ListOrdered className="h-4 w-4" />
-                </button>
-                
-                <div className="h-4 w-px bg-gray-300 mx-1"></div>
-                
-                <button
-                  onClick={() => editor.chain().focus().setTextAlign('left').run()}
-                  className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive({ textAlign: 'left' }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
-                  title="Align Left"
-                >
-                  <AlignLeft className="h-4 w-4" />
-                </button>
-                
-                <button
-                  onClick={() => editor.chain().focus().setTextAlign('center').run()}
-                  className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive({ textAlign: 'center' }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
-                  title="Align Center"
-                >
-                  <AlignCenter className="h-4 w-4" />
-                </button>
-                
-                <button
-                  onClick={() => editor.chain().focus().setTextAlign('right').run()}
-                  className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive({ textAlign: 'right' }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
-                  title="Align Right"
-                >
-                  <AlignRight className="h-4 w-4" />
-                </button>
-              </>
-            )}
-          </div>
-          
-          <div className="p-4">
-            
-            {/* Editor */}
-            {note.is_generating ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cerulean-600 mb-4"></div>
-                  <p className="text-gray-700">Generating content, please wait...</p>
-                </div>
-              ) : generationFailed ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <div className="flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Generation Failed</h3>
-                  <p className="text-gray-600 text-center mb-4 max-w-md">
-                    The content generation timed out. This could be due to server load or a complex generation task.
-                  </p>
-                  <button
-                    onClick={handleRetryGeneration}
-                    className="px-4 py-2 bg-cerulean-600 text-white rounded-md hover:bg-cerulean-700 transition-colors"
-                  >
-                    Retry Generation
-                  </button>
-                </div>
-              ) : (
-              <div className={`w-full mx-auto overflow-hidden ${overpass.className}`}>
-                {editor && (
-                  <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }}>
-                    <div className="flex items-center bg-white shadow-lg rounded-md border border-gray-200 p-1">
-                      <button
-                        onClick={() => editor.chain().focus().toggleBold().run()}
-                        className={`p-1.5 rounded ${editor.isActive('bold') ? 'bg-gray-100' : ''}`}
-                      >
-                        <Bold className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => editor.chain().focus().toggleItalic().run()}
-                        className={`p-1.5 rounded ${editor.isActive('italic') ? 'bg-gray-100' : ''}`}
-                      >
-                        <Italic className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </BubbleMenu>
+          <div className='grow mr-4 ml-4'>
+            <div className={`text-3xl font-light text-cerulean ${radley.className} w-full`}>
+              <input
+                type="text"
+                value={note.title}
+                onChange={handleTitleChange}
+                className={`border-none rounded-md focus:outline hover:outline w-full focus:ring-0 m-0 p-0`}
+                disabled={generationProgress.isGenerating}
+                placeholder="Enter title..."
+              />
+              <p className='text-cerulean-300 text-sm font-light'>
+                {isSaving ? (
+                  'Saving...'
+                ) : lastSaved ? (
+                  `Last saved ${formatDistanceToNow(lastSaved, { addSuffix: true })}`
+                ) : (
+                  ''
                 )}
-                <EditorContent 
-                  editor={editor} 
-                  className={`min-h-[600px] focus:outline-none ${overpass.className}`} 
-                />
-              </div>
-            )}
+              </p>
+            </div>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+      
+      <div className="flex flex-col min-h-screen">
+        <main className="flex-1 container mx-auto px-0">
+          <div className="bg-white overflow-hidden">
+            {/* Editor Toolbar */}
+            <div className="border-b border-gray-200 py-2 px-4 flex items-center gap-1 bg-gray-50">
+              <span className="text-sm text-gray-500 mr-2 hidden sm:inline">Format:</span>
+              
+              {editor && (
+                <>
+                  <button
+                    onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+                    className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('heading', { level: 1 }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
+                    title="Heading 1"
+                    disabled={generationProgress.isGenerating}
+                  >
+                    <Heading1 className="h-4 w-4" />
+                  </button>
+                  
+                  <button
+                    onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                    className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('heading', { level: 2 }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
+                    title="Heading 2"
+                    disabled={generationProgress.isGenerating}
+                  >
+                    <Heading2 className="h-4 w-4" />
+                  </button>
+
+                  <button
+                    onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+                    className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('heading', { level: 3 }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
+                    title="Heading 3"
+                    disabled={generationProgress.isGenerating}
+                  >
+                    <Heading3 className="h-4 w-4" />
+                  </button>
+
+                  <button
+                    onClick={() => editor.chain().focus().toggleHeading({ level: 4 }).run()}
+                    className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('heading', { level: 4 }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
+                    title="Heading 4"
+                    disabled={generationProgress.isGenerating}
+                  >
+                    <Heading4 className="h-4 w-4" />
+                  </button>
+                  
+                  <div className="h-4 w-px bg-gray-300 mx-1"></div>
+                  
+                  <button
+                    onClick={() => editor.chain().focus().toggleBold().run()}
+                    className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('bold') ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
+                    title="Bold"
+                    disabled={generationProgress.isGenerating}
+                  >
+                    <Bold className="h-4 w-4" />
+                  </button>
+                  
+                  <button
+                    onClick={() => editor.chain().focus().toggleItalic().run()}
+                    className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('italic') ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
+                    title="Italic"
+                    disabled={generationProgress.isGenerating}
+                  >
+                    <Italic className="h-4 w-4" />
+                  </button>
+                  
+                  <div className="h-4 w-px bg-gray-300 mx-1"></div>
+                  
+                  <button
+                    onClick={() => editor.chain().focus().toggleBulletList().run()}
+                    className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('bulletList') ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
+                    title="Bullet List"
+                    disabled={generationProgress.isGenerating}
+                  >
+                    <List className="h-4 w-4" />
+                  </button>
+                  
+                  <button
+                    onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                    className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('orderedList') ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
+                    title="Numbered List"
+                    disabled={generationProgress.isGenerating}
+                  >
+                    <ListOrdered className="h-4 w-4" />
+                  </button>
+                  
+                  <div className="h-4 w-px bg-gray-300 mx-1"></div>
+                  
+                  <button
+                    onClick={() => editor.chain().focus().setTextAlign('left').run()}
+                    className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive({ textAlign: 'left' }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
+                    title="Align Left"
+                    disabled={generationProgress.isGenerating}
+                  >
+                    <AlignLeft className="h-4 w-4" />
+                  </button>
+                  
+                  <button
+                    onClick={() => editor.chain().focus().setTextAlign('center').run()}
+                    className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive({ textAlign: 'center' }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
+                    title="Align Center"
+                    disabled={generationProgress.isGenerating}
+                  >
+                    <AlignCenter className="h-4 w-4" />
+                  </button>
+                  
+                  <button
+                    onClick={() => editor.chain().focus().setTextAlign('right').run()}
+                    className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive({ textAlign: 'right' }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
+                    title="Align Right"
+                    disabled={generationProgress.isGenerating}
+                  >
+                    <AlignRight className="h-4 w-4" />
+                  </button>
+                </>
+              )}
+            </div>
+            
+            <div className="p-4">
+              {/* Show generation status or editor */}
+              {(generationProgress.isGenerating || generationProgress.hasError) ? 
+                renderGenerationStatus() : (
+                <div className={`w-full mx-auto overflow-hidden ${overpass.className}`}>
+                  {editor && (
+                    <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }}>
+                      <div className="flex items-center bg-white shadow-lg rounded-md border border-gray-200 p-1">
+                        <button
+                          onClick={() => editor.chain().focus().toggleBold().run()}
+                          className={`p-1.5 rounded ${editor.isActive('bold') ? 'bg-gray-100' : ''}`}
+                        >
+                          <Bold className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => editor.chain().focus().toggleItalic().run()}
+                          className={`p-1.5 rounded ${editor.isActive('italic') ? 'bg-gray-100' : ''}`}
+                        >
+                          <Italic className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </BubbleMenu>
+                  )}
+                  <EditorContent 
+                    editor={editor} 
+                    className={`min-h-[600px] focus:outline-none ${overpass.className}`} 
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
