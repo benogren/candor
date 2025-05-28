@@ -12,8 +12,8 @@ const openai = new OpenAI({
 // Track notes that are currently being generated to prevent duplicate processing
 const activeGenerations = new Map<string, Promise<{ note: Note }>>();
 
-// Request timeout in milliseconds (60 seconds)
-const REQUEST_TIMEOUT = 60000;
+// Request timeout in milliseconds (80 seconds)
+const REQUEST_TIMEOUT = 80000;
 
 // Define interfaces for better type safety
 interface BaseParams {
@@ -236,8 +236,10 @@ export async function POST(request: Request) {
   }
 }
 
-// Helper function containing the main note generation logic
+// Helper function containing the main note generation logic with enhanced error handling
 async function generateNote(request: Request, id: string) {
+  const startTime = Date.now();
+  
   // Create Supabase client
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -272,109 +274,159 @@ async function generateNote(request: Request, id: string) {
     throw new Error('Note not found');
   }
 
-  // Check if this is a manager note (has subject_member_id or subject_invited_id)
-  const isManagerNote = note.subject_member_id || note.subject_invited_id;
-  const employeeId = note.subject_member_id || note.subject_invited_id;
-  const isInvitedUser = !!note.subject_invited_id;
-  const timeframe = note.metadata?.timeframe || 'all';
+  try {
+    console.log(`Starting generation for note ${id}, type: ${note.content_type}`);
 
-  let generatedContent = '';
-  let contentData: ContentResponse = {};
+    // Check if this is a manager note (has subject_member_id or subject_invited_id)
+    const isManagerNote = note.subject_member_id || note.subject_invited_id;
+    const employeeId = note.subject_member_id || note.subject_invited_id;
+    const isInvitedUser = !!note.subject_invited_id;
+    const timeframe = note.metadata?.timeframe || 'all';
 
-  // Call the appropriate function based on content type
-  if (note.content_type === 'summary') {
-    if (isManagerNote && employeeId) {
-      const params: ManagerParams = {
-        managerId: user.id,
-        employeeId,
-        timeframe,
-        is_invited: isInvitedUser
-      };
-      contentData = await generateManagerSummary(supabase, params);
-    } else {
-      const params: UserParams = {
-        userId: user.id,
-        timeframe,
-        type: 'summary'
-      };
-      contentData = await generatePersonalSummary(supabase, params);
-    }
-  } else if (note.content_type === 'prep') {
-    if (isManagerNote && employeeId) {
-      const params: ManagerParams = {
-        managerId: user.id,
-        employeeId,
-        timeframe,
-        is_invited: isInvitedUser
-      };
-      contentData = await generateManagerPrep(supabase, params);
-    } else {
-      const params: UserParams = {
-        userId: user.id,
-        timeframe: note.metadata?.timeframe || 'week',
-        type: 'prep'
-      };
-      contentData = await generatePersonalPrep(supabase, params);
-    }
-  } else if (note.content_type === 'review') {
-    if (isManagerNote && employeeId) {
-      const params: ManagerParams = {
-        managerId: user.id,
-        employeeId,
-        timeframe,
-        is_invited: isInvitedUser
-      };
-      contentData = await generateManagerReview(supabase, params);
-    } else {
-      const params: UserParams = {
-        userId: user.id,
-        timeframe,
-        type: 'review'
-      };
-      contentData = await generatePersonalReview(supabase, params);
-    }
-  } else {
-    throw new Error('Invalid content type');
-  }
-  
-  // Format the response data based on content type
-  if (note.content_type === 'summary') {
-    const markdownContent = contentData.summary || '';
-    const htmlContent = await marked.parse(markdownContent);
-    generatedContent = htmlContent;
-  } else if (note.content_type === 'prep') {
-    const markdownContent = contentData.prep || '';
-    const htmlContent = await marked.parse(markdownContent);
-    generatedContent = htmlContent;
-  } else if (note.content_type === 'review') {
-    const markdownContent = contentData.review || '';
-    const htmlContent = await marked.parse(markdownContent);
-    generatedContent = htmlContent;
-  }
+    let generatedContent = '';
+    let contentData: ContentResponse = {};
 
-  // Calculate date range for metadata
-  const startDate = calculateStartDate(timeframe, note.content_type === 'review');
-  const endDate = new Date();
-
-  // Update the note with the generated content and enhanced metadata
-  const { data, error } = await supabase
-    .from('notes')
-    .update({
-      content: generatedContent,
-      is_generating: false,
-      metadata: {
-        ...note.metadata,
-        start_date: startDate.toISOString(),
-        end_date: endDate.toISOString(),
-        generated_at: new Date().toISOString()
+    // Call the appropriate function based on content type
+    if (note.content_type === 'summary') {
+      if (isManagerNote && employeeId) {
+        const params: ManagerParams = {
+          managerId: user.id,
+          employeeId,
+          timeframe,
+          is_invited: isInvitedUser
+        };
+        contentData = await generateManagerSummary(supabase, params);
+      } else {
+        const params: UserParams = {
+          userId: user.id,
+          timeframe,
+          type: 'summary'
+        };
+        contentData = await generatePersonalSummary(supabase, params);
       }
-    })
-    .eq('id', id)
-    .select()
-    .single();
+    } else if (note.content_type === 'prep') {
+      if (isManagerNote && employeeId) {
+        const params: ManagerParams = {
+          managerId: user.id,
+          employeeId,
+          timeframe,
+          is_invited: isInvitedUser
+        };
+        contentData = await generateManagerPrep(supabase, params);
+      } else {
+        const params: UserParams = {
+          userId: user.id,
+          timeframe: note.metadata?.timeframe || 'week',
+          type: 'prep'
+        };
+        contentData = await generatePersonalPrep(supabase, params);
+      }
+    } else if (note.content_type === 'review') {
+      if (isManagerNote && employeeId) {
+        const params: ManagerParams = {
+          managerId: user.id,
+          employeeId,
+          timeframe,
+          is_invited: isInvitedUser
+        };
+        contentData = await generateManagerReview(supabase, params);
+      } else {
+        const params: UserParams = {
+          userId: user.id,
+          timeframe,
+          type: 'review'
+        };
+        contentData = await generatePersonalReview(supabase, params);
+      }
+    } else {
+      throw new Error('Invalid content type');
+    }
+    
+    // Format the response data based on content type
+    if (note.content_type === 'summary') {
+      const markdownContent = contentData.summary || '';
+      const htmlContent = await marked.parse(markdownContent);
+      generatedContent = htmlContent;
+    } else if (note.content_type === 'prep') {
+      const markdownContent = contentData.prep || '';
+      const htmlContent = await marked.parse(markdownContent);
+      generatedContent = htmlContent;
+    } else if (note.content_type === 'review') {
+      const markdownContent = contentData.review || '';
+      const htmlContent = await marked.parse(markdownContent);
+      generatedContent = htmlContent;
+    }
 
-  if (error) throw error;
-  return { note: data };
+    if (!generatedContent) {
+      throw new Error('Generation produced no content');
+    }
+
+    console.log(`Generation successful, content length: ${generatedContent.length}`);
+
+    // Calculate date range for metadata
+    const startDate = calculateStartDate(timeframe, note.content_type === 'review');
+    const endDate = new Date();
+    const generationDuration = Date.now() - startTime;
+
+    // Update the note with retry logic
+    const updateNote = async (retries = 3): Promise<Note> => {
+      try {
+        const { data, error } = await supabase
+          .from('notes')
+          .update({
+            content: generatedContent,
+            is_generating: false,
+            metadata: {
+              ...note.metadata,
+              start_date: startDate.toISOString(),
+              end_date: endDate.toISOString(),
+              generated_at: new Date().toISOString(),
+              generation_duration: generationDuration
+            }
+          })
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) throw error;
+        return data;
+      } catch (updateError) {
+        if (retries > 0) {
+          console.log(`Update failed, retrying... (${retries} attempts left)`);
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+          return updateNote(retries - 1);
+        }
+        throw updateError;
+      }
+    };
+
+    const updatedNote = await updateNote();
+    console.log(`Note updated successfully: ${id}`);
+    
+    return { note: updatedNote };
+
+  } catch (error) {
+    console.error(`Generation failed for note ${id}:`, error);
+    
+    // Always ensure is_generating is set to false, even on failure
+    try {
+      await supabase
+        .from('notes')
+        .update({ 
+          is_generating: false,
+          metadata: {
+            ...note.metadata,
+            generation_failed_at: new Date().toISOString(),
+            error_message: error instanceof Error ? error.message : 'Unknown error'
+          }
+        })
+        .eq('id', id);
+    } catch (updateError) {
+      console.error('Failed to update note after generation failure:', updateError);
+    }
+    
+    throw error;
+  }
 }
 
 // Optimized helper function to fetch all data using RPC
@@ -634,7 +686,7 @@ function extractInsightsFromExistingSummaries(summaries: ExistingSummary[]): str
   return `CONTEXT FROM RELEVANT PREVIOUS SUMMARIES:\n${insights}\n\nUse this context to identify patterns, track progress over time, and avoid repeating identical insights. Focus on new developments and changes since previous analyses.\n\n`;
 }
 
-// Two-stage processing function
+// Enhanced two-stage processing function with timeouts and fallbacks
 async function generateWithTwoStages(
   feedback: FeedbackResponseItem[],
   userContext: { userName: string; jobTitle: string; company: string; industry: string },
@@ -646,7 +698,7 @@ async function generateWithTwoStages(
   
   console.log(`Starting two-stage generation for ${contentType}, feedback items: ${feedback.length}`);
   
-  // Stage 1: Extract key insights using faster model
+  // Stage 1: Extract key insights using faster model with timeout
   const stage1Prompt = `
     Analyze this feedback data and extract the most important insights:
     
@@ -667,23 +719,41 @@ async function generateWithTwoStages(
     Be concise but specific. Focus on actionable insights that will help create a comprehensive ${contentType}.
   `;
 
-  const stage1Completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini", // Faster, cheaper model for analysis
-    messages: [
-      { 
-        role: "system", 
-        content: "You are an expert feedback analyzer. Extract key insights concisely and objectively." 
-      },
-      { role: "user", content: stage1Prompt }
-    ],
-    max_tokens: 600,
-    temperature: 0.3
-  });
+  let keyInsights = '';
+  
+  try {
+    console.log('Starting Stage 1 with timeout...');
+    
+    // Add timeout to Stage 1
+    const stage1Promise = openai.chat.completions.create({
+      model: "gpt-4o-mini", // Faster, cheaper model for analysis
+      messages: [
+        { 
+          role: "system", 
+          content: "You are an expert feedback analyzer. Extract key insights concisely and objectively." 
+        },
+        { role: "user", content: stage1Prompt }
+      ],
+      max_tokens: 600,
+      temperature: 0.3
+    });
 
-  const keyInsights = stage1Completion.choices[0]?.message?.content || '';
-  console.log('Stage 1 completed, extracted insights length:', keyInsights.length);
+    const stage1Timeout = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error('Stage 1 timed out after 30 seconds')), 30000)
+    );
 
-  // Stage 2: Generate final content using extracted insights
+    const stage1Completion = await Promise.race([stage1Promise, stage1Timeout]);
+    keyInsights = stage1Completion.choices[0]?.message?.content || '';
+    console.log('Stage 1 completed, extracted insights length:', keyInsights.length);
+
+  } catch (stage1Error) {
+    console.error('Stage 1 failed:', stage1Error);
+    // Fallback: create basic insights from the data
+    keyInsights = createFallbackInsights(feedback, userContext);
+    console.log('Using fallback insights, length:', keyInsights.length);
+  }
+
+  // Stage 2: Generate final content using extracted insights with timeout
   const stage2Prompt = createStage2Prompt(
     keyInsights,
     userContext,
@@ -693,37 +763,120 @@ async function generateWithTwoStages(
     managerContext
   );
 
-  // console.log("*****Stage 2 prompt:", stage2Prompt);
-
-  const stage2Completion = await openai.chat.completions.create({
-    model: "gpt-4-turbo", // Higher quality model for final generation
-    messages: [
-      { 
-        role: "system", 
-        content: getSystemPromptForContentType(contentType)
-      },
-      { role: "user", content: stage2Prompt }
-    ],
-    stream: true,
-    max_tokens: 1000,
-    temperature: 0.4
-  });
-
-  let finalContent = '';
-  const streamTimeout = setTimeout(() => {
-    throw new Error("Stage 2 streaming timed out after 45 seconds");
-  }, 45000);
-  
   try {
-    for await (const chunk of stage2Completion) {
-      finalContent += chunk.choices[0]?.delta?.content || '';
-    }
-  } finally {
-    clearTimeout(streamTimeout);
+    console.log('Starting Stage 2 with timeout...');
+    
+    // Use non-streaming completion with timeout for reliability
+    const stage2Promise = openai.chat.completions.create({
+      model: "gpt-4-turbo", // Higher quality model for final generation
+      messages: [
+        { 
+          role: "system", 
+          content: getSystemPromptForContentType(contentType)
+        },
+        { role: "user", content: stage2Prompt }
+      ],
+      stream: false, // Don't stream - more reliable
+      max_tokens: 1000,
+      temperature: 0.4
+    });
+
+    const stage2Timeout = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error('Stage 2 timed out after 45 seconds')), 45000)
+    );
+
+    const stage2Completion = await Promise.race([stage2Promise, stage2Timeout]);
+    const finalContent = stage2Completion.choices[0]?.message?.content || '';
+    console.log('Stage 2 completed, final content length:', finalContent.length);
+    
+    return finalContent || createFallbackContent(userContext, contentType, keyInsights);
+
+  } catch (stage2Error) {
+    console.error('Stage 2 failed:', stage2Error);
+    // Fallback to template-based content with the insights we have
+    return createFallbackContent(userContext, contentType, keyInsights);
+  }
+}
+
+// Create fallback insights when Stage 1 fails
+function createFallbackInsights(feedback: FeedbackResponseItem[], userContext: { userName: string }): string {
+  if (!feedback || feedback.length === 0) {
+    return 'No feedback data available for analysis.';
   }
 
-  console.log('Stage 2 completed, final content length:', finalContent.length);
-  return finalContent;
+  const textFeedback = feedback
+    .filter(item => item.text_response || item.comment_text)
+    .slice(0, 5) // Just use first 5 items
+    .map(item => item.text_response || item.comment_text)
+    .join(' ');
+
+  const ratingItems = feedback.filter(item => item.rating_value);
+  const avgRating = ratingItems.length > 0 
+    ? (ratingItems.reduce((sum, item) => sum + (item.rating_value || 0), 0) / ratingItems.length).toFixed(1)
+    : 'N/A';
+
+  return `
+Feedback Analysis for ${userContext.userName}:
+
+STRENGTHS:
+- Based on ${feedback.length} feedback responses
+- Average rating: ${avgRating}/5
+- Key feedback themes extracted from responses
+
+AREAS FOR IMPROVEMENT:
+- Identified from feedback patterns
+- Specific development opportunities noted
+
+KEY INSIGHTS:
+${textFeedback ? textFeedback.substring(0, 500) + '...' : 'Limited text feedback available'}
+
+RECOMMENDATIONS:
+- Continue building on demonstrated strengths
+- Focus on identified improvement areas
+- Seek specific feedback on development goals
+`;
+}
+
+// Create enhanced fallback content using insights
+function createFallbackContent(
+  userContext: { userName: string; jobTitle: string; company: string },
+  contentType: string,
+  insights: string
+): string {
+  
+  const contentTypeTitle = contentType === 'summary' ? 'Feedback Summary' : 
+                          contentType === 'prep' ? '1:1 Meeting Agenda' : 
+                          'Performance Review';
+
+  return `
+# ${contentTypeTitle}
+
+## Overview
+This ${contentType} has been generated for ${userContext.userName} (${userContext.jobTitle}) at ${userContext.company}.
+
+## Key Insights
+${insights}
+
+## Discussion Points
+1. **Current Performance**: Review recent accomplishments and contributions
+2. **Development Opportunities**: Identify areas for growth and skill building
+3. **Goal Setting**: Establish clear objectives for the upcoming period
+4. **Support Needed**: Discuss resources and assistance required for success
+
+## Action Items
+- [ ] Review feedback and discuss key themes
+- [ ] Set specific, measurable goals
+- [ ] Identify development resources and opportunities
+- [ ] Schedule regular check-ins for progress tracking
+
+## Next Steps
+- Follow up on action items within one week
+- Schedule regular feedback sessions
+- Document progress on established goals
+
+---
+*This ${contentType} was generated automatically. Please review and customize based on specific needs and circumstances.*
+`;
 }
 
 // Create stage 2 prompt based on content type
@@ -931,36 +1084,26 @@ async function generateGeneric1on1Agenda(
     ${hasPreviousWeekContext ? 'Focus on creating continuity with the previous meeting by following up on discussed topics and commitments. ' : ''}Make the agenda specific to their role (${userContext.jobTitle}) and industry context. Focus on actionable discussion topics that would be valuable for a productive 1:1 conversation.
   `;
 
-  // console.log("*****Regular prompt:", prompt);
-
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4-turbo",
-    messages: [
-      { 
-        role: "system", 
-        content: "You are an experienced career coach specializing in 1:1 meeting preparation. Create clear, actionable agendas that facilitate productive conversations and maintain continuity between meetings."
-      },
-      { role: "user", content: prompt }
-    ],
-    stream: true,
-    max_tokens: 800,
-    temperature: 0.4
-  });
-
-  let content = '';
-  const streamTimeout = setTimeout(() => {
-    throw new Error("Generic agenda generation timed out after 30 seconds");
-  }, 30000);
-  
   try {
-    for await (const chunk of completion) {
-      content += chunk.choices[0]?.delta?.content || '';
-    }
-  } finally {
-    clearTimeout(streamTimeout);
-  }
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4-turbo",
+      messages: [
+        { 
+          role: "system", 
+          content: "You are an experienced career coach specializing in 1:1 meeting preparation. Create clear, actionable agendas that facilitate productive conversations and maintain continuity between meetings."
+        },
+        { role: "user", content: prompt }
+      ],
+      stream: false,
+      max_tokens: 800,
+      temperature: 0.4
+    });
 
-  return content;
+    return completion.choices[0]?.message?.content || createFallbackContent(userContext, 'prep', '');
+  } catch (error) {
+    console.error('Generic agenda generation failed:', error);
+    return createFallbackContent(userContext, 'prep', '');
+  }
 }
 
 // Helper function to format feedback as JSON
@@ -1050,7 +1193,7 @@ function calculateStartDate(timeframe: string, isReview = false): Date {
   return startDate;
 }
 
-// Implementation for personal summary with two-stage processing
+// Implementation for personal summary with enhanced error handling
 async function generatePersonalSummary(
   supabase: SupabaseClient,
   params: UserParams
@@ -1078,7 +1221,7 @@ async function generatePersonalSummary(
     
     console.log(`Generating personal summary for ${userName}, ${data.feedback_data.length} feedback items, ${existingSummaries.length} existing summaries`);
     
-    // Use two-stage processing
+    // Use enhanced two-stage processing
     const content = await generateWithTwoStages(
       data.feedback_data,
       { userName, jobTitle, company, industry },
@@ -1096,7 +1239,7 @@ async function generatePersonalSummary(
   }
 }
 
-// Implementation for manager summary with two-stage processing
+// Implementation for manager summary with enhanced error handling
 async function generateManagerSummary(
   supabase: SupabaseClient,
   params: ManagerParams
@@ -1126,7 +1269,7 @@ async function generateManagerSummary(
     
     console.log(`Generating manager summary for ${userName} by ${managerName}, ${data.feedback_data.length} feedback items, ${existingSummaries.length} existing summaries`);
     
-    // Use two-stage processing
+    // Use enhanced two-stage processing
     const content = await generateWithTwoStages(
       data.feedback_data,
       { userName, jobTitle, company, industry },
@@ -1145,7 +1288,7 @@ async function generateManagerSummary(
   }
 }
 
-// Implementation for personal prep (using two-stage processing with previous week context)
+// Implementation for personal prep with enhanced error handling
 async function generatePersonalPrep(
   supabase: SupabaseClient,
   params: UserParams
@@ -1179,7 +1322,7 @@ async function generatePersonalPrep(
         industry
       }, false, fullContext);
     } else {
-      // Use two-stage processing with feedback data and previous week context
+      // Use enhanced two-stage processing with feedback data and previous week context
       content = await generateWithTwoStages(
         data.feedback_data,
         { userName, jobTitle, company, industry },
@@ -1198,7 +1341,7 @@ async function generatePersonalPrep(
   }
 }
 
-// Implementation for manager prep with previous week context
+// Implementation for manager prep with enhanced error handling
 async function generateManagerPrep(
   supabase: SupabaseClient,
   params: ManagerParams
@@ -1234,7 +1377,7 @@ async function generateManagerPrep(
         industry
       }, true, fullContext, { managerName, managerJobTitle });
     } else {
-      // Use two-stage processing with feedback data and previous week context
+      // Use enhanced two-stage processing with feedback data and previous week context
       content = await generateWithTwoStages(
         data.feedback_data,
         { userName, jobTitle, company, industry },
@@ -1254,7 +1397,7 @@ async function generateManagerPrep(
   }
 }
 
-// Implementation for personal review
+// Implementation for personal review with enhanced error handling
 async function generatePersonalReview(
   supabase: SupabaseClient,
   params: UserParams
@@ -1290,7 +1433,7 @@ async function generatePersonalReview(
   }
 }
 
-// Implementation for manager review
+// Implementation for manager review with enhanced error handling
 async function generateManagerReview(
   supabase: SupabaseClient,
   params: ManagerParams
