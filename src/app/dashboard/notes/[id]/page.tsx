@@ -339,7 +339,7 @@ export default function NotesPage() {
     }
 
     return await response.json();
-  }, [note, user?.id]);
+  }, [note?.id, note?.subject_member_id, note?.subject_invited_id, user?.id]);
 
   // Stage 2: Generate content
   const executeStage2 = useCallback(async (stage1Data: Stage1Response) => {
@@ -377,7 +377,7 @@ export default function NotesPage() {
     }
 
     return await response.json();
-  }, [note]);
+  }, [note?.id]);
 
   // Main two-stage generation orchestration
   const startTwoStageGeneration = useCallback(async () => {
