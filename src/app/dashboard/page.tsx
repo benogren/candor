@@ -10,11 +10,53 @@ import { ProfileModal } from '@/components/ProfileModal';
 import supabase from '@/lib/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Building2, Home, Users } from 'lucide-react';
+import { 
+  ArrowRight, 
+  BotMessageSquareIcon, 
+  Building2, 
+  Home, 
+  NotebookPen, 
+  NotepadText, 
+  Sparkles, 
+  ChevronDown,
+  UserCircle
+} from 'lucide-react';
 import { radley } from '../fonts';
 import { Badge } from '@/components/ui/badge';
 import { InfoCircledIcon } from '@radix-ui/react-icons';
 import Image from 'next/image';
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger 
+} from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
+import { formatDistanceToNow } from 'date-fns';
+
+// Type for team member
+interface TeamMember {
+  id: string;
+  full_name: string;
+  email: string;
+  avatar_url?: string;
+  is_invited_user: boolean;
+}
+
+// Type for notes data
+type Note = {
+  id: string;
+  title: string;
+  content: string;
+  content_type: string;
+  creator_id: string;
+  subject_member_id?: string;
+  subject_invited_id?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  is_generating: boolean;
+};
 
 export default function DashboardPage() {
   const { user, memberStatus } = useAuth();
@@ -22,7 +64,16 @@ export default function DashboardPage() {
   const firstName = fullName.split(' ')[0] || '';
   const router = useRouter();
   const { isAdmin } = useIsAdmin();
+  
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'personal' | 'team'>('personal');
+  
+  // Team-related state
   const [isManager, setIsManager] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
+  
+  // Feedback cycle state
   const [activeCycle, setActiveCycle] = useState<{ id: string; name: string } | null>(null);
   const [activeOccurrence, setActiveOccurrence] = useState<{ 
     id: string; 
@@ -49,6 +100,11 @@ export default function DashboardPage() {
   
   // State for profile modal
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
+  // State for notes data
+  const [recentNotes, setRecentNotes] = useState<Note[]>([]);
+  const [personalNotes, setPersonalNotes] = useState<Note[]>([]);
+  const [teamNotes, setTeamNotes] = useState<Note[]>([]);
 
   async function handleAdminPending() {
     if (isAdmin && memberStatus === 'pending' && user) {
@@ -108,25 +164,211 @@ export default function DashboardPage() {
     fetchUserProfile();
   }, [user]);
 
+  // Initialize dashboard - fetch team members and determine manager status
   useEffect(() => {
-    const checkFeedbackStatus = async () => {
-      if (!user) return;
-      
+    if (!user) return;
+    
+    const initializeDashboard = async () => {
       try {
         setLoading(true);
         
-        // Check if user has any direct reports in org_structure
-        const { data: reportsData, error: reportsError } = await supabase
+        // Fetch team members to determine if user is a manager
+        const { data: directReports, error: reportsError } = await supabase
           .from('org_structure')
-          .select('id')
-          .eq('manager_id', user.id)
-          .limit(1);
+          .select('id, email, is_invited')
+          .eq('manager_id', user.id);
           
         if (reportsError) throw reportsError;
         
-        // If we found any direct reports, the user is a manager
-        setIsManager(reportsData && reportsData.length > 0);
+        if (!directReports || directReports.length === 0) {
+          setIsManager(false);
+          setTeamMembers([]);
+        } else {
+          setIsManager(true);
+          
+          // Separate regular users and invited users
+          const regularUserIds = directReports
+            .filter(record => !record.is_invited)
+            .map(record => record.id);
+            
+          const invitedUserIds = directReports
+            .filter(record => record.is_invited)
+            .map(record => record.id);
+          
+          // Fetch details for regular users
+          let members: TeamMember[] = [];
+          
+          if (regularUserIds.length > 0) {
+            const { data: userData, error: userError } = await supabase
+              .from('user_profiles')
+              .select('id, name, email, avatar_url')
+              .in('id', regularUserIds);
+              
+            if (userError) throw userError;
+            
+            members = userData?.map(user => ({
+              id: user.id,
+              full_name: user.name || user.email.split('@')[0] || 'Unknown',
+              email: user.email,
+              avatar_url: user.avatar_url,
+              is_invited_user: false
+            })) || [];
+          }
+          
+          // Fetch details for invited users
+          if (invitedUserIds.length > 0) {
+            const { data: invitedData, error: invitedError } = await supabase
+              .from('invited_users')
+              .select('id, name, email')
+              .in('id', invitedUserIds);
+              
+            if (invitedError) throw invitedError;
+            
+            const invitedMembers = invitedData?.map(user => ({
+              id: user.id,
+              full_name: user.name || user.email.split('@')[0] || 'Unknown',
+              email: user.email,
+              is_invited_user: true
+            })) || [];
+            
+            members = [...members, ...invitedMembers];
+          }
+          
+          // Sort alphabetically by name
+          members.sort((a, b) => a.full_name.localeCompare(b.full_name));
+          
+          setTeamMembers(members);
+        }
+      } catch (error) {
+        console.error('Error initializing dashboard:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load your team members',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    initializeDashboard();
+  }, [user]);
 
+  // Fetch notes data after team data is loaded
+  useEffect(() => {
+    if (!user) return;
+    
+    const fetchNotesData = async () => {
+      try {
+        // Always fetch personal notes
+        console.log('Fetching personal notes for user:', user.id);
+        const { data: personalData, error: personalError } = await supabase
+          .from('notes')
+          .select('*')
+          .eq('creator_id', user.id)
+          .is('subject_member_id', null)   // Only get personal notes
+          .is('subject_invited_id', null)  // Only get personal notes
+          .order('updated_at', { ascending: false })
+          .limit(10);  // Get more to see if there are any notes at all
+
+        if (personalError) throw personalError;
+        
+        console.log('Personal notes fetched:', personalData);
+        if (personalData) {
+          setPersonalNotes(personalData);
+        }
+        
+        // Fetch team notes if user is a manager
+        if (isManager) {
+          console.log('Fetching team notes for user:', user.id);
+          // Fetch notes where the user is the creator and has a subject_member_id or subject_invited_id
+          const { data, error } = await supabase
+            .from('notes')
+            .select('*')
+            .eq('creator_id', user.id)
+            .not('subject_member_id', 'is', null)
+            .order('updated_at', { ascending: false });
+
+          if (error) throw error;
+          
+          // Also fetch notes with subject_invited_id
+          const { data: invitedData, error: invitedError } = await supabase
+            .from('notes')
+            .select('*')
+            .eq('creator_id', user.id)
+            .not('subject_invited_id', 'is', null)
+            .order('updated_at', { ascending: false });
+
+          if (invitedError) throw invitedError;
+          
+          // Combine both sets of notes
+          const combinedNotes = [
+            ...(data || []),
+            ...(invitedData || [])
+          ];
+          
+          // Remove duplicates (in case a note has both subject_member_id and subject_invited_id)
+          const uniqueNotes = combinedNotes.filter((note, index, self) =>
+            index === self.findIndex((n) => n.id === note.id)
+          );
+          
+          // Sort by updated_at
+          uniqueNotes.sort((a, b) => 
+            new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+          );
+          
+          console.log('Team notes fetched:', uniqueNotes);
+          setTeamNotes(uniqueNotes);
+        }
+      } catch (error) {
+        console.error('Error fetching notes:', error);
+      }
+    };
+    
+    fetchNotesData();
+  }, [user, isManager]);
+
+  // Update recent notes when tab or filter changes
+  useEffect(() => {
+    console.log('Updating recent notes. Active tab:', activeTab, 'Selected employee:', selectedEmployee);
+    console.log('Personal notes:', personalNotes.length, 'Team notes:', teamNotes.length);
+    
+    if (activeTab === 'personal') {
+      console.log('Setting recent notes to personal notes:', personalNotes.slice(0, 3));
+      setRecentNotes(personalNotes.slice(0, 3));
+    } else {
+      // Team tab
+      if (selectedEmployee === 'all') {
+        // Show all team notes (limit to 3 most recent)
+        console.log('Setting recent notes to all team notes:', teamNotes.slice(0, 3));
+        setRecentNotes(teamNotes.slice(0, 3));
+      } else {
+        // Filter by selected employee
+        const member = teamMembers.find(m => m.id === selectedEmployee);
+        if (member) {
+          const filtered = teamNotes.filter(note => {
+            if (member.is_invited_user) {
+              return note.subject_invited_id === selectedEmployee;
+            } else {
+              return note.subject_member_id === selectedEmployee;
+            }
+          });
+          console.log('Setting recent notes to filtered notes for', member.full_name, ':', filtered.slice(0, 3));
+          setRecentNotes(filtered.slice(0, 3));
+        } else {
+          console.log('No member found for selectedEmployee:', selectedEmployee);
+          setRecentNotes([]);
+        }
+      }
+    }
+  }, [activeTab, selectedEmployee, personalNotes, teamNotes, teamMembers]);
+
+  // Separate useEffect for feedback cycle status
+  useEffect(() => {
+    if (!user) return;
+    
+    const checkFeedbackStatus = async () => {
+      try {
         // Get user's company
         const { data: userData, error: userError } = await supabase
           .from('company_members')
@@ -148,7 +390,6 @@ export default function DashboardPage() {
           
         if (cycleError) {
           console.log('No active feedback cycle found');
-          setLoading(false);
           return;
         }
         
@@ -165,7 +406,6 @@ export default function DashboardPage() {
           
         if (occurrenceError) {
           console.log('No active occurrence found');
-          setLoading(false);
           return;
         }
         
@@ -180,7 +420,6 @@ export default function DashboardPage() {
         if (today < startDate || today > endDate) {
           // Today is outside the valid date range
           setNeedsFeedback(false);
-          setLoading(false);
           return;
         }
 
@@ -216,10 +455,9 @@ export default function DashboardPage() {
         }
       } catch (error) {
         console.error('Error checking feedback status:', error);
-      } finally {
-        setLoading(false);
       }
     };
+    
     checkFeedbackStatus();
   }, [user]);
 
@@ -343,6 +581,89 @@ export default function DashboardPage() {
         });
     }
   };
+
+  // Get the selected employee name for display
+  const getSelectedEmployeeName = () => {
+    if (selectedEmployee === 'all') return 'All Team Members';
+    const employee = teamMembers.find(member => member.id === selectedEmployee);
+    return employee ? employee.full_name + (employee.is_invited_user ? ' (Invited)' : '') : 'All Team Members';
+  };
+
+  // Helper function to safely strip HTML for previews
+  // const stripHtml = (html: string) => {
+  //   if (!html) return '';
+    
+  //   try {
+  //     // For browser environments
+  //     if (typeof window !== 'undefined') {
+  //       const doc = new DOMParser().parseFromString(html, 'text/html');
+  //       return doc.body.textContent || '';
+  //     } 
+  //     // Fallback for SSR
+  //     return html.replace(/<[^>]*>?/gm, ' ')
+  //       .replace(/\s+/g, ' ')
+  //       .trim();
+  //   } catch {
+  //     // Fallback if parsing fails
+  //     return html.replace(/<[^>]*>?/gm, ' ')
+  //         .replace(/\s+/g, ' ')
+  //         .trim();
+  //   }
+  // };
+
+  // Format relative time (like "1 day ago")
+  const formatRelativeTime = (timestamp: string) => {
+    try {
+      return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
+    } catch (error) {
+      console.log('Error formatting date:', error);
+      return 'some time ago';
+    }
+  };
+
+  // Get a preview of the content (first 160 characters)
+  // const getContentPreview = (content: string) => {
+  //   if (!content) return '';
+  //   const plainText = stripHtml(content);
+  //   return plainText.length > 160 ? plainText.substring(0, 160) + '...' : plainText;
+  // };
+
+  // // Get note type display label
+  // const getNoteTypeLabel = (note: Note) => {
+  //   if (note.content_type === 'summary') {
+  //     return 'Feedback Summary';
+  //   } 
+  //   if (note.content_type === 'prep') {
+  //     return '1:1 Prep Notes';
+  //   }
+  //   if (note.content_type === 'review') {
+  //     return 'Self-Evaluation Prep';
+  //   }
+  //   return 'Note';
+  // };
+
+  // Find team member name by ID (for team notes)
+  const getMemberName = (note: Note) => {
+    const memberId = note.subject_member_id || note.subject_invited_id;
+    if (!memberId) return null;
+    
+    const member = teamMembers.find(m => m.id === memberId);
+    return member ? member.full_name : 'Unknown';
+  };
+
+  // Handle clicking on a note
+  const handleNoteClick = (note: Note) => {
+    router.push(`/dashboard/notes/${note.id}`);
+  };
+
+  // Handle tab changes
+  const handleTabChange = (tab: 'personal' | 'team') => {
+    setActiveTab(tab);
+    // Reset employee filter when switching to personal tab
+    if (tab === 'personal') {
+      setSelectedEmployee('all');
+    }
+  };
   
   // Show loading state while checking permissions
   if (loading) {
@@ -371,34 +692,28 @@ export default function DashboardPage() {
         />
       )}
       
-    
       <div className="container mx-auto">
         <div className='bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-100'>
           <div className='flex items-center justify-between'>
-              <div className='flex items-center'>
-                  <div className='bg-cerulean rounded-md p-2 mr-4 items-center'>
-                      <Home className="h-12 w-12 text-cerulean-100" />
-                  </div>
-                  <div>
-                      <h2 className={`text-4xl font-light text-cerulean ${radley.className}`}>Welcome Back, {firstName}!</h2>
-                      <p className='text-cerulean-300'>Dashboard</p>
-                  </div>
+            <div className='flex items-center'>
+              <div className='bg-cerulean rounded-md p-2 mr-4 items-center'>
+                <Home className="h-12 w-12 text-cerulean-100" />
               </div>
-
-              <div className="flex items-center gap-4">
-                  {(isManager || isAdmin) && (
-                    <Button 
-                      variant="secondary" 
-                      size="sm" 
-                      asChild
-                    >
-                      <Link href="/dashboard/manager/feedback">
-                        <Users className="h-5 w-5 text-cerulean-400" />
-                        Switch to Manager View
-                      </Link>
-                    </Button>
+              <div>
+                <h2 className={`text-4xl font-light text-cerulean ${radley.className}`}>
+                  Welcome Back, {firstName}!
+                </h2>
+                <div className='text-cerulean-300'>
+                  Dashboard
+                  {isAdmin && (
+                    <span className='bg-nonphotoblue-100 text-nonphotoblue-700 text-xs py-1 px-2 rounded-md ml-2'>Admin</span>
                   )}
+                  {isManager && (
+                    <span className='bg-berkeleyblue-100 text-berkeleyblue text-xs py-1 px-2 rounded-md ml-2'>Manager</span>
+                  )}
+                </div>
               </div>
+            </div>
           </div>
         </div>
 
@@ -444,9 +759,8 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {needsFeedback && (
+        {needsFeedback && activeTab === 'personal' && (
           <div className='relative overflow-hidden bg-gradient-to-bl from-cerulean-500 via-berkleyblue-500 to-cerulean-700 p-8 rounded-md gap-4 shadow-md mb-4'>
-            {/* <MessagesSquare className="h-[400px] w-[400px] text-cerulean-100/10 absolute -bottom-28 -right-6 -rotate-45" /> */}
             <Image src="/candor-coach-hero.png" alt="Candor" width={500} height={333} priority className="h-[333px] w-[500px] absolute -bottom-10 -right-2 " />
             <Badge className='bg-cerulean-400 text-cerulean-700 font-semibold mb-2 text-xs py-1 relative z-10'>
               Give Feedback
@@ -473,8 +787,197 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <h2 className='text-2xl font-light text-berkeleyblue mt-10 mb-4'>Your Recent Feedback</h2>
-        <FeedbackList userId={user?.id} />
+        {/* Tabs */}
+        <div className='flex items-center justify-between border-b border-gray-200'>
+          <div className='flex items-center'>
+            <button
+              className={cn(
+                'px-2 py-4 hover:cursor-pointer border-b-2 transition-colors',
+                activeTab === 'personal' 
+                  ? 'border-cerulean-500 text-cerulean' 
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              )}
+              onClick={() => handleTabChange('personal')}
+            >
+              My Feedback
+            </button>
+            {isManager && (
+              <button
+                className={cn(
+                  'px-2 py-4 hover:cursor-pointer border-b-2 transition-colors mx-4',
+                  activeTab === 'team' 
+                    ? 'border-berkeleyblue text-berkeleyblue' 
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                )}
+                onClick={() => handleTabChange('team')}
+              >
+                My Team&apos;s Feedback
+              </button>
+            )}
+          </div>
+          
+          {/* Employee dropdown - only show on team tab */}
+          {activeTab === 'team' && (
+            <div className="py-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="secondary" size="default">
+                    {getSelectedEmployeeName()}
+                    <ChevronDown className="h-5 w-5 ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className='w-full'>
+                  <DropdownMenuItem onClick={() => setSelectedEmployee('all')}>
+                    All Team Members
+                  </DropdownMenuItem>
+                  {teamMembers.map(member => (
+                    <DropdownMenuItem 
+                      key={member.id} 
+                      onClick={() => setSelectedEmployee(member.id)}
+                    >
+                      {member.full_name}
+                      {member.is_invited_user && " (Invited)"}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+        </div>
+
+        <div className='grid grid-cols-3 gap-4'>
+          <div className='col-span-2 mt-10'>
+            <h2 className='text-2xl font-light text-berkeleyblue mb-4'>
+              {activeTab === 'personal' ? 'Your Recent Feedback' : 'Recent Team Feedback'}
+            </h2>
+            
+            {activeTab === 'personal' ? (
+              <FeedbackList userId={user?.id} />
+            ) : (
+              <FeedbackList 
+                employeeId={selectedEmployee !== 'all' ? selectedEmployee : undefined} 
+                managerId={user?.id} 
+              />
+            )}
+          </div>
+          
+          <div className='mt-10'>
+
+            <div className='bg-white rounded-lg shadow-md p-6 mb-8'>
+              <h2 className='text-xl font-light text-berkeleyblue mb-4'>
+                <BotMessageSquareIcon className="inline-block h-6 w-6 mr-2 text-cerulean-400" />
+                Feedback Coach
+              </h2>
+              <Button 
+                variant="secondary" 
+                className="w-full flex items-center justify-between py-6 text-left mb-2"
+                onClick={() => router.push('/dashboard/coach')}
+              >
+                <div className='flex items-center gap-2'>
+                <Sparkles className="h-5 w-5 text-cerulean-400" />
+                Generate Summary
+                </div>
+              </Button>
+              <Button 
+                variant="secondary" 
+                className="w-full flex items-center justify-between py-6 text-left mb-2"
+                onClick={() => router.push('/dashboard/coach')}
+              >
+                <div className='flex items-center gap-2'>
+                <NotepadText className="h-5 w-5 text-cerulean-400" />
+                1:1 Preparation
+                </div>
+              </Button>
+              <Button 
+                variant="secondary" 
+                className="w-full flex items-center justify-between py-6 text-left"
+                onClick={() => router.push('/dashboard/coach')}
+              >
+                <div className='flex items-center gap-2'>
+                <NotebookPen className="h-5 w-5 text-cerulean-400" />
+                Self-Evaluation Preparation
+                </div>
+              </Button>
+            </div>
+
+            {/* Recent Activity Section */}
+            {recentNotes.length > 0 && (
+              <div className='bg-white rounded-lg shadow-md p-6 mb-8'>
+                <h2 className='text-xl font-light text-berkeleyblue mb-4'>
+                  <BotMessageSquareIcon className="inline-block h-6 w-6 mr-2 text-cerulean-400" />
+                  Recently Updated
+                </h2>
+                <div className="space-y-3">
+                  {recentNotes.map(note => {
+                    const memberName = getMemberName(note);
+                    return (
+                      <div 
+                        key={note.id}
+                        className="overflow-hidden cursor-pointer"
+                        onClick={() => handleNoteClick(note)}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center min-w-0 flex-1 mt-2">
+                            {note.content_type === 'summary' && (
+                              <Sparkles className="h-5 w-5 text-cerulean-400 mr-2 flex-shrink-0" />
+                            )}
+                            {note.content_type === 'prep' && (
+                              <NotepadText className="h-5 w-5 text-cerulean-400 mr-2 flex-shrink-0" />
+                            )}
+                            {note.content_type === 'review' && (
+                              <NotebookPen className="h-5 w-5 text-cerulean-400 mr-2 flex-shrink-0" />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <h4 className="font-medium text-gray-900 truncate text-sm">{note.title}</h4>
+                            </div>
+                          </div>
+                          
+                        </div>
+                          <div className='flex items-center justify-between text-gray-500 text-xs mt-1'>
+                            {memberName && activeTab === 'team' && (
+                              <div className="flex items-center mt-1">
+                                <UserCircle className="h-3 w-3 text-gray-400 mr-1" />
+                                <span className="text-xs text-gray-500">{memberName}</span>
+                              </div>
+                            )}
+                            <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
+                              {formatRelativeTime(note.updated_at)}
+                            </span>
+                          </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Empty state for no recent notes */}
+            {recentNotes.length === 0 && (
+              <div className='bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-100'>
+                <h2 className='text-xl font-light text-berkeleyblue mb-4'>
+                  <BotMessageSquareIcon className="inline-block h-6 w-6 mr-2 text-cerulean-400" />
+                  Recently Updated
+                </h2>
+                <div className="text-center">
+                  <p className="text-gray-500 text-sm">
+                    {activeTab === 'personal' 
+                      ? "You haven't created any notes yet." 
+                      : selectedEmployee === 'all'
+                        ? "No team notes created yet."
+                        : `No notes created for ${getSelectedEmployeeName()} yet.`}
+                  </p>
+                  <Button 
+                    variant="outline" 
+                    className="mt-4 w-full"
+                    onClick={() => router.push('/dashboard/coach/manager')}
+                  >
+                    Create a Note
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </>
   );
