@@ -334,7 +334,8 @@ function calculateStartDate(timeframe: string): Date {
       startDate.setMonth(today.getMonth() - 3);
       break;
     case 'year':
-      startDate.setFullYear(today.getFullYear() - 1);
+    //   startDate.setFullYear(today.getFullYear() - 1);
+      startDate.setMonth(today.getMonth() - 6); // Go back 6 months for 'year'
       break;
     default: // 'all'
       startDate.setFullYear(today.getFullYear() - 1); // Go back 2 years for 'all'
