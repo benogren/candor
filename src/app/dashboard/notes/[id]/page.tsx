@@ -319,7 +319,7 @@ export default function NotesPage() {
     const requestBody = {
       userId: user?.id,
       employeeId: targetUserId,
-      timeframe: 'quarter', // Default timeframe, could be configurable
+      timeframe: note.metadata?.timeframe || 'week',
       isInvited: isInvitedUser
     };
 
@@ -339,7 +339,7 @@ export default function NotesPage() {
     }
 
     return await response.json();
-  }, [note?.id, note?.subject_member_id, note?.subject_invited_id, user?.id]);
+  }, [note, user?.id]);
 
   // Stage 2: Generate content
   const executeStage2 = useCallback(async (stage1Data: Stage1Response) => {
@@ -377,7 +377,7 @@ export default function NotesPage() {
     }
 
     return await response.json();
-  }, [note?.id]);
+  }, [note]);
 
   // Main two-stage generation orchestration
   const startTwoStageGeneration = useCallback(async () => {

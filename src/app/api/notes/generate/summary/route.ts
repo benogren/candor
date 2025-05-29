@@ -337,7 +337,7 @@ function calculateStartDate(timeframe: string): Date {
       startDate.setFullYear(today.getFullYear() - 1);
       break;
     default: // 'all'
-      startDate.setFullYear(today.getFullYear() - 2); // Go back 2 years for 'all'
+      startDate.setFullYear(today.getFullYear() - 1); // Go back 2 years for 'all'
       break;
   }
 
