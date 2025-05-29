@@ -6,7 +6,7 @@ import { useEditor, EditorContent, BubbleMenu } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import TextAlign from '@tiptap/extension-text-align';
-import { ArrowLeft, Bold, Italic, Heading1, Heading2, Heading3, Heading4, List, ListOrdered, AlignLeft, AlignCenter, AlignRight, NotebookPen, NotepadText, Sparkles, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, Bold, Italic, Heading1, Heading2, Heading3, Heading4, List, ListOrdered, AlignLeft, AlignCenter, AlignRight, NotebookPen, NotepadText, Sparkles, RefreshCw, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/lib/context/auth-context';
 import supabase from '@/lib/supabase/client';
 import { toast } from '@/components/ui/use-toast';
@@ -16,6 +16,7 @@ import '../../../styles/editor-styles.css';
 import { overpass } from '../../../fonts';
 import { radley } from '../../../fonts';
 import Link from 'next/link';
+import { Button } from '@/components/ui/button';
 
 // Type definitions
 type Note = {
@@ -34,6 +35,9 @@ type Note = {
 
 interface GenerationProgress {
   isGenerating: boolean;
+  currentStage: 1 | 2;
+  stage1Complete: boolean;
+  stage2Complete: boolean;
   startTime?: Date;
   progress: number;
   message: string;
@@ -41,16 +45,23 @@ interface GenerationProgress {
   errorMessage?: string;
 }
 
+interface Stage1Response {
+  success: boolean;
+  summary: string;
+  userContext: {
+    userName: string;
+    jobTitle: string;
+    company: string;
+    industry: string;
+  };
+  feedbackCount: number;
+  usedFallback?: boolean;
+}
+
 interface ProgressStage {
   progress: number;
   message: string;
   duration: number;
-}
-
-interface NoteUpdateData {
-  content: string;
-  is_generating: boolean;
-  updated_at: string;
 }
 
 export default function NotesPage() {
@@ -65,19 +76,27 @@ export default function NotesPage() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   
-  // Generation progress tracking
+  // Generation progress tracking with two stages
   const [generationProgress, setGenerationProgress] = useState<GenerationProgress>({
     isGenerating: false,
+    currentStage: 1,
+    stage1Complete: false,
+    stage2Complete: false,
     progress: 0,
     message: '',
     hasError: false
   });
   
+  // Store stage 1 response for stage 2
+  const [stage1Response, setStage1Response] = useState<Stage1Response | null>(null);
+  
   // References for timers and generation control
   const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const debouncedSaveRef = useRef<ReturnType<typeof debounce> | null>(null);
+  
+  // Prevent multiple simultaneous generations
+  const generationInProgressRef = useRef(false);
 
   // Create a TipTap editor
   const editor = useEditor({
@@ -209,26 +228,32 @@ export default function NotesPage() {
     }
   }, [id, editor]);
 
-  // Simulate progress for better UX during generation
+  // Two-stage progress simulation
   const startProgressSimulation = useCallback(() => {
     if (progressTimerRef.current) {
       clearInterval(progressTimerRef.current);
     }
 
-    const stages: ProgressStage[] = [
-      { progress: 25, message: 'Gathering feedback data...', duration: 3000 },
-      { progress: 45, message: 'Analyzing responses...', duration: 5000 },
-      { progress: 65, message: 'Processing with AI...', duration: 10000 },
-      { progress: 85, message: 'Finalizing content...', duration: 8000 },
+    const stage1Stages: ProgressStage[] = [
+      { progress: 15, message: 'Identifying feedback sources...', duration: 2000 },
+      { progress: 35, message: 'Gathering feedback data...', duration: 3000 },
+      { progress: 50, message: 'Analyzing feedback patterns...', duration: 4000 },
     ];
 
+    const stage2Stages: ProgressStage[] = [
+      { progress: 60, message: 'Processing feedback analysis...', duration: 2000 },
+      { progress: 75, message: 'Generating personalized content...', duration: 5000 },
+      { progress: 90, message: 'Finalizing document...', duration: 3000 },
+    ];
+
+    let currentStages = stage1Stages;
     let stageIndex = 0;
-    let currentProgress = 15;
+    let currentProgress = 5;
 
     const updateProgress = () => {
-      if (stageIndex < stages.length) {
-        const stage = stages[stageIndex];
-        const increment = (stage.progress - currentProgress) / (stage.duration / 2000);
+      if (stageIndex < currentStages.length) {
+        const stage = currentStages[stageIndex];
+        const increment = (stage.progress - currentProgress) / (stage.duration / 1000);
         
         const timer = setInterval(() => {
           currentProgress = Math.min(currentProgress + increment, stage.progress);
@@ -245,213 +270,233 @@ export default function NotesPage() {
           if (currentProgress >= stage.progress) {
             clearInterval(timer);
             stageIndex++;
-            if (stageIndex < stages.length) {
-              setTimeout(updateProgress, 1000);
+            if (stageIndex < currentStages.length) {
+              setTimeout(updateProgress, 500);
+            } else if (currentStages === stage1Stages) {
+              // Stage 1 complete, wait for actual stage transition
+              setGenerationProgress(prev => ({
+                ...prev,
+                progress: 55,
+                message: 'Stage 1 complete - starting content generation...'
+              }));
             }
           }
-        }, 2000);
+        }, 1000);
 
         progressTimerRef.current = timer;
       }
     };
 
-    setTimeout(updateProgress, 2000);
+    // Start stage 1 simulation
+    setTimeout(updateProgress, 1000);
+
+    // Function to switch to stage 2 simulation
+    const switchToStage2 = () => {
+      currentStages = stage2Stages;
+      stageIndex = 0;
+      currentProgress = 55;
+      setTimeout(updateProgress, 1000);
+    };
+
+    return switchToStage2;
   }, []);
 
-  // Poll for note updates during generation
-  const startPollingForUpdates = useCallback(() => {
-    if (pollingTimerRef.current) {
-      clearInterval(pollingTimerRef.current);
+  // Stage 1: Analyze feedback
+  const executeStage1 = useCallback(async (): Promise<Stage1Response> => {
+    if (!note) throw new Error('Note not available');
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+
+    if (!token) {
+      throw new Error('Authentication required');
     }
 
-    pollingTimerRef.current = setInterval(async () => {
-      try {
-        const { data, error: pollError } = await supabase
-          .from('notes')
-          .select('content, is_generating, updated_at')
-          .eq('id', id)
-          .single();
+    // Determine the user to analyze (subject of the note)
+    const targetUserId = note.subject_member_id || note.subject_invited_id || user?.id;
+    const isInvitedUser = !!note.subject_invited_id;
 
-        if (pollError) throw pollError;
+    const requestBody = {
+      userId: user?.id,
+      employeeId: targetUserId,
+      timeframe: 'quarter', // Default timeframe, could be configurable
+      isInvited: isInvitedUser
+    };
 
-        const noteData = data as NoteUpdateData;
+    const response = await fetch('/api/notes/generate/summary', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(requestBody),
+      signal: abortControllerRef.current?.signal
+    });
 
-        // If generation is complete (is_generating is false and we have content)
-        if (!noteData.is_generating && noteData.content && noteData.content !== note?.content) {
-          // Stop polling
-          if (pollingTimerRef.current) {
-            clearInterval(pollingTimerRef.current);
-            pollingTimerRef.current = null;
-          }
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Stage 1 failed: ${response.statusText}`);
+    }
 
-          // Update note and editor
-          setNote(prev => prev ? { ...prev, ...noteData } : null);
-          setLastSaved(new Date(noteData.updated_at));
-          
-          if (editor && noteData.content) {
-            editor.commands.setContent(noteData.content);
-          }
+    return await response.json();
+  }, [note?.id, note?.subject_member_id, note?.subject_invited_id, user?.id]);
 
-          // Update progress to completed
-          setGenerationProgress({
-            isGenerating: false,
-            progress: 100,
-            message: 'Content generation completed!',
-            hasError: false
-          });
+  // Stage 2: Generate content
+  const executeStage2 = useCallback(async (stage1Data: Stage1Response) => {
+    if (!note) throw new Error('Note not available');
 
-          toast({
-            title: 'Generation Complete',
-            description: 'Your content has been generated and is now available for editing!',
-          });
-        }
-      } catch (pollError) {
-        console.error('Error polling for updates:', pollError);
-      }
-    }, 3000); // Poll every 3 seconds
-  }, [id, note?.content, editor]);
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
 
-  // Enhanced generation with progress tracking
-  const startGenerationWithProgress = useCallback(async () => {
-    if (!note?.id || generationProgress.isGenerating) return;
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const requestBody = {
+      noteId: note.id,
+      summary: stage1Data.summary,
+      userContext: stage1Data.userContext,
+      feedbackCount: stage1Data.feedbackCount
+      // isManagerContent: false, // Could be determined based on note type or user role
+      // previousContext: '' // Could be pulled from previous notes if relevant
+    };
+
+    const response = await fetch('/api/notes/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(requestBody),
+      signal: abortControllerRef.current?.signal
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Stage 2 failed: ${response.statusText}`);
+    }
+
+    return await response.json();
+  }, [note?.id]);
+
+  // Main two-stage generation orchestration
+  const startTwoStageGeneration = useCallback(async () => {
+    if (!note?.id || generationInProgressRef.current) {
+      return;
+    }
+
+    generationInProgressRef.current = true;
 
     // Create abort controller for this request
     abortControllerRef.current = new AbortController();
 
     setGenerationProgress({
       isGenerating: true,
+      currentStage: 1,
+      stage1Complete: false,
+      stage2Complete: false,
       startTime: new Date(),
       progress: 5,
-      message: 'Starting content generation...',
+      message: 'Starting feedback analysis...',
       hasError: false
     });
 
     // Start progress simulation
-    startProgressSimulation();
-    
-    // Start polling for note updates immediately
-    startPollingForUpdates();
+    const switchToStage2Simulation = startProgressSimulation();
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      if (!token) {
-        throw new Error('Authentication required');
-      }
-
-      // Update progress
+      // Stage 1: Analyze feedback
       setGenerationProgress(prev => ({
         ...prev,
-        progress: 15,
-        message: 'Connecting to generation service...'
+        currentStage: 1,
+        message: 'Analyzing feedback data...'
       }));
 
-      // Set a shorter timeout for the request to handle Vercel timeouts gracefully
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout - continuing in background')), 25000)
-      );
+      const stage1Result = await executeStage1();
+      setStage1Response(stage1Result);
 
-      const fetchPromise = fetch('/api/notes/generate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ id: note.id }),
-        signal: abortControllerRef.current.signal
+      // Stage 1 complete
+      setGenerationProgress(prev => ({
+        ...prev,
+        stage1Complete: true,
+        progress: 55,
+        message: `Analysis complete! Found ${stage1Result.feedbackCount} feedback items. Starting content generation...`
+      }));
+
+      // Brief pause to show stage 1 completion
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Start stage 2 progress simulation
+      switchToStage2Simulation();
+
+      // Stage 2: Generate content
+      setGenerationProgress(prev => ({
+        ...prev,
+        currentStage: 2,
+        message: 'Generating personalized content...'
+      }));
+
+      const stage2Result = await executeStage2(stage1Result);
+      console.log('Stage 2 result:', stage2Result);
+
+      // Both stages complete
+      setGenerationProgress({
+        isGenerating: false,
+        currentStage: 2,
+        stage1Complete: true,
+        stage2Complete: true,
+        progress: 100,
+        message: 'Content generation completed!',
+        hasError: false
       });
 
-      try {
-        const response = await Promise.race([fetchPromise, timeoutPromise]);
-        
-        if (response instanceof Response) {
-          if (!response.ok) {
-            // If it's a 504 timeout, don't treat it as an error - continue polling
-            if (response.status === 504) {
-              console.log('Gateway timeout detected - continuing with background polling');
-              setGenerationProgress(prev => ({
-                ...prev,
-                progress: 30,
-                message: 'Request timed out, but generation continues in background...'
-              }));
-              return; // Let polling handle the rest
-            }
-            
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `Request failed: ${response.statusText}`);
-          }
+      await fetchUpdatedNote();
 
-          // Generation completed successfully via direct response
-          setGenerationProgress(prev => ({
-            ...prev,
-            progress: 100,
-            message: 'Content generation completed!',
-            isGenerating: false
-          }));
+      toast({
+        title: 'Generation Complete',
+        description: `Your ${note.content_type} has been generated based on ${stage1Result.feedbackCount} feedback responses!`,
+      });
 
-          await fetchUpdatedNote();
-
-          toast({
-            title: 'Generation Complete',
-            description: 'Your content has been generated successfully!',
-          });
-        }
-      } catch (timeoutError) {
-        // Handle timeout gracefully - let polling continue
-        console.log('Request timed out, continuing with background polling', timeoutError);
-        setGenerationProgress(prev => ({
-          ...prev,
-          progress: 25,
-          message: 'Generation continues in background - polling for updates...'
-        }));
-        
-        toast({
-          title: 'Generation In Progress',
-          description: 'Generation is taking longer than usual but continues in the background. You\'ll see updates automatically.',
+      // After a brief delay, reset the generation UI
+      setTimeout(() => {
+        setGenerationProgress({
+          isGenerating: false,
+          currentStage: 1,
+          stage1Complete: false,
+          stage2Complete: false,
+          progress: 0,
+          message: '',
+          hasError: false
         });
-        
-        // Don't throw - let polling handle completion
-        return;
-      }
+      }, 3000);
 
     } catch (generationError: unknown) {
       if (generationError instanceof Error && generationError.name === 'AbortError') {
-        console.log('Generation was cancelled');
         return;
       }
 
-      console.error('Error generating content:', generationError);
+      console.error('Error in two-stage generation:', generationError);
       
       const errorMessage = generationError instanceof Error 
         ? generationError.message 
         : 'Generation failed';
       
-      // If it's a timeout error, don't show as failed - continue polling
-      if (errorMessage.includes('timeout') || errorMessage.includes('Request timeout')) {
-        setGenerationProgress(prev => ({
-          ...prev,
-          progress: 30,
-          message: 'Generation continues in background...'
-        }));
-        return;
-      }
-      
-      setGenerationProgress({
+      setGenerationProgress(prev => ({
+        ...prev,
         isGenerating: false,
-        progress: 0,
-        message: '',
         hasError: true,
         errorMessage: errorMessage
-      });
+      }));
       
       toast({
         title: 'Generation Failed',
         description: errorMessage,
         variant: 'destructive',
       });
+    } finally {
+      generationInProgressRef.current = false;
     }
-  }, [note?.id, generationProgress.isGenerating, startProgressSimulation, startPollingForUpdates, fetchUpdatedNote]);
+  }, [note?.id, note?.content_type, executeStage1, executeStage2, fetchUpdatedNote, startProgressSimulation]);
   
   // Fetch the note when the page loads
   useEffect(() => {
@@ -474,7 +519,7 @@ export default function NotesPage() {
           setNote(data);
           setLastSaved(new Date(data.updated_at));
           
-          // Set editor content if available
+          // Set editor content if available - THIS IS THE WORKING VERSION
           if (editor && data.content) {
             try {
               if (typeof data.content === 'string' && data.content.startsWith('{')) {
@@ -489,9 +534,9 @@ export default function NotesPage() {
             }
           }
 
-          // If note is generating, start the generation process
+          // If note is generating, start the two-stage generation process
           if (data.is_generating) {
-            startGenerationWithProgress();
+            startTwoStageGeneration();
           }
         }
       } catch (fetchError) {
@@ -511,19 +556,24 @@ export default function NotesPage() {
     return () => {
       isMounted = false;
     };
-  }, [id, user, editor, startGenerationWithProgress]);
+  }, [id, user, editor, startTwoStageGeneration]);
 
   // Handle retry generation
   const handleRetryGeneration = useCallback(async () => {
     if (!note?.id) return;
     
     // Reset error state
+    generationInProgressRef.current = false;
     setGenerationProgress({
       isGenerating: false,
+      currentStage: 1,
+      stage1Complete: false,
+      stage2Complete: false,
       progress: 0,
       message: '',
       hasError: false
     });
+    setStage1Response(null);
     
     // Mark note as generating if it isn't already
     if (!note.is_generating) {
@@ -541,37 +591,38 @@ export default function NotesPage() {
     }
     
     // Start generation
-    await startGenerationWithProgress();
-  }, [note, startGenerationWithProgress]);
+    await startTwoStageGeneration();
+  }, [note, startTwoStageGeneration]);
 
   // Cancel generation
-  const handleCancelGeneration = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+  // const handleCancelGeneration = useCallback(() => {
+  //   if (abortControllerRef.current) {
+  //     abortControllerRef.current.abort();
+  //   }
     
-    // Clean up timers
-    if (progressTimerRef.current) {
-      clearInterval(progressTimerRef.current);
-      progressTimerRef.current = null;
-    }
-    if (pollingTimerRef.current) {
-      clearInterval(pollingTimerRef.current);
-      pollingTimerRef.current = null;
-    }
+  //   // Clean up timers
+  //   if (progressTimerRef.current) {
+  //     clearInterval(progressTimerRef.current);
+  //     progressTimerRef.current = null;
+  //   }
 
-    setGenerationProgress({
-      isGenerating: false,
-      progress: 0,
-      message: '',
-      hasError: false
-    });
+  //   generationInProgressRef.current = false;
+  //   setGenerationProgress({
+  //     isGenerating: false,
+  //     currentStage: 1,
+  //     stage1Complete: false,
+  //     stage2Complete: false,
+  //     progress: 0,
+  //     message: '',
+  //     hasError: false
+  //   });
+  //   setStage1Response(null);
 
-    toast({
-      title: 'Generation Cancelled',
-      description: 'Content generation has been cancelled.',
-    });
-  }, []);
+  //   toast({
+  //     title: 'Generation Cancelled',
+  //     description: 'Content generation has been cancelled.',
+  //   });
+  // }, []);
 
   // Handle back navigation
   const handleBack = useCallback(() => {
@@ -585,9 +636,9 @@ export default function NotesPage() {
   // Auto-start generation when note is in generating state
   useEffect(() => {
     if (note?.is_generating && !generationProgress.isGenerating && !generationProgress.hasError) {
-      startGenerationWithProgress();
+      startTwoStageGeneration();
     }
-  }, [note?.is_generating, generationProgress.isGenerating, generationProgress.hasError, startGenerationWithProgress]);
+  }, [note?.is_generating, generationProgress.isGenerating, generationProgress.hasError, startTwoStageGeneration]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -595,30 +646,87 @@ export default function NotesPage() {
       if (progressTimerRef.current) {
         clearInterval(progressTimerRef.current);
       }
-      if (pollingTimerRef.current) {
-        clearInterval(pollingTimerRef.current);
-      }
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
       if (debouncedSaveRef.current) {
         debouncedSaveRef.current.cancel();
       }
+      generationInProgressRef.current = false;
     };
   }, []);
 
-  // Render generation status
+  // Render generation status with two-stage support
   const renderGenerationStatus = () => {
-    const { isGenerating, hasError, progress, message, errorMessage, startTime } = generationProgress;
+    const { isGenerating, hasError, progress, message, errorMessage, startTime, currentStage, stage1Complete, stage2Complete } = generationProgress;
     
-    if (!isGenerating && !hasError) return null;
+    if (!isGenerating && !hasError && !stage1Complete) return null;
 
     const elapsed = startTime ? Math.round((Date.now() - startTime.getTime()) / 1000) : 0;
-    const estimatedTotal = 60; // seconds
+    const estimatedTotal = 90; // seconds for both stages
     const estimatedRemaining = Math.max(0, estimatedTotal - elapsed);
 
     return (
       <div className="flex flex-col items-center justify-center py-16 px-4">
+
+        {/* Status Content */}
+        <div className="flex flex-col items-center max-w-md text-center">
+          {/* <div className="flex items-center justify-center h-16 w-16 rounded-full bg-gray-50 mb-4">
+            {hasError ? (
+              <XCircle className="h-6 w-6 text-red-600" />
+            ) : isGenerating ? (
+              <RefreshCw className="h-6 w-6 text-blue-600 animate-spin" />
+            ) : stage2Complete ? (
+              <CheckCircle className="h-6 w-6 text-green-600" />
+            ) : (
+              <RefreshCw className="h-6 w-6 text-blue-600 animate-spin" />
+            )}
+          </div> */}
+
+          {hasError ? (
+            <>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Generation Failed</h3>
+              <p className="text-gray-600 mb-2">Failed during Stage {currentStage}</p>
+              <p className="text-gray-600 mb-4">{errorMessage}</p>
+              <div className="flex space-x-3">
+                <Button
+                  variant={"outline"}
+                  onClick={handleRetryGeneration}
+                  >
+                    Retry Generation
+                  </Button>
+              </div>
+            </>
+          ) : stage1Complete && !stage2Complete && !isGenerating ? (
+            <>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Analysis Complete!</h3>
+              <p className="text-gray-600 mb-2">
+                {stage1Response ? `Found ${stage1Response.feedbackCount} feedback responses` : 'Feedback analysis completed'}
+              </p>
+              <p className="text-gray-600 mb-4">Starting content generation...</p>
+            </>
+          ) : (
+            <>
+              <h3 className="text-lg font-medium text-gray-900 mb-8">
+                {currentStage === 1 ? 'Analyzing Feedback' : 'Generating Content'}
+              </h3>
+              <p className="text-gray-600 mb-2">{message}</p>
+              {elapsed > 60 && (
+                <p className="text-sm text-yellow-600 mb-4">
+                  This is taking longer than usual. Please wait...
+                </p>
+              )}
+              {/* <Button
+                variant={"link"}
+                onClick={handleCancelGeneration}
+                className=""
+              >
+                Cancel
+              </Button> */}
+            </>
+          )}
+        </div>
+
         {/* Progress Bar */}
         <div className="w-full max-w-md mb-6">
           <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
@@ -643,58 +751,20 @@ export default function NotesPage() {
           <div className="text-xs text-gray-500 mt-1 text-right">
             {hasError ? 'Failed' : `${progress}% complete`}
           </div>
-        </div>
-
-        {/* Status Content */}
-        <div className="flex flex-col items-center max-w-md text-center">
-          <div className="flex items-center justify-center h-16 w-16 rounded-full bg-gray-50 mb-4">
-            {hasError ? (
-              <XCircle className="h-6 w-6 text-red-600" />
-            ) : isGenerating ? (
-              <RefreshCw className="h-6 w-6 text-blue-600 animate-spin" />
-            ) : (
-              <CheckCircle className="h-6 w-6 text-green-600" />
-            )}
+          
+          {/* Stage indicators */}
+          <div className="flex justify-between items-center mt-3 text-xs">
+            <div className={`flex items-center ${stage1Complete ? 'text-nonphotoblue-600' : currentStage === 1 ? 'text-cerulean' : 'text-gray-400'}`}>
+              {stage1Complete ? <CheckCircle className="h-3 w-3 mr-1" /> : currentStage === 1 ? <RefreshCw className="h-3 w-3 mr-1 animate-spin" /> : <div className="h-3 w-3 mr-1 rounded-full border border-gray-300" />}
+              Stage 1: Analysis
+            </div>
+            <div className={`flex items-center ${stage2Complete ? 'text-nonphotoblue-600' : currentStage === 2 ? 'text-cerulean' : 'text-gray-400'}`}>
+              {stage2Complete ? <CheckCircle className="h-3 w-3 mr-1" /> : currentStage === 2 ? <RefreshCw className="h-3 w-3 mr-1 animate-spin" /> : <div className="h-3 w-3 mr-1 rounded-full border border-gray-300" />}
+              Stage 2: Content
+            </div>
           </div>
-
-          {hasError ? (
-            <>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Generation Failed</h3>
-              <p className="text-gray-600 mb-4">{errorMessage}</p>
-              <div className="flex space-x-3">
-                <button
-                  onClick={handleRetryGeneration}
-                  className="px-4 py-2 bg-cerulean-600 text-white rounded-md hover:bg-cerulean-700 transition-colors flex items-center"
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Retry Generation
-                </button>
-                <button
-                  onClick={handleBack}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
-                >
-                  Go Back
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Generating Content</h3>
-              <p className="text-gray-600 mb-2">{message}</p>
-              {elapsed > 30 && (
-                <p className="text-sm text-yellow-600 mb-4">
-                  This is taking longer than usual. Please wait...
-                </p>
-              )}
-              <button
-                onClick={handleCancelGeneration}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
-              >
-                Cancel Generation
-              </button>
-            </>
-          )}
         </div>
+
       </div>
     );
   };
@@ -788,117 +858,124 @@ export default function NotesPage() {
               
               {editor && (
                 <>
-                  <button
+                <Button
+                  variant="link"
                     onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
                     className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('heading', { level: 1 }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
                     title="Heading 1"
                     disabled={generationProgress.isGenerating}
-                  >
-                    <Heading1 className="h-4 w-4" />
-                  </button>
-                  
-                  <button
-                    onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-                    className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('heading', { level: 2 }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
-                    title="Heading 2"
-                    disabled={generationProgress.isGenerating}
+                >
+                  <Heading1 className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="link"
+                  onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                  className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('heading', { level: 2 }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
+                  title="Heading 2"
+                  disabled={generationProgress.isGenerating}
                   >
                     <Heading2 className="h-4 w-4" />
-                  </button>
-
-                  <button
-                    onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-                    className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('heading', { level: 3 }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
-                    title="Heading 3"
-                    disabled={generationProgress.isGenerating}
-                  >
-                    <Heading3 className="h-4 w-4" />
-                  </button>
-
-                  <button
-                    onClick={() => editor.chain().focus().toggleHeading({ level: 4 }).run()}
-                    className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('heading', { level: 4 }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
-                    title="Heading 4"
-                    disabled={generationProgress.isGenerating}
-                  >
-                    <Heading4 className="h-4 w-4" />
-                  </button>
+                </Button>
+                <Button
+                  variant="link"
+                  onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+                  className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('heading', { level: 3 }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
+                  title="Heading 3"
+                  disabled={generationProgress.isGenerating}
+                >
+                  <Heading3 className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="link"
+                  onClick={() => editor.chain().focus().toggleHeading({ level: 4 }).run()}
+                  className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('heading', { level: 4 }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
+                  title="Heading 4"
+                  disabled={generationProgress.isGenerating}
+                >
+                  <Heading4 className="h-4 w-4" />
+                </Button>
                   
                   <div className="h-4 w-px bg-gray-300 mx-1"></div>
-                  
-                  <button
-                    onClick={() => editor.chain().focus().toggleBold().run()}
-                    className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('bold') ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
-                    title="Bold"
-                    disabled={generationProgress.isGenerating}
-                  >
-                    <Bold className="h-4 w-4" />
-                  </button>
-                  
-                  <button
-                    onClick={() => editor.chain().focus().toggleItalic().run()}
-                    className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('italic') ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
-                    title="Italic"
-                    disabled={generationProgress.isGenerating}
-                  >
-                    <Italic className="h-4 w-4" />
-                  </button>
+                <Button
+                  variant="link"
+                  onClick={() => editor.chain().focus().toggleBold().run()}
+                  className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('bold') ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
+                  title="Bold"
+                  disabled={generationProgress.isGenerating}
+                >
+                  <Bold className="h-4 w-4" />
+                </Button>
+
+                <Button
+                  variant="link"
+                  onClick={() => editor.chain().focus().toggleItalic().run()}
+                  className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('italic') ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
+                  title="Italic"
+                  disabled={generationProgress.isGenerating}
+                >
+                  <Italic className="h-4 w-4" />
+                </Button>
                   
                   <div className="h-4 w-px bg-gray-300 mx-1"></div>
-                  
-                  <button
+
+                  <Button
+                    variant="link"
                     onClick={() => editor.chain().focus().toggleBulletList().run()}
                     className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('bulletList') ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
                     title="Bullet List"
                     disabled={generationProgress.isGenerating}
                   >
                     <List className="h-4 w-4" />
-                  </button>
-                  
-                  <button
+                  </Button>
+
+                  <Button
+                    variant="link"
                     onClick={() => editor.chain().focus().toggleOrderedList().run()}
                     className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive('orderedList') ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
                     title="Numbered List"
                     disabled={generationProgress.isGenerating}
                   >
                     <ListOrdered className="h-4 w-4" />
-                  </button>
+                  </Button>
                   
                   <div className="h-4 w-px bg-gray-300 mx-1"></div>
-                  
-                  <button
+
+                  <Button
+                    variant="link"
                     onClick={() => editor.chain().focus().setTextAlign('left').run()}
                     className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive({ textAlign: 'left' }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
                     title="Align Left"
                     disabled={generationProgress.isGenerating}
                   >
                     <AlignLeft className="h-4 w-4" />
-                  </button>
-                  
-                  <button
+                  </Button>
+
+                  <Button
+                    variant="link"
                     onClick={() => editor.chain().focus().setTextAlign('center').run()}
                     className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive({ textAlign: 'center' }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
                     title="Align Center"
                     disabled={generationProgress.isGenerating}
                   >
                     <AlignCenter className="h-4 w-4" />
-                  </button>
-                  
-                  <button
+                  </Button>
+
+                  <Button
+                    variant="link"
                     onClick={() => editor.chain().focus().setTextAlign('right').run()}
                     className={`p-1.5 rounded hover:bg-gray-200 ${editor.isActive({ textAlign: 'right' }) ? 'bg-gray-200 text-cerulean-600' : 'text-gray-700'}`}
                     title="Align Right"
                     disabled={generationProgress.isGenerating}
                   >
                     <AlignRight className="h-4 w-4" />
-                  </button>
+                  </Button>
                 </>
               )}
             </div>
             
             <div className="p-4">
               {/* Show generation status or editor */}
-              {(generationProgress.isGenerating || generationProgress.hasError) ? 
+              {(generationProgress.isGenerating || generationProgress.hasError || generationProgress.stage1Complete) ? 
                 renderGenerationStatus() : (
                 <div className={`w-full mx-auto overflow-hidden ${overpass.className}`}>
                   {editor && (

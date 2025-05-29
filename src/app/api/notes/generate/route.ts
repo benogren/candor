@@ -1,46 +1,45 @@
 // src/app/api/notes/generate/route.ts
 import { NextResponse } from 'next/server';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import { marked } from 'marked';
 import OpenAI from 'openai';
 
-// Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Much shorter timeout - 30 seconds max
-const REQUEST_TIMEOUT = 30000;
+interface Stage2Request {
+  noteId: string;
+  summary: string;
+  userContext: {
+    userName: string;
+    jobTitle: string;
+    company: string;
+    industry: string;
+  };
+  feedbackCount: number;
+  isManagerContent?: boolean;
+  previousContext?: string; // For 1:1 prep continuity
+}
 
 interface Note {
   id: string;
   title: string;
-  content: string;
   content_type: string;
-  creator_id: string;
   subject_member_id?: string;
   subject_invited_id?: string;
   metadata?: Record<string, unknown>;
-  created_at?: string;
-  updated_at?: string;
-  is_generating?: boolean;
 }
 
-// Main handler function
 export async function POST(request: Request) {
-  const startTime = Date.now();
-  
   try {
-    const body = await request.json();
-    const { id } = body;
+    const body = await request.json() as Stage2Request;
+    const { noteId, summary, userContext, feedbackCount } = body;
 
-    console.log('=== STARTING SIMPLE GENERATION ===', id);
+    console.log('=== Stage 2: Starting content generation ===');
+    console.log('Note:', noteId, 'Content type: will be determined from DB');
 
-    if (!id) {
-      return NextResponse.json({ error: 'Invalid request parameters' }, { status: 400 });
-    }
-
-    // Create Supabase client
+    // Auth
     const authHeader = request.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -57,11 +56,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    // Get note
+    // Get note to determine content type
     const { data: note, error: noteError } = await supabase
       .from('notes')
       .select('*')
-      .eq('id', id)
+      .eq('id', noteId)
       .eq('creator_id', user.id)
       .single() as { data: Note | null, error: Error | null };
 
@@ -69,47 +68,69 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Note not found' }, { status: 404 });
     }
 
-    console.log('Note found:', note.content_type, 'generating:', note.is_generating);
+    const previousContext = '';
+
+    let isManagerContent = false;
+    // let managerId = '';
+    // let recipientId = '';
+    if (note.subject_invited_id != null || note.subject_member_id != null) {
+      isManagerContent = true;
+      // recipientId = note.subject_member_id || note.subject_invited_id || '';
+      // managerId = user.id;
+    }
+    // Generate content with 30 second timeout
+    const generationPromise = generateFinalContent(
+      note.content_type,
+      summary,
+      userContext,
+      feedbackCount,
+      isManagerContent,
+      previousContext
+    );
+    
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error('Content generation timeout')), 30000)
+    );
 
     try {
-      // Race against timeout
-      const generationPromise = generateContentFast(supabase, note, user.id);
-      const timeoutPromise = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('TIMEOUT')), REQUEST_TIMEOUT)
-      );
-
       const content = await Promise.race([generationPromise, timeoutPromise]);
       
       // Convert to HTML
       const htmlContent = await marked.parse(content);
       
-      // Update database
+      // Update note
       const { data: updatedNote, error: updateError } = await supabase
         .from('notes')
         .update({
           content: htmlContent,
           is_generating: false,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
+          metadata: {
+            ...note.metadata,
+            generated_at: new Date().toISOString(),
+            feedback_count: feedbackCount,
+            stage2_completed: true
+          }
         })
-        .eq('id', id)
+        .eq('id', noteId)
         .select()
         .single();
 
       if (updateError) {
-        console.error('Update error:', updateError);
         throw updateError;
       }
 
-      const duration = Date.now() - startTime;
-      console.log(`=== GENERATION COMPLETE === ${duration}ms`);
-      
-      return NextResponse.json({ note: updatedNote }, { status: 200 });
+      console.log('=== Stage 2: Content generation complete ===');
+      return NextResponse.json({
+        success: true,
+        note: updatedNote
+      });
 
-    } catch (error) {
-      console.error('Generation failed:', error);
+    } catch (genError) {
+      console.error('Content generation failed:', genError);
       
-      // ALWAYS update database to stop loading state
-      const fallbackContent = createFallbackContent(note);
+      // Fallback to template content
+      const fallbackContent = createFallbackContent(note.content_type, userContext, summary);
       const htmlContent = await marked.parse(fallbackContent);
       
       const { data: updatedNote } = await supabase
@@ -117,240 +138,308 @@ export async function POST(request: Request) {
         .update({
           content: htmlContent,
           is_generating: false,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
+          metadata: {
+            ...note.metadata,
+            generated_at: new Date().toISOString(),
+            used_fallback: true,
+            stage2_completed: true
+          }
         })
-        .eq('id', id)
+        .eq('id', noteId)
         .select()
         .single();
 
-      const duration = Date.now() - startTime;
-      console.log(`=== FALLBACK COMPLETE === ${duration}ms`);
-      
-      return NextResponse.json({ note: updatedNote }, { status: 200 });
+      return NextResponse.json({
+        success: true,
+        note: updatedNote,
+        usedFallback: true
+      });
     }
 
   } catch (error) {
-    console.error('API Error:', error);
-    return NextResponse.json({ error: 'Generation failed' }, { status: 500 });
-  }
-}
-
-// Fast, simple content generation
-async function generateContentFast(supabase: SupabaseClient, note: Note, userId: string): Promise<string> {
-  console.log('Starting fast generation...');
-  
-  try {
-    // Get basic user info
-    const { data: userProfile } = await supabase
-      .from('user_profiles')
-      .select('name, job_title')
-      .eq('id', userId)
-      .single();
-
-    const userName = userProfile?.name || 'User';
-    const jobTitle = userProfile?.job_title || 'Team Member';
-
-    // Get recent feedback (limit to 10 items for speed)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const { data: recentFeedback } = await supabase
-      .from('feedback_responses')
-      .select(`
-        text_response,
-        comment_text,
-        rating_value,
-        feedback_questions(question_text, question_type)
-      `)
-      .eq('recipient_id', userId)
-      .eq('skipped', false)
-      .gte('created_at', thirtyDaysAgo.toISOString())
-      .limit(10);
-
-    console.log(`Found ${recentFeedback?.length || 0} recent feedback items`);
-
-    // Create simple prompt
-    const feedbackSummary = (recentFeedback || [])
-      .filter(item => item.text_response || item.comment_text)
-      .slice(0, 5)
-      .map(item => `- ${item.text_response || item.comment_text}`)
-      .join('\n');
-
-    const hasRealFeedback = feedbackSummary.length > 20;
-    
-    if (!hasRealFeedback) {
-      console.log('No meaningful feedback found, using template');
-      return createTemplateContent(note, userName, jobTitle);
-    }
-
-    const prompt = createSimplePrompt(note.content_type, userName, jobTitle, feedbackSummary);
-    
-    console.log('Calling OpenAI with 20-second timeout...');
-    
-    // Single OpenAI call with aggressive timeout
-    const openaiPromise = openai.chat.completions.create({
-      model: "gpt-3.5-turbo", // Faster model
-      messages: [
-        { role: "system", content: "You are a concise professional coach. Create clear, actionable content in markdown format." },
-        { role: "user", content: prompt }
-      ],
-      max_tokens: 600, // Shorter content
-      temperature: 0.3,
-      stream: false
-    });
-
-    const openaiTimeout = new Promise<never>((_, reject) => 
-      setTimeout(() => reject(new Error('OpenAI timeout')), 20000)
+    console.error('Stage 2 error:', error);
+    return NextResponse.json(
+      { error: 'Failed to generate content' }, 
+      { status: 500 }
     );
-
-    const completion = await Promise.race([openaiPromise, openaiTimeout]);
-    const content = completion.choices[0]?.message?.content;
-    
-    console.log('OpenAI completed successfully');
-    return content || createTemplateContent(note, userName, jobTitle);
-
-  } catch (error) {
-    console.error('Fast generation failed:', error);
-    // Always return template content on failure
-    const { data: userProfile } = await supabase
-      .from('user_profiles')
-      .select('name, job_title')
-      .eq('id', userId)
-      .single();
-
-    return createTemplateContent(note, userProfile?.name || 'User', userProfile?.job_title || 'Team Member');
   }
 }
 
-// Create simple, focused prompts
-function createSimplePrompt(contentType: string, userName: string, jobTitle: string, feedbackSummary: string): string {
+async function generateFinalContent(
+  contentType: string,
+  summary: string,
+  userContext: { userName: string; jobTitle: string; company: string; industry: string },
+  feedbackCount: number,
+  isManagerContent: boolean,
+  previousContext: string
+): Promise<string> {
+  
+  console.log(`Generating ${contentType} content using AI...`);
+  
+  const prompt = createContentPrompt(
+    contentType,
+    summary,
+    userContext,
+    feedbackCount,
+    isManagerContent,
+    previousContext
+  );
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4-turbo",
+    messages: [
+      { 
+        role: "system", 
+        content: getSystemPrompt(contentType)
+      },
+      { role: "user", content: prompt }
+    ],
+    max_tokens: 1000,
+    temperature: 0.4
+  });
+
+  return completion.choices[0]?.message?.content || 
+         createFallbackContent(contentType, userContext, summary);
+}
+
+function createContentPrompt(
+  contentType: string,
+  summary: string,
+  userContext: { userName: string; jobTitle: string; company: string; industry: string },
+  feedbackCount: number,
+  isManagerContent: boolean,
+  previousContext: string
+): string {
+  
+  const perspective = isManagerContent ? "This is being prepared for a manager about their employee" : "This is being prepared for an employee about themselves";
+  const recipient = isManagerContent ? `${userContext.userName}'s manager` : userContext.userName;
+
+  console.log(`Perspective: ${perspective}`);
+
   if (contentType === 'summary') {
-    return `Create a concise feedback summary for ${userName} (${jobTitle}) based on this recent feedback:
+    return `Create a comprehensive feedback summary for ${userContext.userName} (${userContext.jobTitle}) at ${userContext.company} based on this feedback analysis.
+    
+    FEEDBACK ANALYSIS:
+    ${summary}
+    
+    Create a well-structured summary with these sections:
+    ### Feedback Overview
+    ### Quantitative Summary
+    ### Qualitative Insights
+    ### Key Patterns and Themes 
+    ### Strengths
+    ### Area for Improvement 
+    ### Recommendations
+    - Offer actionable steps they can take to improve
+    - Highlight specific strengths to build on
+    
+    CONTEXT:
+    Write this for ${recipient}.
+    Context: ${perspective}. ${isManagerContent ? `Write this in the 3nd person` : `Write this in the 2nd person`}. 
+    Be constructive, balanced, and growth-oriented. Include specific examples from the feedback analysis.`;
 
-${feedbackSummary}
-
-Format as markdown with these sections:
-## Key Strengths
-## Areas for Growth  
-## Recommendations
-
-Keep it under 300 words, focus on actionable insights.`;
-  
   } else if (contentType === 'prep') {
-    return `Create a 1:1 meeting agenda for ${userName} (${jobTitle}) based on this feedback:
+    return `
+    Create a 1:1 meeting agenda for ${userContext.userName} (${userContext.jobTitle}) based on this feedback analysis.
+    
+    FEEDBACK ANALYSIS:
+    ${summary}
 
-${feedbackSummary}
+    Create a focused agenda that builds on previous discussions and follows up on action items:
 
-Format as markdown with these sections:
-## Discussion Topics
-## Questions to Ask
-## Development Focus
+    ### 1:1 Agenda
+    
+    ${previousContext ? `PREVIOUS MEETING CONTEXT: ${previousContext}` : ''}
 
-Keep it under 300 words, focus on specific talking points.`;
-  
+    #### Areas for Potential Growth or Improvement
+    1. [Area 1]
+      - [Question to ask ${isManagerContent ? 'your employee' : 'your manager'} about this area]
+    2. [Area 2]
+      - [Question to ask ${isManagerContent ? 'your employee' : 'your manager'} about this area]
+    
+    #### Challenges Identified in Feedback
+    - [Challenge 1]
+      - [Question to ask ${isManagerContent ? 'your employee' : 'your manager'} about this challenge]
+    - [Challenge 2]
+      - [Question to ask ${isManagerContent ? 'your employee' : 'your manager'} about this challenge]
+
+    #### Professional Development Opportunities
+    - [Opportunity 1]
+      - [Question to ask ${isManagerContent ? 'your employee' : 'your manager'} about this opportunity]
+    - [Opportunity 2]
+      - [Question to ask ${isManagerContent ? 'your employee' : 'your manager'} about this opportunity]
+
+    #### Other Questions to Ask ${isManagerContent ? 'Your Employee' : 'Your Manager'}
+    1. ${isManagerContent ? `[Questions about employee motivation]` : '[Question 1]'}
+    2. [Question 2]
+    3. [Question 3]
+
+    #### Action Items and Next Steps
+    [leave space for action items and follow-ups]
+    
+    
+    CONTEXT:
+    This is for ${recipient}.
+    Context: ${perspective}. ${isManagerContent ? ` ` : `Write this in the 1st person`}.
+    Context: This is for a ${perspective}.
+    Write actionable discussion points and specific questions.
+    Do not include an Introduction, Summary, or Closing section.`;
+
   } else if (contentType === 'review') {
-    return `Create self-evaluation notes for ${userName} (${jobTitle}) based on this feedback:
+    return `
+    Create ${isManagerContent ? 'a Performance review' : 'a Self-Evaluation'} for ${userContext.userName} based on this feedback analysis.
+    
+    FEEDBACK ANALYSIS:
+    ${summary}
 
-${feedbackSummary}
+    Based on ${feedbackCount} feedback responses, create a comprehensive ${isManagerContent ? 'a performance review' : 'a self-evaluation'} structure with these sections:
 
-Format as markdown with these sections:
-## Accomplishments
-## Challenges & Learning
-## Goals for Next Period
+    ${isManagerContent ? 
+    `
+    ### Executive Summary
 
-Keep it under 300 words, focus on reflection and growth.`;
+    ### Detailed Assessment
+    
+    ### Feedback Analysis
+
+    #### Notable Quotes
+
+    #### Rating Highlights
+
+    ### Recommendations
+
+    ### Goals for Next Review Period
+
+    ### Managerial Support
+
+    ### Conclusion
+    ` 
+    : 
+    `
+    ### Executive Summary
+
+    ### Accomplishments and Contributions
+
+    ### Results
+
+    ### Overall Imact
+
+    ### What I Have Learned
+
+    ### Obstacles
+
+    ### Opportunities
+
+    ### Goals
+
+    ### Decisions
+
+    ### Other Notes
+
+    ---
+
+    ### Questions and Discussion Points
+    1. [Question 1]
+    2. [Question 2]
+    3. [Question 3]
+    4. [Question 4]
+    5. [Question 5]
+    `
+    }
+
+
+    CONTEXT:
+    This is for ${recipient}.
+    Context: ${perspective}. ${isManagerContent ? `Write this in the 2nd person about the employee` : `Write this in the 1st person`}.
+    Context: This is for a ${perspective}.
+    Be comprehensive and development-focused.
+    Include specific examples from the feedback analysis.
+    `;
   }
 
-  return `Create professional ${contentType} content for ${userName}.`;
+  return `Create professional ${contentType} content for ${userContext.userName} based on the feedback analysis provided.`;
 }
 
-// Template content when no feedback or OpenAI fails
-function createTemplateContent(note: Note, userName: string, jobTitle: string): string {
-  if (note.content_type === 'summary') {
+function getSystemPrompt(contentType: string): string {
+  if (contentType === 'summary') {
+    return "You are an experienced HR professional specializing in feedback analysis. Create balanced, constructive summaries that highlight both strengths and development opportunities.";
+  } else if (contentType === 'prep') {
+    return "You are an expert coach specializing in 1:1 meeting preparation. Create structured agendas that facilitate productive conversations and development.";
+  } else if (contentType === 'review') {
+    return "You are an experienced performance management specialist. Create comprehensive, fair reviews that support professional growth and development.";
+  }
+  
+  return "You are a professional coach helping with career development and feedback analysis.";
+}
+
+function createFallbackContent(
+  contentType: string,
+  userContext: { userName: string; jobTitle: string; company: string },
+  summary: string
+): string {
+
+  if (contentType === 'summary') {
     return `# Feedback Summary
 
 ## Overview
-This summary has been generated for ${userName} (${jobTitle}). 
+This summary is based on recent feedback for ${userContext.userName} (${userContext.jobTitle}) at ${userContext.company}.
 
-## Key Areas to Explore
-- Recent project contributions and achievements
-- Collaboration and communication strengths
-- Professional development opportunities
-- Areas where additional support might be helpful
+## Key Insights
+${summary.substring(0, 500)}...
+
+## Areas of Focus
+- Continue building on demonstrated strengths
+- Address development opportunities identified in feedback
+- Maintain strong professional relationships and communication
 
 ## Next Steps
-- Gather more specific feedback from colleagues
-- Schedule regular check-ins for ongoing development
-- Set clear goals for the upcoming period
+- Review detailed feedback with manager or team
+- Create specific development goals
+- Schedule regular check-ins for progress tracking`;
 
-*This template can be customized based on specific feedback and observations.*`;
-
-  } else if (note.content_type === 'prep') {
+  } else if (contentType === 'prep') {
     return `# 1:1 Meeting Agenda
 
-## Current Projects & Priorities
-- Review progress on key initiatives
-- Discuss any blockers or challenges
-- Align on upcoming deadlines and deliverables
+## Discussion Topics
+Based on recent feedback analysis for ${userContext.userName}:
 
-## Professional Development
-- Explore learning opportunities and interests
-- Discuss career goals and growth areas
-- Identify skills to develop or strengthen
+## Feedback Highlights
+${summary.substring(0, 300)}...
 
-## Team & Collaboration
-- Share feedback on team dynamics
-- Discuss communication preferences
-- Address any process improvements
+## Questions to Explore
+1. What aspects of recent feedback resonate most?
+2. Which areas would you like to focus on developing?
+3. What support or resources would be most helpful?
 
-## Questions for Discussion
-1. What's going well in your current work?
-2. Where do you need more support or resources?
-3. What would you like to focus on developing?
+## Action Planning
+- Identify specific development goals
+- Discuss resource needs and support
+- Plan follow-up conversations and check-ins`;
 
-*Customize this agenda based on recent feedback and current priorities.*`;
+  } else if (contentType === 'review') {
+    return `# Performance Review Notes
 
-  } else if (note.content_type === 'review') {
-    return `# Self-Evaluation Notes
+## Summary
+Review preparation for ${userContext.userName} (${userContext.jobTitle}) based on feedback analysis.
 
-## Key Accomplishments
-- Major projects completed this period
-- Notable contributions to team goals
-- Skills developed or strengthened
-- Positive feedback received
+## Key Feedback Themes
+${summary.substring(0, 400)}...
 
-## Challenges & Learning
-- Obstacles encountered and how they were addressed
-- Areas where growth occurred through difficulty
-- Lessons learned from setbacks or mistakes
-- Support that was helpful during challenging times
+## Performance Highlights
+- Review accomplishments and contributions
+- Acknowledge strengths identified in feedback
+- Discuss impact on team and organizational goals
 
-## Goals for Next Period
-- Specific skills to develop or improve
-- Projects or responsibilities to take on
-- Relationships to build or strengthen
-- Ways to contribute more effectively to team success
-
-## Support Needed
-- Resources or training that would be helpful
-- Areas where mentorship or guidance is desired
-- Process improvements that could increase effectiveness
-
-*Use this framework to prepare thoughtful self-reflection for your review discussion.*`;
+## Development Focus
+- Address growth areas from feedback
+- Set specific development objectives
+- Plan learning and improvement activities`;
   }
 
-  return `# ${note.content_type.charAt(0).toUpperCase() + note.content_type.slice(1)}
+  return `# ${contentType.charAt(0).toUpperCase() + contentType.slice(1)} Content
 
-Professional content for ${userName} (${jobTitle}).
+Generated content for ${userContext.userName} based on feedback analysis.
 
-This content has been generated as a starting template. Please customize based on your specific needs and recent feedback.`;
-}
-
-// Fallback content for complete failures
-function createFallbackContent(note: Note): string {
-  return `# ${note.title}
-
-This content is being generated. Please refresh the page in a few moments to see your completed ${note.content_type}.
-
-If this message persists, there may be a temporary issue with content generation. Please try creating a new ${note.content_type} or contact support.`;
+${summary}`;
 }
