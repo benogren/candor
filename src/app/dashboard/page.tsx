@@ -895,7 +895,7 @@ export default function DashboardPage() {
               >
                 <div className='flex items-center gap-2'>
                 <NotebookPen className="h-5 w-5 text-cerulean-400" />
-                Self-Evaluation Preparation
+                Review Preparation
                 </div>
               </Button>
             </div>
