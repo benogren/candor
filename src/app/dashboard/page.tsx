@@ -15,11 +15,11 @@ import {
   BotMessageSquareIcon, 
   Building2, 
   Home, 
-  NotebookPen, 
-  NotepadText, 
-  Sparkles, 
   ChevronDown,
-  UserCircle
+  UserCircle,
+  Sparkles,
+  NotepadText,
+  NotebookPen
 } from 'lucide-react';
 import { radley } from '../fonts';
 import { Badge } from '@/components/ui/badge';
@@ -33,15 +33,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
-
-// Type for team member
-interface TeamMember {
-  id: string;
-  full_name: string;
-  email: string;
-  avatar_url?: string;
-  is_invited_user: boolean;
-}
+import { FeedbackCoachPanel, type TeamMember } from '@/components/feedback-coach';
 
 // Type for notes data
 type Note = {
@@ -628,7 +620,7 @@ export default function DashboardPage() {
   //   return plainText.length > 160 ? plainText.substring(0, 160) + '...' : plainText;
   // };
 
-  // // Get note type display label
+  // Get note type display label
   // const getNoteTypeLabel = (note: Note) => {
   //   if (note.content_type === 'summary') {
   //     return 'Feedback Summary';
@@ -662,6 +654,216 @@ export default function DashboardPage() {
     // Reset employee filter when switching to personal tab
     if (tab === 'personal') {
       setSelectedEmployee('all');
+    }
+  };
+
+  // Simplified Feedback Coach handlers that work for both personal and team modes
+  const handleCoachSummarize = async (timeframe: string, memberId?: string) => {
+    if (!user) return;
+
+    try {
+      setIsButtonLoading(true);
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      // Use the provided memberId or fall back to current user
+      const targetUserId = memberId || user.id;
+      
+      // Check if there's feedback for this timeframe
+      const checkResponse = await fetch('/api/feedback/check-feedback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          userId: targetUserId,
+          timeframe
+        }),
+      });
+      
+      if (!checkResponse.ok) {
+        const errorData = await checkResponse.json();
+        throw new Error(errorData.error || 'Failed to check feedback');
+      }
+      
+      const { hasFeedback } = await checkResponse.json();
+      
+      if (!hasFeedback) {
+        const isPersonal = !memberId || memberId === user.id;
+        toast({
+          description: `${isPersonal ? 'You have' : 'This team member has'} no feedback for the ${timeframe === 'week' ? 'past week' : timeframe === 'month' ? 'past month' : 'selected period'}.`,
+        });
+        return;
+      }
+      
+      // Create title based on whether it's personal or team
+      let catTitle = '';
+      if (!memberId || memberId === user.id) {
+        // Personal summary
+        catTitle = timeframe === 'week' ? 'Last Week\'s Feedback Summary' : 
+                   timeframe === 'month' ? 'Last Month\'s Feedback Summary' : 
+                   'Overall Feedback Summary';
+      } else {
+        // Team member summary
+        const member = teamMembers.find(m => m.id === memberId);
+        const memberName = member?.full_name || 'Team Member';
+        catTitle = timeframe === 'week' ? `${memberName}'s Last Week's Feedback Summary` :
+                   timeframe === 'month' ? `${memberName}'s Last Month's Feedback Summary` :
+                   `${memberName}'s Overall Feedback Summary`;
+      }
+
+      catTitle += ` (${new Date().toLocaleDateString()})`;
+      
+      // Create note
+      const response = await fetch('/api/notes/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: catTitle,
+          content_type: 'summary',
+          metadata: { timeframe },
+          subject_member_id: (!memberId || memberId === user.id) ? null : 
+                           (teamMembers.find(m => m.id === memberId)?.is_invited_user ? null : memberId),
+          subject_invited_id: (!memberId || memberId === user.id) ? null :
+                            (teamMembers.find(m => m.id === memberId)?.is_invited_user ? memberId : null)
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create note');
+      }
+      
+      const data = await response.json();
+      router.push(`/dashboard/notes/${data.id}`);
+    } catch (error) {
+      console.error('Error creating summary note:', error);
+      toast({
+        title: 'Error creating summary',
+        description: 'Could not create the feedback summary. Please try again later.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsButtonLoading(false);
+    }
+  };
+
+  const handleCoachPrep = async (memberId?: string) => {
+    if (!user) return;
+
+    try {
+      setIsButtonLoading(true);
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      // Create title based on whether it's personal or team
+      let catTitle = '';
+      if (!memberId || memberId === user.id) {
+        catTitle = '1:1 Preparation Notes';
+      } else {
+        const member = teamMembers.find(m => m.id === memberId);
+        const memberName = member?.full_name || 'Team Member';
+        catTitle = `1:1 Preparation for ${memberName}`;
+      }
+      catTitle += ` (${new Date().toLocaleDateString()})`;
+      
+      // Create note
+      const response = await fetch('/api/notes/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: catTitle,
+          content_type: 'prep',
+          metadata: { timeframe: 'week' },
+          subject_member_id: (!memberId || memberId === user.id) ? null : 
+                           (teamMembers.find(m => m.id === memberId)?.is_invited_user ? null : memberId),
+          subject_invited_id: (!memberId || memberId === user.id) ? null :
+                            (teamMembers.find(m => m.id === memberId)?.is_invited_user ? memberId : null)
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create prep notes');
+      }
+      
+      const data = await response.json();
+      router.push(`/dashboard/notes/${data.id}`);
+    } catch (error) {
+      console.error('Error creating prep note:', error);
+      toast({
+        title: 'Error creating prep notes',
+        description: 'Could not create the preparation notes. Please try again later.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsButtonLoading(false);
+    }
+  };
+
+  const handleCoachReview = async (memberId?: string) => {
+    if (!user) return;
+
+    try {
+      setIsButtonLoading(true);
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      // Create title based on whether it's personal or team
+      let catTitle = '';
+      if (!memberId || memberId === user.id) {
+        catTitle = 'Self-Evaluation Notes';
+      } else {
+        const member = teamMembers.find(m => m.id === memberId);
+        const memberName = member?.full_name || 'Team Member';
+        catTitle = `Review Prep for ${memberName}`;
+      }
+      catTitle += ` (${new Date().toLocaleDateString()})`;
+      
+      // Create note
+      const response = await fetch('/api/notes/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: catTitle,
+          content_type: 'review',
+          metadata: { timeframe: 'all' },
+          subject_member_id: (!memberId || memberId === user.id) ? null : 
+                           (teamMembers.find(m => m.id === memberId)?.is_invited_user ? null : memberId),
+          subject_invited_id: (!memberId || memberId === user.id) ? null :
+                            (teamMembers.find(m => m.id === memberId)?.is_invited_user ? memberId : null)
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create review notes');
+      }
+      
+      const data = await response.json();
+      router.push(`/dashboard/notes/${data.id}`);
+    } catch (error) {
+      console.error('Error creating review note:', error);
+      toast({
+        title: 'Error creating review notes',
+        description: 'Could not create the review preparation. Please try again later.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsButtonLoading(false);
     }
   };
   
@@ -863,51 +1065,30 @@ export default function DashboardPage() {
           
           <div className='mt-10'>
 
-            <div className='bg-white rounded-lg shadow-md p-6 mb-8'>
-              <h2 className='text-xl font-light text-berkeleyblue mb-4'>
-                <BotMessageSquareIcon className="inline-block h-6 w-6 mr-2 text-cerulean-400" />
-                Feedback Coach
-              </h2>
-              <Button 
-                variant="secondary" 
-                className="w-full flex items-center justify-between py-6 text-left mb-2"
-                onClick={() => router.push('/dashboard/coach')}
-              >
-                <div className='flex items-center gap-2'>
-                <Sparkles className="h-5 w-5 text-cerulean-400" />
-                Generate Summary
-                </div>
-              </Button>
-              <Button 
-                variant="secondary" 
-                className="w-full flex items-center justify-between py-6 text-left mb-2"
-                onClick={() => router.push('/dashboard/coach')}
-              >
-                <div className='flex items-center gap-2'>
-                <NotepadText className="h-5 w-5 text-cerulean-400" />
-                1:1 Preparation
-                </div>
-              </Button>
-              <Button 
-                variant="secondary" 
-                className="w-full flex items-center justify-between py-6 text-left"
-                onClick={() => router.push('/dashboard/coach')}
-              >
-                <div className='flex items-center gap-2'>
-                <NotebookPen className="h-5 w-5 text-cerulean-400" />
-                Review Preparation
-                </div>
-              </Button>
-            </div>
 
-            {/* Recent Activity Section */}
+            <div className='bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-100'>
+            <h2 className='text-xl font-light text-berkeleyblue mb-4'>
+              <BotMessageSquareIcon className="inline-block h-6 w-6 mr-2 text-cerulean-400" />
+              Feedback Coach
+            </h2>
+
+            <FeedbackCoachPanel
+              mode={activeTab}
+              variant="compact"
+              selectedMemberId={activeTab === 'team' ? selectedEmployee : undefined}
+              teamMembers={teamMembers}
+              isLoading={isButtonLoading}
+              onSummarize={handleCoachSummarize}
+              onPrep={handleCoachPrep}
+              onReview={handleCoachReview}
+            />
+
             {recentNotes.length > 0 && (
-              <div className='bg-white rounded-lg shadow-md p-6 mb-8'>
-                <h2 className='text-xl font-light text-berkeleyblue mb-4'>
-                  <BotMessageSquareIcon className="inline-block h-6 w-6 mr-2 text-cerulean-400" />
+              <div className="">
+                <h3 className='text-base font-light text-berkeleyblue'>
                   Recently Updated
-                </h2>
-                <div className="space-y-3">
+                </h3>
+                <div className="">
                   {recentNotes.map(note => {
                     const memberName = getMemberName(note);
                     return (
@@ -916,8 +1097,8 @@ export default function DashboardPage() {
                         className="overflow-hidden cursor-pointer"
                         onClick={() => handleNoteClick(note)}
                       >
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center min-w-0 flex-1 mt-2">
+                        <div className="mt-6">
+                          <div className="flex items-center min-w-0 flex-1">
                             {note.content_type === 'summary' && (
                               <Sparkles className="h-5 w-5 text-cerulean-400 mr-2 flex-shrink-0" />
                             )}
@@ -930,52 +1111,31 @@ export default function DashboardPage() {
                             <div className="min-w-0 flex-1">
                               <h4 className="font-medium text-gray-900 truncate text-sm">{note.title}</h4>
                             </div>
+                            
                           </div>
-                          
-                        </div>
-                          <div className='flex items-center justify-between text-gray-500 text-xs mt-1'>
+                          <div className='flex items-center justify-between mt-2'>
                             {memberName && activeTab === 'team' && (
-                              <div className="flex items-center mt-1">
-                                <UserCircle className="h-3 w-3 text-gray-400 mr-1" />
-                                <span className="text-xs text-gray-500">{memberName}</span>
-                              </div>
-                            )}
-                            <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
-                              {formatRelativeTime(note.updated_at)}
-                            </span>
+                                <div className="flex items-center">
+                                  <UserCircle className="h-3 w-3 text-gray-400 mr-1" />
+                                  <span className="text-xs text-gray-500">{memberName}</span>
+                                </div>
+                              )}
+                              <span className="text-xs text-gray-500 flex-shrink-0">
+                            {formatRelativeTime(note.updated_at)}
+                          </span>
                           </div>
-                      </div>
+                        </div>
+                        </div>
                     );
                   })}
                 </div>
               </div>
             )}
-
             {/* Empty state for no recent notes */}
             {recentNotes.length === 0 && (
-              <div className='bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-100'>
-                <h2 className='text-xl font-light text-berkeleyblue mb-4'>
-                  <BotMessageSquareIcon className="inline-block h-6 w-6 mr-2 text-cerulean-400" />
-                  Recently Updated
-                </h2>
-                <div className="text-center">
-                  <p className="text-gray-500 text-sm">
-                    {activeTab === 'personal' 
-                      ? "You haven't created any notes yet." 
-                      : selectedEmployee === 'all'
-                        ? "No team notes created yet."
-                        : `No notes created for ${getSelectedEmployeeName()} yet.`}
-                  </p>
-                  <Button 
-                    variant="outline" 
-                    className="mt-4 w-full"
-                    onClick={() => router.push('/dashboard/coach/manager')}
-                  >
-                    Create a Note
-                  </Button>
-                </div>
-              </div>
+              <></>
             )}
+            </div>
           </div>
         </div>
       </div>
