@@ -16,9 +16,6 @@ serve(async (req) => {
     const today = new Date();
     console.log(`Current date: ${today.toISOString()}`);
     
-    // Format for date comparison (YYYY-MM-DD)
-    const todayFormatted = today.toISOString().split('T')[0];
-    
     // Track stats for logging
     const stats = {
       completedOccurrences: 0,
@@ -99,16 +96,15 @@ serve(async (req) => {
           continue; // Move to next cycle
         }
         
-        // 5. For each active occurrence, check if it's ending today
+        // 5. For each active occurrence, check if it has ended
         for (const occurrence of activeOccurrences) {
           const endDate = new Date(occurrence.end_date);
-          const endDateFormatted = endDate.toISOString().split('T')[0];
           
-          console.log(`Checking occurrence ${occurrence.id}: end date ${endDateFormatted}, today ${todayFormatted}`);
+          console.log(`Checking occurrence ${occurrence.id}: end date ${endDate.toISOString()}, today ${today.toISOString()}`);
           
-          // If today is the end date, complete this occurrence and create a new one
-          if (endDateFormatted === todayFormatted) {
-            console.log(`Occurrence ${occurrence.id} is ending today, marking as completed`);
+          // If the end date has passed, complete this occurrence and create a new one
+          if (endDate <= today) {
+            console.log(`Occurrence ${occurrence.id} has ended, marking as completed`);
             
             // Count completed feedback sessions for this occurrence
             const { data: completedSessions, error: sessionsError } = await supabase
@@ -175,7 +171,7 @@ serve(async (req) => {
             console.log(`Created new occurrence ${newOccurrence.id} for cycle ${cycle.id}`);
             stats.createdOccurrences++;
           } else {
-            console.log(`Occurrence ${occurrence.id} is not ending today, skipping`);
+            console.log(`Occurrence ${occurrence.id} is still active, skipping`);
           }
         }
       } catch (cycleError) {
