@@ -78,7 +78,7 @@ async function getWeekStart(date: Date): Promise<Date> {
     const d = new Date(thisWeek);
 
   const weekStart = new Date(d);
-  weekStart.setDate(weekStart.getDate() - 6); // Adjust to start of the week
+  weekStart.setDate(weekStart.getDate() - 8); // Adjust to start of the week
   weekStart.setHours(0, 0, 0, 0);
 
   return weekStart;
