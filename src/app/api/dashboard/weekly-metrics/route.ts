@@ -76,7 +76,6 @@ async function getWeekStart(date: Date): Promise<Date> {
     }
     
     const d = new Date(thisWeek);
-    console.log('****Week start date from Supabase:', d);
 
   const weekStart = new Date(d);
   weekStart.setDate(weekStart.getDate() - 6); // Adjust to start of the week
@@ -86,6 +85,7 @@ async function getWeekStart(date: Date): Promise<Date> {
 }
 
 async function getIndividualMetrics(userId: string, currentWeekStart: Date, lastWeekStart: Date) {
+  console.log('****Fetching individual metrics for user:', userId, 'current week start:', currentWeekStart, 'last week start:', lastWeekStart);
   // Get feedback analysis data
   const { data: analysisData, error: analysisError } = await supabase
     .from('weekly_feedback_analysis')
