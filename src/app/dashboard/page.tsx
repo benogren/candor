@@ -34,7 +34,7 @@ import {
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { FeedbackCoachPanel, type TeamMember } from '@/components/feedback-coach';
-import { WeeklyMetricsCards } from '@/components/WeeklyMetricsCards';
+// import { WeeklyMetricsCards } from '@/components/WeeklyMetricsCards';
 
 // Type for notes data
 type Note = {
@@ -991,7 +991,7 @@ export default function DashboardPage() {
         )}
 
         {/* Tabs */}
-        <div className='flex items-center justify-between border-b border-gray-200 mb-10'>
+        <div className='flex items-center justify-between border-b border-gray-200 mb-4'>
           <div className='flex items-center'>
             <button
               className={cn(
@@ -1048,13 +1048,13 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {user && (
+        {/* {user && (
           <WeeklyMetricsCards
             userId={user.id}
             mode={activeTab}
             selectedMemberId={activeTab === 'team' ? selectedEmployee : undefined}
           />
-        )}
+        )} */}
 
         <div className='grid grid-cols-3 gap-4'>
           <div className='col-span-2 mt-4'>

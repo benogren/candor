@@ -39,9 +39,6 @@ export async function GET(request: NextRequest) {
     const currentWeekStart = await getWeekStart(now);
     const lastWeekStart = new Date(currentWeekStart);
     lastWeekStart.setDate(currentWeekStart.getDate() - 7);
-
-    console.log('****Current week start:', currentWeekStart);
-    console.log('****Last week start:', lastWeekStart);
     
     let metrics;
     
