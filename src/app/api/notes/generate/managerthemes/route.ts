@@ -35,13 +35,12 @@ export async function POST(request: Request) {
         },
         { 
           role: "user", 
-          content: `Create a comprehensive report for ${userContext.userName} (${userContext.jobTitle})'s Manager based on this 360 feedback analysis.
+          content: `Create a comprehensive 360-degree Feedback Summary Report for ${userContext.userName} (${userContext.jobTitle})'s Manager based on this 360 feedback analysis.
 
           FEEDBACK ANALYSIS:
           ${summary}
 
           Your Task:
-          Develop a Summary Report:
           - Create a concise report summarizing the feedback for ${userContext.userName}'s manager.
           - Be specific, constructive, and focused on actionable themes from the feedback.
           - Include specific examples or quotes.
