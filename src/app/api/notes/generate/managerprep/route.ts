@@ -42,63 +42,26 @@ export async function POST(request: Request) {
         },
         { 
           role: "user", 
-          content: `Create a comprehensive 1:1 meeting preparation guide for ${userContext.userName}'s manager based on this feedback analysis and previous conversation history.
+          content: `Create a 1:1 meeting agenda and preparation for ${userContext.userName}'s manager based on this feedback analysis and previous conversation history.
 
-CURRENT FEEDBACK ANALYSIS:
-${summary}
+          CURRENT FEEDBACK ANALYSIS:
+          ${summary}
 
-PREVIOUS 1:1 CONTEXT:
-${previousContext || 'This is the first 1:1 preparation for this employee - no previous context available'}
+          PREVIOUS 1:1 CONTEXT:
+          ${previousContext || 'No previous 1:1 notes available at this time.'}
 
-Create a manager's preparation guide with these sections:
-
-### 1:1 Preparation: ${userContext.userName}
-
-#### Key Feedback Insights
-[2-3 most important insights from the ${feedbackCount} recent feedback responses]
-
-${previousContext ? `#### Follow-up from Previous 1:1
-[Reference specific items from the previous context that should be followed up on]
-- Check progress on previous action items
-- Address any ongoing concerns mentioned previously
-- Build on previous discussion topics
-
-#### Progress Review
-[How has the employee progressed since the last 1:1 based on current feedback vs previous context?]
-
-` : ''}#### Coaching Questions to Ask
-1. [Open-ended question about their experience with recent projects]
-2. [Question about challenges they're facing]
-3. [Question about their development goals and interests]
-4. [Question about support they need from you]
-${previousContext ? '5. [Follow-up question based on previous 1:1 discussion]' : ''}
-
-#### Recognition and Appreciation
-- [Specific strengths to acknowledge from current feedback]
-- [Recent contributions to highlight]
-${previousContext ? '- [Acknowledge progress made since previous 1:1]' : ''}
-
-#### Development Conversations
-- [Growth area to discuss constructively based on current feedback]
-- [Skills development opportunity to explore]
-${previousContext ? '- [Continue development discussions from previous meeting]' : ''}
-
-#### Support and Resources
-- [What support can you offer based on current needs?]
-- [Resources or training to suggest]
-${previousContext ? '- [Resources discussed previously - check if still relevant/needed]' : ''}
-
-#### Action Items to Propose
-[Specific next steps you can commit to as their manager]
-${previousContext ? '[Build on or modify action items from previous 1:1]' : ''}
-
-#### Conversation Continuity
-${previousContext ? `[Reference how this conversation builds on previous discussions and shows ongoing support for their development]` : '[This is your first structured 1:1 - focus on building trust and understanding their current state]'}
-
-Write this as guidance for the manager. Be specific about how to have constructive conversations about both strengths and development areas. ${previousContext ? 'Show how this meeting builds on previous conversations to demonstrate ongoing support and development.' : ''}`
+          Create a manager's 1:1 preparation:
+          ${previousContext ? `- Include 2-3 Follow-ups from Previous 1:1` : ''}
+          - Include key feedback insights with specific examples or quotes
+          - Include recognition and appreciation points
+          - Include development conversations and coaching questions
+          - Include support and resources to offer
+          - Include action items to propose
+          - Provide guidance for the manager on how to have constructive conversations about both strengths and development areas
+          - Use H3 headings for each section`
         }
       ],
-      max_tokens: 1200,
+      max_tokens: 2000,
       temperature: 0.4
     });
 

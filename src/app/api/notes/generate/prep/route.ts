@@ -42,66 +42,25 @@ export async function POST(request: Request) {
         },
         { 
           role: "user", 
-          content: `Create a comprehensive 1:1 meeting preparation guide for ${userContext.userName} (${userContext.jobTitle}) based on this feedback analysis and previous 1:1 preparation history.
+          content: `Create a 1:1 meeting agenda and preparation for ${userContext.userName} (${userContext.jobTitle}) based on this feedback analysis and previous 1:1 preparation history.
 
-CURRENT FEEDBACK ANALYSIS:
-${summary}
+          CURRENT FEEDBACK ANALYSIS:
+          ${summary}
 
-PREVIOUS 1:1 PREPARATION CONTEXT:
-${previousContext || 'This is the first 1:1 preparation session - no previous context available'}
+          PREVIOUS 1:1 CONTEXT:
+          ${previousContext || 'No previous 1:1 notes available at this time.'}
 
-Create a focused self-preparation guide with these sections:
-
-### My 1:1 Preparation Notes
-
-#### Key Feedback Themes to Discuss
-[2-3 main themes from the recent feedback analysis that I want to explore with my manager]
-
-${previousContext ? `#### Updates from Previous 1:1
-[What progress have I made on topics we discussed last time?]
-- Action items I completed since our last meeting
-- Challenges I encountered with previous goals
-- Areas where I need continued support
-
-#### Progress Review
-[How have things changed since my last 1:1 preparation?]
-
-` : ''}#### Questions I Want to Ask My Manager
-1. [Question about growth opportunities based on current feedback]
-2. [Question about priorities and expectations]
-3. [Question about support needed for current challenges]
-4. [Question about career development and next steps]
-${previousContext ? '5. [Follow-up question about previous discussion topics]' : ''}
-
-#### Topics I Want to Raise
-- [Recent achievement or contribution to highlight]
-- [Current challenge or roadblock to discuss]
-- [Resource or support request based on feedback]
-${previousContext ? '- [Update on previous topics or concerns raised]' : ''}
-
-#### My Development Goals
-[Based on feedback analysis and my career aspirations, what do I want to work on?]
-${previousContext ? '[How do these build on or evolve from previous development goals?]' : ''}
-
-#### Action Items to Propose
-[Specific next steps I can suggest to address feedback and achieve my goals]
-${previousContext ? '[Building on or modifying action items from previous 1:1]' : ''}
-
-${previousContext ? `#### Continuity and Growth
-[How this conversation builds on our previous 1:1 and shows my ongoing development]
-
-#### Previous Goals Check-in
-[Brief assessment of goals from last time - what worked, what didn't, what needs adjustment]
-
-` : ''}#### Key Messages I Want to Convey
-- [What I want my manager to understand about my current state]
-- [How I'm taking ownership of my development]
-${previousContext ? '- [Progress and growth since our last conversation]' : '- [My commitment to growth and improvement]'}
-
-Write this in first person as self-preparation notes. Be specific and actionable. Base all suggestions on the ${feedbackCount} recent feedback responses analyzed. ${previousContext ? 'Show how this preparation builds on previous 1:1s to demonstrate continuous growth and development.' : ''}`
+          Create a 1:1 preparation for ${userContext.userName} as they prepare to meet with their manager:
+          ${previousContext ? `- Include 2-3 Follow-ups from Previous 1:1` : ''}
+          - Include key feedback insights with specific examples or quotes to share with their manager
+          - Include development conversations and coaching questions to bring up with their manager
+          - Include support and resources to ask for from their manager
+          - Include action items to propose
+          - Provide guidance for ${userContext.userName} on how to have conversations with their manager about both strengths and development areas
+          - Use H3 headings for each section`
         }
       ],
-      max_tokens: 1000,
+      max_tokens: 2000,
       temperature: 0.4
     });
 
