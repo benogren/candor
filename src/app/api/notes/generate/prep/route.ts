@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   try {
     const { summary, userContext, feedbackCount, previousContext = '' } = await request.json() as PrepRequest;
 
-    console.log('=== Generating 1:1 Self-Prep Content ===');
+    console.log(`=== Generating Self 1:1 Prep Content (${feedbackCount}) ===`);
     console.log('Previous context length:', previousContext.length);
 
     const completion = await openai.chat.completions.create({

@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   try {
     const { summary, userContext, feedbackCount, previousContext = '' } = await request.json() as ManagerPrepRequest;
 
-    console.log('=== Generating Manager Prep Content ===');
+    console.log(`=== Generating Manager 1:1 Prep Content (${feedbackCount}) ===`);
     console.log('Previous context length:', previousContext.length);
 
     const completion = await openai.chat.completions.create({
