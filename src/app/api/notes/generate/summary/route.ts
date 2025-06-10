@@ -251,14 +251,46 @@ function extractKeyInsights(receivedSummary: string, providedSummary: string) {
 }
 
 function extractInsightFromSentence(sentence: string, keyword: string, type: 'strength' | 'development'): string | null {
-  // Clean up and format the insight
-  console.log(`Extracting insights: "${keyword}" as ${type}`);
-
   const cleaned = sentence.trim();
   if (cleaned.length > 200) return null; // Skip overly long sentences
   
-  // Return a concise version of the insight
-  return cleaned.length > 100 ? cleaned.substring(0, 97) + '...' : cleaned;
+  // Find the keyword context in the sentence
+  const lowerSentence = cleaned.toLowerCase();
+  const keywordIndex = lowerSentence.indexOf(keyword.toLowerCase());
+  
+  if (keywordIndex === -1) return null;
+  
+  // Extract context around the keyword (more sophisticated extraction)
+  let contextStart = Math.max(0, keywordIndex - 50);
+  let contextEnd = Math.min(cleaned.length, keywordIndex + keyword.length + 100);
+  
+  // Try to break at word boundaries
+  if (contextStart > 0) {
+    const spaceIndex = cleaned.indexOf(' ', contextStart);
+    if (spaceIndex !== -1 && spaceIndex < keywordIndex) {
+      contextStart = spaceIndex + 1;
+    }
+  }
+  
+  if (contextEnd < cleaned.length) {
+    const spaceIndex = cleaned.lastIndexOf(' ', contextEnd);
+    if (spaceIndex !== -1 && spaceIndex > keywordIndex + keyword.length) {
+      contextEnd = spaceIndex;
+    }
+  }
+  
+  let insight = cleaned.substring(contextStart, contextEnd).trim();
+  
+  // Add ellipsis if we truncated
+  if (contextStart > 0) insight = '...' + insight;
+  if (contextEnd < cleaned.length) insight = insight + '...';
+  
+  // Format based on type (optional enhancement)
+  if (type === 'strength' && !insight.toLowerCase().includes('strong') && !insight.toLowerCase().includes('good')) {
+    // Could add positive formatting or context
+  }
+  
+  return insight.length > 10 ? insight : cleaned.length > 100 ? cleaned.substring(0, 97) + '...' : cleaned;
 }
 
 function getEmptyStructuredAnalysis(): StructuredFeedbackAnalysis {

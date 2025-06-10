@@ -24,57 +24,37 @@ export async function POST(request: Request) {
   try {
     const { summary, userContext, feedbackCount } = await request.json() as ManagerThemesRequest;
 
-    console.log('=== Generating Manager Themes Content ===');
+    console.log(`=== Generating Manager Themes Content (${feedbackCount}) ===`);
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4-turbo",
       messages: [
         { 
           role: "system", 
-          content: "You are an experienced leadership coach helping managers understand feedback themes about their employees. Focus on actionable managerial insights and clear coaching opportunities."
+          content: "You are an expert career coach, analyze the feedback provided to you."
         },
         { 
           role: "user", 
-          content: `Create a comprehensive feedback themes analysis for ${userContext.userName}'s manager based on this feedback analysis.
+          content: `Create a comprehensive report for ${userContext.userName} (${userContext.jobTitle}) based on this 360 feedback analysis.
 
-FEEDBACK ANALYSIS:
-${summary}
+          FEEDBACK ANALYSIS:
+          ${summary}
 
-Create a manager-focused themes analysis with these sections:
+          Your Task:
+          1.) Organize and Categorize Feedback
+          2.) Identify Strengths and Development Areas
+          3.) Synthesize Feedback into Themes
+          4.) Develop a Summary Report:
+          - Create a concise report summarizing the feedback for the employee's manager.
+          - Create sections that would make sense to the employee's manager, such as: Overview, Key Strengths, Development Areas, Recommendations, and Questions to Ask ${userContext.userName}.
+          - Use H3 headings for each section.
+          - Do not include a Conclusion section.
+          - Include specific examples or quotes.
+          - Provide actionable recommendations to the manager based on the feedback themes.
+          - Focus on providing coaching and development insights that the employee's manager can use to help them improve their performance.
 
-### Manager's Feedback Themes Analysis: ${userContext.userName}
-
-#### Executive Summary
-[High-level overview of ${userContext.userName}'s performance themes from ${feedbackCount} feedback responses]
-
-#### Key Strength Themes for Recognition
-[Top 3-4 positive themes to acknowledge and reinforce as a manager]
-
-#### Development Themes for Coaching
-[Top 2-3 areas where ${userContext.userName} needs managerial support and coaching]
-
-#### Team Collaboration Themes
-[How ${userContext.userName} is perceived by colleagues and what this means for team dynamics]
-
-#### Communication & Leadership Themes
-[${userContext.userName}'s communication patterns and potential leadership development areas]
-
-#### Performance Impact Themes  
-[How ${userContext.userName}'s work affects team and business outcomes]
-
-#### Manager Action Items by Theme
-1. **Recognition Actions**: [Specific ways to acknowledge strength themes]
-2. **Coaching Actions**: [Specific coaching conversations to have about development themes]
-3. **Support Actions**: [Resources, training, or support to provide based on themes]
-4. **Development Actions**: [Stretch assignments or growth opportunities aligned with themes]
-
-#### Quarterly Development Focus
-[Theme-based priorities for ${userContext.userName}'s development this quarter]
-
-#### Success Metrics
-[How to measure progress on the key themes identified]
-
-Write this as actionable guidance for ${userContext.userName}'s manager. Be specific about managerial actions and coaching approaches based on the themes.`
+          This report will be for ${userContext.userName}'s manager, write it in the 3rd person as if you are speaking about them. 
+          Be specific, constructive, and focused on actionable themes from the feedback.`     
         }
       ],
       max_tokens: 1200,

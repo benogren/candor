@@ -24,53 +24,37 @@ export async function POST(request: Request) {
   try {
     const { summary, userContext, feedbackCount } = await request.json() as ThemesRequest;
 
-    console.log('=== Generating Individual Themes Content ===');
+    console.log(`=== Generating Individual Themes Content (${feedbackCount}) ===`);
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4-turbo",
       messages: [
         { 
           role: "system", 
-          content: "You are an expert feedback analyst creating comprehensive theme summaries for individual development use. Focus on actionable insights and clear development paths."
+          content: "You are an expert career coach, analyze the feedback provided to you."
         },
         { 
           role: "user", 
-          content: `Create a comprehensive feedback themes summary for ${userContext.userName} (${userContext.jobTitle}) based on this analysis.
+          content: `Create a comprehensive report for ${userContext.userName} (${userContext.jobTitle}) based on this 360 feedback analysis.
 
-FEEDBACK ANALYSIS:
-${summary}
+          FEEDBACK ANALYSIS:
+          ${summary}
 
-Create a well-structured themes summary with these sections:
+          Your Task:
+          1.) Organize and Categorize Feedback
+          2.) Identify Strengths and Development Areas
+          3.) Synthesize Feedback into Themes
+          4.) Develop a Summary Report:
+          - Create a concise report summarizing the feedback for the employee.
+          - Create sections that would make sense to the employee and their role, such as: Overview, Key Strengths, Development Areas, Recommendations, and Questions to Ask Your Manager.
+          - Use H3 headings for each section.
+          - Do not include a Conclusion section.
+          - Include specific examples or quotes.
+          - Provide actionable recommendations based on the feedback themes.
+          - Focus on providing coaching and development insights that the employee can use to improve their performance.
 
-### Feedback Themes Summary: ${userContext.userName}
-
-#### Overview
-[Summary of the ${feedbackCount} feedback responses and overall themes]
-
-#### Top Strength Themes
-[Top 3-4 recurring positive themes from colleagues]
-
-#### Development Themes  
-[Top 2-3 areas for growth with specific patterns identified]
-
-#### Collaboration Themes
-[How you're perceived in teamwork and cross-functional work]
-
-#### Communication Themes
-[Patterns in how colleagues experience your communication style]
-
-#### Impact Themes
-[How your work and contributions are viewed by others]
-
-#### Actionable Theme-Based Recommendations
-1. [Specific action based on strength themes to leverage]
-2. [Specific action based on development themes to address]
-3. [Specific action based on collaboration themes to improve]
-
-#### Personal Development Plan
-[Theme-based development suggestions and next steps]
-
-Write this for personal development use. Be specific, constructive, and focused on actionable themes from the feedback.`
+          This report will be for ${userContext.userName}'s personal development use, write it in the 2nd person as if you are speaking directly to them. 
+          Be specific, constructive, and focused on actionable themes from the feedback.`
         }
       ],
       max_tokens: 1000,
