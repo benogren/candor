@@ -54,7 +54,7 @@ export async function POST(request: Request) {
           - This report will be for ${userContext.userName}'s manager, write it in the 3rd person as if you are speaking about to them.`     
         }
       ],
-      max_tokens: 2000,
+      
       temperature: 0.4
     });
 
