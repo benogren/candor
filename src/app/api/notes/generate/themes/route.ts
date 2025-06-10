@@ -41,20 +41,16 @@ export async function POST(request: Request) {
           ${summary}
 
           Your Task:
-          1.) Organize and Categorize Feedback
-          2.) Identify Strengths and Development Areas
-          3.) Synthesize Feedback into Themes
-          4.) Develop a Summary Report:
+          Develop a Summary Report:
           - Create a concise report summarizing the feedback for the employee.
-          - Create sections that would make sense to the employee and their role, such as: Overview, Key Strengths, Development Areas, Recommendations, and Questions to Ask Your Manager.
+          - Be specific, constructive, and focused on actionable themes from the feedback.
+          - Create sections, such as: Overview, Key Strengths, Development Areas, Recommendations, and Questions to Ask Your Manager.
           - Use H3 headings for each section.
           - Do not include a Conclusion section.
           - Include specific examples or quotes.
           - Provide actionable recommendations based on the feedback themes.
           - Focus on providing coaching and development insights that the employee can use to improve their performance.
-
-          This report will be for ${userContext.userName}'s personal development use, write it in the 2nd person as if you are speaking directly to them. 
-          Be specific, constructive, and focused on actionable themes from the feedback.`
+          - This report will be for ${userContext.userName}'s personal development use, write it in the 2nd person as if you are speaking directly to them.`
         }
       ],
       max_tokens: 1000,
