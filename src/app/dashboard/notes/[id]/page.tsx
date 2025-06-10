@@ -198,35 +198,81 @@ export default function NotesPage() {
     saveNote(note.title, content);
   }, [note, saveNote, generationProgress.isGenerating]);
 
-  // Fetch updated note after generation
-  const fetchUpdatedNote = useCallback(async () => {
-    if (!id) return;
+  // Helper function to determine which API endpoint to call (updated for themes)
+  const getGenerationEndpoint = useCallback((contentType: string, isManagerContent: boolean): string => {
+    const baseUrl = '/api/notes/generate';
+    
+    switch (contentType) {
+      case 'prep':
+        return isManagerContent ? `${baseUrl}/managerprep` : `${baseUrl}/prep`;
+      case 'review':
+        return isManagerContent ? `${baseUrl}/managerreview` : `${baseUrl}/review`;
+      case 'summary': // Handle both old and new naming
+      case 'themes':
+        return isManagerContent ? `${baseUrl}/managerthemes` : `${baseUrl}/themes`;
+      default:
+        // Fallback to themes if content type is unknown
+        return isManagerContent ? `${baseUrl}/managerthemes` : `${baseUrl}/themes`;
+    }
+  }, []);
+
+  // Function to update the note after generation
+  const updateNoteAfterGeneration = useCallback(async (content: string, usedFallback = false) => {
+    if (!note?.id) throw new Error('Note ID not available');
+
+    console.log('Updating note after generation...', note.id);
 
     try {
-      const { data, error: fetchError } = await supabase
+      const { data: updatedNote, error: updateError } = await supabase
         .from('notes')
-        .select('*')
-        .eq('id', id)
+        .update({
+          content: content,
+          is_generating: false,
+          updated_at: new Date().toISOString(),
+          metadata: {
+            ...note.metadata,
+            generated_at: new Date().toISOString(),
+            stage2_completed: true,
+            used_fallback: usedFallback
+          }
+        })
+        .eq('id', note.id)
+        .select()
         .single();
 
-      if (fetchError) throw fetchError;
+      if (updateError) {
+        console.error('Database update error:', updateError);
+        throw updateError;
+      }
 
-      setNote(data);
-      setLastSaved(new Date(data.updated_at));
+      console.log('Note updated successfully:', updatedNote);
+
+      // Update local state immediately
+      setNote(updatedNote);
+      setLastSaved(new Date(updatedNote.updated_at));
       
       // Update editor with new content
-      if (editor && data.content) {
+      if (editor && content) {
         try {
-          editor.commands.setContent(data.content);
+          editor.commands.setContent(content);
+          console.log('Editor content updated');
         } catch (editorError) {
           console.error("Error setting editor content:", editorError);
         }
       }
 
-    } catch (fetchError) {
-      console.error('Error fetching updated note:', fetchError);
+    } catch (error) {
+      console.error('Error updating note after generation:', error);
+      
+      // Even if database update fails, try to update local state to prevent stuck loading
+      setNote(prev => prev ? { ...prev, is_generating: false, content } : null);
+      if (editor && content) {
+        editor.commands.setContent(content);
+      }
+      
+      throw new Error('Failed to save generated content');
     }
-  }, [id, editor]);
+  }, [note, editor]);
 
   // Two-stage progress simulation
   const startProgressSimulation = useCallback(() => {
@@ -339,9 +385,9 @@ export default function NotesPage() {
     }
 
     return await response.json();
-  }, [note?.id, note?.subject_member_id, note?.subject_invited_id, user?.id]);
+  }, [note?.id, note?.subject_member_id, note?.subject_invited_id, note?.metadata?.timeframe, user?.id]);
 
-  // Stage 2: Generate content
+  // Stage 2: Generate content (updated for themes endpoints)
   const executeStage2 = useCallback(async (stage1Data: Stage1Response) => {
     if (!note) throw new Error('Note not available');
 
@@ -352,16 +398,29 @@ export default function NotesPage() {
       throw new Error('Authentication required');
     }
 
+    // Determine if this is manager content
+    const isManagerContent = !!(note.subject_member_id || note.subject_invited_id);
+    
+    // Get previous context if it's a prep note
+    const previousContext = note.content_type === 'prep' && note.metadata?.previousContext 
+      ? String(note.metadata.previousContext) 
+      : '';
+
+    // Create simplified request body - each endpoint only gets what it needs
     const requestBody = {
-      noteId: note.id,
       summary: stage1Data.summary,
       userContext: stage1Data.userContext,
-      feedbackCount: stage1Data.feedbackCount
-      // isManagerContent: false, // Could be determined based on note type or user role
-      // previousContext: '' // Could be pulled from previous notes if relevant
+      feedbackCount: stage1Data.feedbackCount,
+      ...(note.content_type === 'prep' && { previousContext })
+      // Note: themes endpoints handle manager vs individual logic through routing
     };
 
-    const response = await fetch('/api/notes/generate', {
+    // Route to the appropriate API endpoint
+    const apiEndpoint = getGenerationEndpoint(note.content_type, isManagerContent);
+    
+    console.log(`Calling ${apiEndpoint} with simplified request`);
+    
+    const response = await fetch(apiEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -376,15 +435,22 @@ export default function NotesPage() {
       throw new Error(errorData.error || `Stage 2 failed: ${response.statusText}`);
     }
 
-    return await response.json();
-  }, [note?.id]);
+    const result = await response.json();
+    
+    // Now update the note in the frontend
+    await updateNoteAfterGeneration(result.content, result.usedFallback);
+    
+    return result;
+  }, [note, getGenerationEndpoint, updateNoteAfterGeneration]);
 
   // Main two-stage generation orchestration
   const startTwoStageGeneration = useCallback(async () => {
     if (!note?.id || generationInProgressRef.current) {
+      console.log('Generation already in progress or no note ID');
       return;
     }
 
+    console.log('Starting two-stage generation for note:', note.id);
     generationInProgressRef.current = true;
 
     // Create abort controller for this request
@@ -406,6 +472,7 @@ export default function NotesPage() {
 
     try {
       // Stage 1: Analyze feedback
+      console.log('Starting Stage 1: Feedback analysis');
       setGenerationProgress(prev => ({
         ...prev,
         currentStage: 1,
@@ -414,6 +481,7 @@ export default function NotesPage() {
 
       const stage1Result = await executeStage1();
       setStage1Response(stage1Result);
+      console.log('Stage 1 completed:', stage1Result);
 
       // Stage 1 complete
       setGenerationProgress(prev => ({
@@ -430,6 +498,7 @@ export default function NotesPage() {
       switchToStage2Simulation();
 
       // Stage 2: Generate content
+      console.log('Starting Stage 2: Content generation');
       setGenerationProgress(prev => ({
         ...prev,
         currentStage: 2,
@@ -437,9 +506,10 @@ export default function NotesPage() {
       }));
 
       const stage2Result = await executeStage2(stage1Result);
-      console.log('Stage 2 result:', stage2Result);
+      console.log('Stage 2 completed:', stage2Result);
 
-      // Both stages complete
+      // Both stages complete - reset generation state immediately
+      console.log('Both stages complete, resetting generation state');
       setGenerationProgress({
         isGenerating: false,
         currentStage: 2,
@@ -450,15 +520,20 @@ export default function NotesPage() {
         hasError: false
       });
 
-      await fetchUpdatedNote();
+      // Clear timers
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
 
       toast({
         title: 'Generation Complete',
         description: `Your ${note.content_type} has been generated based on ${stage1Result.feedbackCount} feedback responses!`,
       });
 
-      // After a brief delay, reset the generation UI
+      // After a brief delay, fully reset the generation UI
       setTimeout(() => {
+        console.log('Final reset of generation progress');
         setGenerationProgress({
           isGenerating: false,
           currentStage: 1,
@@ -468,14 +543,22 @@ export default function NotesPage() {
           message: '',
           hasError: false
         });
+        setStage1Response(null);
       }, 3000);
 
     } catch (generationError: unknown) {
       if (generationError instanceof Error && generationError.name === 'AbortError') {
+        console.log('Generation aborted');
         return;
       }
 
       console.error('Error in two-stage generation:', generationError);
+      
+      // Clear timers on error
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
       
       const errorMessage = generationError instanceof Error 
         ? generationError.message 
@@ -488,15 +571,26 @@ export default function NotesPage() {
         errorMessage: errorMessage
       }));
       
+      // Also ensure the note is marked as not generating in case of error
+      if (note?.id) {
+        await supabase
+          .from('notes')
+          .update({ is_generating: false })
+          .eq('id', note.id);
+        
+        setNote(prev => prev ? { ...prev, is_generating: false } : null);
+      }
+      
       toast({
         title: 'Generation Failed',
         description: errorMessage,
         variant: 'destructive',
       });
     } finally {
+      console.log('Generation cleanup');
       generationInProgressRef.current = false;
     }
-  }, [note?.id, note?.content_type, executeStage1, executeStage2, fetchUpdatedNote, startProgressSimulation]);
+  }, [note?.id, note?.content_type, executeStage1, executeStage2, startProgressSimulation]);
   
   // Fetch the note when the page loads
   useEffect(() => {
@@ -507,6 +601,8 @@ export default function NotesPage() {
       
       try {
         setIsLoading(true);
+        console.log('Fetching note:', id);
+        
         const { data, error: fetchError } = await supabase
           .from('notes')
           .select('*')
@@ -516,10 +612,11 @@ export default function NotesPage() {
         if (fetchError) throw fetchError;
         
         if (isMounted) {
+          console.log('Note fetched:', data);
           setNote(data);
           setLastSaved(new Date(data.updated_at));
           
-          // Set editor content if available - THIS IS THE WORKING VERSION
+          // Set editor content if available
           if (editor && data.content) {
             try {
               if (typeof data.content === 'string' && data.content.startsWith('{')) {
@@ -528,15 +625,17 @@ export default function NotesPage() {
               } else {
                 editor.commands.setContent(data.content);
               }
+              console.log('Editor content set');
             } catch (parseError) {
               console.error("Error parsing content:", parseError);
               editor.commands.setContent(data.content);
             }
           }
 
-          // If note is generating, start the two-stage generation process
+          // If note is generating, log this but don't auto-start here
+          // Let the separate useEffect handle the auto-start logic
           if (data.is_generating) {
-            startTwoStageGeneration();
+            console.log('Note is in generating state, auto-start logic will handle this');
           }
         }
       } catch (fetchError) {
@@ -547,6 +646,7 @@ export default function NotesPage() {
       } finally {
         if (isMounted) {
           setIsLoading(false);
+          console.log('Note loading complete');
         }
       }
     }
@@ -556,11 +656,13 @@ export default function NotesPage() {
     return () => {
       isMounted = false;
     };
-  }, [id, user, editor, startTwoStageGeneration]);
+  }, [id, user, editor]);
 
   // Handle retry generation
   const handleRetryGeneration = useCallback(async () => {
     if (!note?.id) return;
+    
+    console.log('Retrying generation for note:', note.id);
     
     // Reset error state
     generationInProgressRef.current = false;
@@ -575,8 +677,15 @@ export default function NotesPage() {
     });
     setStage1Response(null);
     
+    // Clear any existing timers
+    if (progressTimerRef.current) {
+      clearInterval(progressTimerRef.current);
+      progressTimerRef.current = null;
+    }
+    
     // Mark note as generating if it isn't already
     if (!note.is_generating) {
+      console.log('Marking note as generating');
       const { error: updateError } = await supabase
         .from('notes')
         .update({ is_generating: true })
@@ -594,36 +703,6 @@ export default function NotesPage() {
     await startTwoStageGeneration();
   }, [note, startTwoStageGeneration]);
 
-  // Cancel generation
-  // const handleCancelGeneration = useCallback(() => {
-  //   if (abortControllerRef.current) {
-  //     abortControllerRef.current.abort();
-  //   }
-    
-  //   // Clean up timers
-  //   if (progressTimerRef.current) {
-  //     clearInterval(progressTimerRef.current);
-  //     progressTimerRef.current = null;
-  //   }
-
-  //   generationInProgressRef.current = false;
-  //   setGenerationProgress({
-  //     isGenerating: false,
-  //     currentStage: 1,
-  //     stage1Complete: false,
-  //     stage2Complete: false,
-  //     progress: 0,
-  //     message: '',
-  //     hasError: false
-  //   });
-  //   setStage1Response(null);
-
-  //   toast({
-  //     title: 'Generation Cancelled',
-  //     description: 'Content generation has been cancelled.',
-  //   });
-  // }, []);
-
   // Handle back navigation
   const handleBack = useCallback(() => {
     // Clean up before leaving
@@ -633,18 +712,30 @@ export default function NotesPage() {
     router.back();
   }, [router]);
 
-  // Auto-start generation when note is in generating state
+  // Auto-start generation when note is in generating state - with better conditions
   useEffect(() => {
-    if (note?.is_generating && !generationProgress.isGenerating && !generationProgress.hasError) {
+    // Only auto-start if:
+    // 1. Note exists and is marked as generating
+    // 2. No generation is currently in progress
+    // 3. No generation error has occurred
+    // 4. Generation hasn't been completed yet
+    if (note?.is_generating && 
+        !generationProgress.isGenerating && 
+        !generationProgress.hasError && 
+        !generationInProgressRef.current &&
+        !generationProgress.stage2Complete) {
+      console.log('Auto-starting generation for note in generating state');
       startTwoStageGeneration();
     }
-  }, [note?.is_generating, generationProgress.isGenerating, generationProgress.hasError, startTwoStageGeneration]);
+  }, [note?.is_generating, generationProgress.isGenerating, generationProgress.hasError, generationProgress.stage2Complete, startTwoStageGeneration]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      console.log('Cleaning up notes page');
       if (progressTimerRef.current) {
         clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
       }
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -660,6 +751,16 @@ export default function NotesPage() {
   const renderGenerationStatus = () => {
     const { isGenerating, hasError, progress, message, errorMessage, startTime, currentStage, stage1Complete, stage2Complete } = generationProgress;
     
+    // Debug logging
+    console.log('Render generation status:', {
+      isGenerating,
+      hasError,
+      stage1Complete,
+      stage2Complete,
+      progress,
+      noteIsGenerating: note?.is_generating
+    });
+    
     if (!isGenerating && !hasError && !stage1Complete) return null;
 
     const elapsed = startTime ? Math.round((Date.now() - startTime.getTime()) / 1000) : 0;
@@ -668,21 +769,8 @@ export default function NotesPage() {
 
     return (
       <div className="flex flex-col items-center justify-center py-16 px-4">
-
         {/* Status Content */}
         <div className="flex flex-col items-center max-w-md text-center">
-          {/* <div className="flex items-center justify-center h-16 w-16 rounded-full bg-gray-50 mb-4">
-            {hasError ? (
-              <XCircle className="h-6 w-6 text-red-600" />
-            ) : isGenerating ? (
-              <RefreshCw className="h-6 w-6 text-blue-600 animate-spin" />
-            ) : stage2Complete ? (
-              <CheckCircle className="h-6 w-6 text-green-600" />
-            ) : (
-              <RefreshCw className="h-6 w-6 text-blue-600 animate-spin" />
-            )}
-          </div> */}
-
           {hasError ? (
             <>
               <h3 className="text-lg font-medium text-gray-900 mb-2">Generation Failed</h3>
@@ -716,13 +804,6 @@ export default function NotesPage() {
                   This is taking longer than usual. Please wait...
                 </p>
               )}
-              {/* <Button
-                variant={"link"}
-                onClick={handleCancelGeneration}
-                className=""
-              >
-                Cancel
-              </Button> */}
             </>
           )}
         </div>
@@ -764,7 +845,6 @@ export default function NotesPage() {
             </div>
           </div>
         </div>
-
       </div>
     );
   };
@@ -819,7 +899,7 @@ export default function NotesPage() {
                 {note.content_type === 'review' && (
                   <NotebookPen className="h-12 w-12 text-cerulean-400" />
                 )}
-                {note.content_type === 'summary' && (
+                {(note.content_type === 'summary' || note.content_type === 'themes') && (
                   <Sparkles className="h-12 w-12 text-cerulean-400" />
                 )}
               </Link>
