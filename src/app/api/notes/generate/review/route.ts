@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   try {
     const { summary, userContext, feedbackCount } = await request.json() as ReviewRequest;
 
-    console.log('=== Generating Self-Review Content ===');
+    console.log(`=== Generating Self-Review Content (${feedbackCount}) ===`);
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4-turbo",
@@ -38,54 +38,61 @@ export async function POST(request: Request) {
         },
         { 
           role: "user", 
-          content: `Create a self-evaluation template for ${userContext.userName} (${userContext.jobTitle}) based on this feedback analysis.
+          content: `Create a self-evaluation for ${userContext.userName} (${userContext.jobTitle}) based on this feedback analysis.
 
-FEEDBACK ANALYSIS:
-${summary}
+          FEEDBACK ANALYSIS:
+          ${summary}
 
-Create a comprehensive self-evaluation with these sections:
+          Create a comprehensive self-evaluation with these sections:
 
-### Self-Evaluation: ${userContext.userName}
+          ## Self-Evaluation: ${userContext.userName}
 
-#### Executive Summary
-[Brief overview of your performance and key contributions this period]
+          ### Executive Summary
+          [Brief overview of your performance and key contributions this period. Do not include the number of weeks or number of feedback received, focus on the insights.]
 
-#### My Key Accomplishments
-- [Major achievement 1 - with specific impact]
-- [Major achievement 2 - with specific impact]
-- [Major achievement 3 - with specific impact]
+          ### Detailed Assessment
 
-#### Feedback Reflection
-Based on ${feedbackCount} feedback responses I received:
-- [What feedback resonated most with me]
-- [What surprised me in the feedback]
-- [How the feedback aligns with my self-perception]
+          #### My Strengths
+          [Based on feedback analysis - areas where I excel]
 
-#### My Strengths
-[Based on feedback analysis - areas where I excel]
+          #### My Areas for Improvement
+          [Based on feedback analysis - areas where I want to grow]
 
-#### Areas for My Development
-[Based on feedback analysis - areas where I want to grow]
+          ### Feedback Analysis
 
-#### What I've Learned
-[Key insights and lessons from this period]
+          #### Notable Quotes
+          [Key quotes from feedback that stood out and showcase your impact]
 
-#### My Goals for Next Period
-- [Specific goal 1]
-- [Specific goal 2]
-- [Specific goal 3]
+          #### Quantitative Feedback Summary
+          [Summary of feedback ratings or scores, if available]
 
-#### Questions for Discussion
-1. [Question about development opportunities]
-2. [Question about role expansion or new challenges]
-3. [Question about team dynamics or collaboration]
-4. [Question about organizational priorities]
-5. [Question about support or resources needed]
+          #### Qualitative Feedback Summary
+          [Summary of key themes from qualitative feedback]
 
-Write this in first person as a self-evaluation. Be honest, specific, and growth-oriented.`
+          ### What I've Learned
+          [Key insights and lessons from this period]
+
+          ### Goals for Next Review Period
+          - [Goal 1]
+          - [Goal 2]
+          - [Goal 3]
+
+          ### Managerial Support
+          [What support or resources you need from your manager to achieve these goals]
+
+          ----- 
+
+          ### Questions for Discussion
+          1. [Question about development opportunities]
+          2. [Question about role expansion or new challenges]
+          3. [Question about team dynamics or collaboration]
+          4. [Question about organizational priorities]
+          5. [Question about support or resources needed]
+
+          Write this in first person as a self-evaluation. Be honest, specific, and growth-oriented.`
         }
       ],
-      max_tokens: 1000,
+      max_tokens: 1400,
       temperature: 0.4
     });
 
@@ -116,19 +123,19 @@ Write this in first person as a self-evaluation. Be honest, specific, and growth
 function createReviewFallback(userContext: UserContext, summary: string): string {
   return `# Self-Evaluation
 
-## Executive Summary
-This evaluation reflects on my performance as ${userContext.jobTitle} and incorporates feedback from colleagues.
+  ## Executive Summary
+  This evaluation reflects on my performance as ${userContext.jobTitle} and incorporates feedback from colleagues.
 
-## Key Accomplishments
-- [Accomplishment 1]
-- [Accomplishment 2]
-- [Accomplishment 3]
+  ## Key Accomplishments
+  - [Accomplishment 1]
+  - [Accomplishment 2]
+  - [Accomplishment 3]
 
-## Feedback Analysis
-${summary.substring(0, 400)}...
+  ## Feedback Analysis
+  ${summary.substring(0, 400)}...
 
-## Development Goals
-- Continue building on demonstrated strengths
-- Address areas identified for improvement
-- Develop new skills aligned with role requirements`;
+  ## Development Goals
+  - Continue building on demonstrated strengths
+  - Address areas identified for improvement
+  - Develop new skills aligned with role requirements`;
 }

@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   try {
     const { summary, userContext, feedbackCount } = await request.json() as ManagerReviewRequest;
 
-    console.log('=== Generating Manager Review Content ===');
+    console.log(`=== Generating Manager Review Content (${feedbackCount}) ===`);
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4-turbo",
@@ -45,43 +45,51 @@ export async function POST(request: Request) {
 
             Create a manager's performance review with these sections:
 
-            ### Performance Review: ${userContext.userName}
+            ## Performance Review: ${userContext.userName}
 
-            #### Executive Summary
-            [Overall assessment of ${userContext.userName}'s performance this period]
+            ### Executive Summary
+            [Brief overview of ${userContext.userName}'s performance and key contributions this period. Do not include the number of weeks or number of feedback received, focus on the insights.]
 
-            #### Key Accomplishments and Impact
-            - [Major contribution 1 with business impact]
-            - [Major contribution 2 with business impact]
-            - [Major contribution 3 with business impact]
+            ### Detailed Assessment
 
-            #### 360-Degree Feedback Analysis
-            Based on ${feedbackCount} feedback responses from colleagues:
-            - [Key positive themes from feedback]
-            - [Areas of strength consistently mentioned]
-            - [Opportunities for growth identified]
-
-            #### Performance Strengths
-            [Specific strengths with examples from feedback]
+            #### Strengths
+            [Based on feedback analysis - areas where ${userContext.userName} excels]
 
             #### Development Opportunities
-            [Areas for improvement with specific, actionable guidance]
+            [Based on feedback analysis - areas where ${userContext.userName} can grow]
 
-            #### Goal Achievement
-            [Assessment of how well they met previous goals]
+            ### Feedback Analysis
 
-            #### Goals for Next Review Period
-            - [Specific, measurable goal 1]
-            - [Specific, measurable goal 2]
-            - [Specific, measurable goal 3]
+            #### Notable Quotes
+            [Key quotes from feedback that stood out and showcase ${userContext.userName}'s impact and areas for growth]
 
-            #### Manager Support and Resources
-            [What support, training, or resources you will provide]
+            #### Quantitative Feedback Summary
+            [Summary of feedback ratings or scores, if available]
 
-            #### Overall Rating and Rationale
+            #### Qualitative Feedback Summary
+            [Summary of key themes from qualitative feedback]
+
+            ### Goals for Next Review Period
+            - [Goal 1]
+            - [Goal 2]
+            - [Goal 3]
+
+            ### Managerial Support
+            [What support, training, or resources you will provide to help ${userContext.userName} achieve these goals]
+
+            ### Overall Rating and Rationale
             [Performance rating with clear justification]
 
-            Write this as a comprehensive performance review from the manager's perspective. Be fair, specific, and development-focused. Include both recognition and constructive feedback.`
+            ----- 
+
+            ### Questions for Discussion
+            1. [Question about development opportunities]
+            2. [Question about role expansion or new challenges]
+            3. [Question about team dynamics or collaboration]
+            4. [Question about organizational priorities]
+            5. [Question about support or resources needed]
+
+            Write this in first person as a self-evaluation. Be honest, specific, and growth-oriented. Check for bias, clarity, fairness, and actionable insights. Include both recognition and constructive feedback.`
         }
       ],
       max_tokens: 1800,

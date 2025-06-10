@@ -224,6 +224,68 @@ export default function NotesPage() {
     },
   });
 
+  // Function to fetch previous prep note content
+  const fetchPreviousPrepContent = useCallback(async (): Promise<string> => {
+    if (!note || note.content_type !== 'prep' || !user) {
+      return '';
+    }
+
+    try {
+      console.log('Fetching previous prep note...');
+      
+      // Build query to find the most recent prep note for the same subject and creator
+      let query = supabase
+        .from('notes')
+        .select('content, created_at')
+        .eq('content_type', 'prep')
+        .eq('creator_id', user.id)
+        .neq('id', note.id) // Exclude current note
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      // Add subject filter
+      if (note.subject_member_id) {
+        query = query.eq('subject_member_id', note.subject_member_id);
+      } else if (note.subject_invited_id) {
+        query = query.eq('subject_invited_id', note.subject_invited_id);
+      } else {
+        // Self-prep note (no subject specified)
+        query = query.is('subject_member_id', null).is('subject_invited_id', null);
+      }
+
+      const { data: previousNotes, error: fetchError } = await query;
+
+      if (fetchError) {
+        console.error('Error fetching previous prep note:', fetchError);
+        return '';
+      }
+
+      if (previousNotes && previousNotes.length > 0) {
+        const previousNote = previousNotes[0];
+        console.log('Found previous prep note from:', previousNote.created_at);
+        
+        // Extract text content from HTML if needed
+        let content = previousNote.content;
+        if (content) {
+          // Simple HTML to text conversion for context
+          content = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+          // Limit content length for context (keep it reasonable for API)
+          if (content.length > 2000) {
+            content = content.substring(0, 2000) + '...';
+          }
+        }
+        
+        return content || '';
+      }
+
+      console.log('No previous prep note found');
+      return '';
+    } catch (error) {
+      console.error('Error fetching previous prep content:', error);
+      return '';
+    }
+  }, [note, user]);
+
   // Auto-save with debounce and DOM safety
   const saveNote = useCallback((title: string, content: string) => {
     if (!note?.id || !user || generationProgress.isGenerating || !isMountedRef.current) return;
@@ -523,7 +585,7 @@ export default function NotesPage() {
     return await response.json();
   }, [note?.id, note?.subject_member_id, note?.subject_invited_id, note?.metadata?.timeframe, user?.id]);
 
-  // Stage 2: Generate content (updated for themes endpoints)
+  // Stage 2: Generate content (updated to fetch previous prep content)
   const executeStage2 = useCallback(async (stage1Data: Stage1Response) => {
     if (!note) throw new Error('Note not available');
 
@@ -537,10 +599,25 @@ export default function NotesPage() {
     // Determine if this is manager content
     const isManagerContent = !!(note.subject_member_id || note.subject_invited_id);
     
-    // Get previous context if it's a prep note
-    const previousContext = note.content_type === 'prep' && note.metadata?.previousContext 
-      ? String(note.metadata.previousContext) 
-      : '';
+    // Get previous context - fetch from previous prep note if content type is prep
+    let previousContext = '';
+    if (note.content_type === 'prep') {
+      console.log('Fetching previous prep content for context...');
+      try {
+        previousContext = await fetchPreviousPrepContent();
+        if (previousContext) {
+          console.log('Previous prep content found:', previousContext.substring(0, 200) + '...');
+        } else {
+          console.log('No previous prep content found');
+        }
+      } catch (error) {
+        console.error('Error fetching previous prep content:', error);
+        // Continue without previous context if fetch fails
+      }
+    } else if (note.metadata?.previousContext) {
+      // Fallback to metadata if available
+      previousContext = String(note.metadata.previousContext);
+    }
 
     // Create simplified request body - each endpoint only gets what it needs
     const requestBody = {
@@ -554,7 +631,7 @@ export default function NotesPage() {
     // Route to the appropriate API endpoint
     const apiEndpoint = getGenerationEndpoint(note.content_type, isManagerContent);
     
-    console.log(`Calling ${apiEndpoint} with simplified request`);
+    console.log(`Calling ${apiEndpoint} with request including previous context:`, !!previousContext);
     
     const response = await fetch(apiEndpoint, {
       method: 'POST',
@@ -577,7 +654,7 @@ export default function NotesPage() {
     await updateNoteAfterGeneration(result.content, result.usedFallback);
     
     return result;
-  }, [note, getGenerationEndpoint, updateNoteAfterGeneration]);
+  }, [note, getGenerationEndpoint, updateNoteAfterGeneration, fetchPreviousPrepContent]);
 
   // Simplified two-stage generation without complex state management
   const startTwoStageGeneration = useCallback(async () => {
@@ -642,7 +719,7 @@ export default function NotesPage() {
       setGenerationProgress(prev => ({
         ...prev,
         currentStage: 2,
-        message: 'Generating personalized content...'
+        message: note.content_type === 'prep' ? 'Generating prep with previous context...' : 'Generating personalized content...'
       }));
 
       await executeStage2(stage1Result);
