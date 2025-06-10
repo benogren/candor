@@ -4,7 +4,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 interface FeedbackSummaryRequest {
   userId: string;
-  employeeId?: string; // For manager summaries
+  employeeId?: string;
   timeframe: string;
   isInvited?: boolean;
 }
@@ -49,6 +49,22 @@ interface AggregatedSummary {
   providedThemes: string[];
 }
 
+interface StructuredFeedbackAnalysis {
+  strengths: string[];
+  developmentAreas: string[];
+  keyThemes: {
+    received: string[];
+    provided: string[];
+  };
+  performanceIndicators: {
+    engagementLevel: string;
+    recognitionLevel: string;
+    sentimentLevel: string;
+  };
+  notableQuotes: string[];
+  condensedSummary: string;
+}
+
 interface DatabaseCompany {
   name: string;
   industry: string;
@@ -90,7 +106,8 @@ export async function POST(request: Request) {
     if (!data.weeklySummaries || data.weeklySummaries.length === 0) {
       return NextResponse.json({
         success: true,
-        summary: `No feedback analysis available for the ${timeframe} timeframe. Weekly analysis may still be processing or no feedback has been collected yet.`,
+        summary: `No feedback analysis available for the ${timeframe} timeframe.`,
+        structuredAnalysis: getEmptyStructuredAnalysis(),
         userContext: data.userContext,
         feedbackCount: 0,
         metadata: {
@@ -101,16 +118,18 @@ export async function POST(request: Request) {
       });
     }
 
-    // Aggregate weekly summaries into a comprehensive summary
+    // Aggregate weekly summaries
     const aggregatedSummary = aggregateWeeklySummaries(data.weeklySummaries);
     
-    // Generate final summary text
-    const finalSummary = generateFinalSummaryText(aggregatedSummary, data.userContext);
+    // Generate both detailed and structured summaries
+    const detailedSummary = generateDetailedSummaryText(aggregatedSummary, data.userContext);
+    const structuredAnalysis = generateStructuredAnalysis(aggregatedSummary, data.userContext);
 
     console.log('=== Stage 1: Analysis complete ===');
     return NextResponse.json({
       success: true,
-      summary: finalSummary,
+      summary: detailedSummary, // Keep for backward compatibility
+      structuredAnalysis, // New structured format for AI consumption
       userContext: data.userContext,
       feedbackCount: aggregatedSummary.totalFeedbackReceived,
       metadata: {
@@ -132,6 +151,171 @@ export async function POST(request: Request) {
   }
 }
 
+function generateStructuredAnalysis(
+  summary: AggregatedSummary, 
+  userContext: UserContext
+): StructuredFeedbackAnalysis {
+  
+  // Extract strengths and development areas from summaries
+  const { strengths, developmentAreas, quotes } = extractKeyInsights(
+    summary.combinedReceivedSummary, 
+    summary.combinedProvidedSummary
+  );
+
+  const sentimentDescription = (score: number) => {
+    if (score >= 0.7) return 'very positive';
+    if (score >= 0.5) return 'positive';
+    if (score >= 0.3) return 'neutral';
+    if (score >= 0.1) return 'mixed';
+    return 'needs attention';
+  };
+
+  // Create condensed summary for AI consumption (much shorter)
+  const condensedSummary = `${userContext.userName} (${userContext.jobTitle}) - ${summary.weeksAnalyzed} weeks analysis: 
+${summary.totalFeedbackReceived} feedback responses received, ${summary.totalValueNominations} value nominations.
+Overall sentiment: ${sentimentDescription(summary.averageReceivedSentiment)} (${(summary.averageReceivedSentiment * 100).toFixed(1)}%).
+Key strengths: ${strengths.slice(0, 3).join(', ')}.
+Development areas: ${developmentAreas.slice(0, 3).join(', ')}.
+Primary themes: ${summary.receivedThemes.slice(0, 3).join(', ')}.`;
+
+  return {
+    strengths: strengths.slice(0, 5), // Limit to top 5
+    developmentAreas: developmentAreas.slice(0, 5),
+    keyThemes: {
+      received: summary.receivedThemes.slice(0, 5),
+      provided: summary.providedThemes.slice(0, 5)
+    },
+    performanceIndicators: {
+      engagementLevel: summary.totalFeedbackProvided > 0 ? 'Active contributor' : 'Limited activity',
+      recognitionLevel: summary.totalValueNominations > 0 
+        ? `${summary.totalValueNominations} value nominations` 
+        : 'No recent nominations',
+      sentimentLevel: sentimentDescription(summary.averageReceivedSentiment)
+    },
+    notableQuotes: quotes.slice(0, 3), // Limit to 3 most relevant quotes
+    condensedSummary
+  };
+}
+
+function extractKeyInsights(receivedSummary: string, providedSummary: string) {
+  // Simple keyword-based extraction (you could enhance this with NLP)
+  const strengthKeywords = [
+    'effective', 'excellent', 'strong', 'skilled', 'proficient', 'outstanding',
+    'reliable', 'consistent', 'clear communication', 'leadership', 'collaborative',
+    'knowledgeable', 'helpful', 'responsive', 'organized', 'proactive'
+  ];
+
+  const developmentKeywords = [
+    'could improve', 'needs work', 'development area', 'challenge', 'struggle',
+    'difficulty', 'inconsistent', 'unclear', 'delayed', 'missed', 'avoid',
+    'hesitant', 'defensive', 'overwhelmed'
+  ];
+
+  const strengths: string[] = [];
+  const developmentAreas: string[] = [];
+  const quotes: string[] = [];
+
+  const allText = receivedSummary + ' ' + providedSummary;
+  const sentences = allText.split(/[.!?]+/).filter(s => s.trim().length > 20);
+
+  sentences.forEach(sentence => {
+    const lowerSentence = sentence.toLowerCase();
+    
+    // Extract notable quotes (sentences with specific feedback)
+    if (sentence.includes('"') || sentence.includes('noted') || sentence.includes('feedback')) {
+      quotes.push(sentence.trim());
+    }
+
+    // Identify strengths
+    strengthKeywords.forEach(keyword => {
+      if (lowerSentence.includes(keyword)) {
+        const insight = extractInsightFromSentence(sentence, keyword, 'strength');
+        if (insight && !strengths.includes(insight)) {
+          strengths.push(insight);
+        }
+      }
+    });
+
+    // Identify development areas
+    developmentKeywords.forEach(keyword => {
+      if (lowerSentence.includes(keyword)) {
+        const insight = extractInsightFromSentence(sentence, keyword, 'development');
+        if (insight && !developmentAreas.includes(insight)) {
+          developmentAreas.push(insight);
+        }
+      }
+    });
+  });
+
+  return { strengths, developmentAreas, quotes };
+}
+
+function extractInsightFromSentence(sentence: string, keyword: string, type: 'strength' | 'development'): string | null {
+  // Clean up and format the insight
+  console.log(`Extracting insights: "${keyword}" as ${type}`);
+
+  const cleaned = sentence.trim();
+  if (cleaned.length > 200) return null; // Skip overly long sentences
+  
+  // Return a concise version of the insight
+  return cleaned.length > 100 ? cleaned.substring(0, 97) + '...' : cleaned;
+}
+
+function getEmptyStructuredAnalysis(): StructuredFeedbackAnalysis {
+  return {
+    strengths: [],
+    developmentAreas: [],
+    keyThemes: { received: [], provided: [] },
+    performanceIndicators: {
+      engagementLevel: 'No data',
+      recognitionLevel: 'No data',
+      sentimentLevel: 'No data'
+    },
+    notableQuotes: [],
+    condensedSummary: 'No feedback data available for analysis.'
+  };
+}
+
+// Keep the original detailed summary for backward compatibility
+function generateDetailedSummaryText(summary: AggregatedSummary, userContext: UserContext): string {
+  const sentimentDescription = (score: number) => {
+    if (score >= 0.7) return 'very positive';
+    if (score >= 0.5) return 'positive';
+    if (score >= 0.3) return 'neutral';
+    if (score >= 0.1) return 'mixed';
+    return 'needs attention';
+  };
+
+  return `**FEEDBACK ANALYSIS FOR ${userContext.userName.toUpperCase()}**
+
+**OVERVIEW:**
+- Analysis period: ${summary.weeksAnalyzed} weeks (${summary.dateRange.start} to ${summary.dateRange.end})
+- Total feedback received: ${summary.totalFeedbackReceived} responses
+- Total feedback provided: ${summary.totalFeedbackProvided} responses
+- Company value nominations received: ${summary.totalValueNominations}
+- Overall sentiment of received feedback: ${sentimentDescription(summary.averageReceivedSentiment)} (${(summary.averageReceivedSentiment * 100).toFixed(1)}%)
+
+**FEEDBACK RECEIVED ANALYSIS:**
+${summary.combinedReceivedSummary || 'No detailed feedback received summary available.'}
+
+**FEEDBACK PROVIDED ANALYSIS:**
+${summary.combinedProvidedSummary || 'No detailed feedback provided summary available.'}
+
+**KEY THEMES IDENTIFIED:**
+${summary.receivedThemes.length > 0 ? `
+Feedback Received Themes: ${summary.receivedThemes.slice(0, 5).join(', ')}` : ''}
+${summary.providedThemes.length > 0 ? `
+Feedback Provided Themes: ${summary.providedThemes.slice(0, 5).join(', ')}` : ''}
+
+**PERFORMANCE INDICATORS:**
+- Feedback engagement: ${summary.totalFeedbackProvided > 0 ? 'Active contributor' : 'Limited feedback activity'}
+- Recognition level: ${summary.totalValueNominations > 0 ? `${summary.totalValueNominations} value-based nominations` : 'No recent value nominations'}
+- Peer perception: ${sentimentDescription(summary.averageReceivedSentiment)} overall sentiment
+
+*This analysis is compiled from ${summary.weeksAnalyzed} weeks of processed feedback data and represents comprehensive insights into performance and collaboration patterns.*`;
+}
+
+// ... rest of your existing functions (fetchWeeklySummaries, calculateWeekRange, aggregateWeeklySummaries)
 async function fetchWeeklySummaries(
   supabase: SupabaseClient, 
   targetUserId: string, 
@@ -140,12 +324,10 @@ async function fetchWeeklySummaries(
 ): Promise<{ userContext: UserContext; weeklySummaries: WeeklyAnalysis[] }> {
   console.log('Fetching weekly summaries from database...');
   
-  // Calculate date range for weekly summaries
   const { startDate, weeksToFetch } = calculateWeekRange(timeframe);
   
   console.log(`Fetching weekly summaries from ${startDate.toISOString()} (${weeksToFetch} weeks)`);
 
-  // Get user context first
   let userContext: UserContext;
   
   if (isInvited) {
@@ -162,7 +344,6 @@ async function fetchWeeklySummaries(
       throw new Error(`Failed to fetch invited user data: ${invitedError?.message}`);
     }
 
-    // Extract company info safely from Supabase nested result
     const userData = invitedUser as {
       name: string | null;
       job_title: string | null;
@@ -196,7 +377,6 @@ async function fetchWeeklySummaries(
       throw new Error(`Failed to fetch user data: ${userError?.message}`);
     }
 
-    // Extract company info safely from Supabase nested result
     const user = userData as {
       name: string | null;
       job_title: string | null;
@@ -222,7 +402,6 @@ async function fetchWeeklySummaries(
     };
   }
 
-  // Fetch weekly summaries - only get completed ones
   const { data: weeklySummaries, error: summariesError } = await supabase
     .from('weekly_feedback_analysis')
     .select('*')
@@ -264,10 +443,10 @@ function calculateWeekRange(timeframe: string): { startDate: Date; weeksToFetch:
       weeksToFetch = 12;
       break;
     case 'year':
-      startDate.setDate(today.getDate() - 180); // 6 months
+      startDate.setDate(today.getDate() - 180);
       weeksToFetch = 26;
       break;
-    default: // 'all'
+    default:
       startDate.setFullYear(today.getFullYear() - 1);
       weeksToFetch = 52;
       break;
@@ -281,7 +460,6 @@ function aggregateWeeklySummaries(weeklySummaries: WeeklyAnalysis[]): Aggregated
     throw new Error('No weekly summaries to aggregate');
   }
 
-  // Sort by date to ensure proper ordering
   const sortedSummaries = weeklySummaries.sort(
     (a, b) => new Date(b.week_start_date).getTime() - new Date(a.week_start_date).getTime()
   );
@@ -298,7 +476,6 @@ function aggregateWeeklySummaries(weeklySummaries: WeeklyAnalysis[]): Aggregated
     (sum, week) => sum + (week.company_value_nominations_received || 0), 0
   );
 
-  // Calculate weighted average sentiment
   let totalReceivedSentiment = 0;
   let totalReceivedWeight = 0;
   let totalProvidedSentiment = 0;
@@ -323,10 +500,9 @@ function aggregateWeeklySummaries(weeklySummaries: WeeklyAnalysis[]): Aggregated
     ? totalProvidedSentiment / totalProvidedWeight 
     : 0;
 
-  // Combine summaries (most recent first, limit to avoid too much text)
   const receivedSummaries = sortedSummaries
     .filter(week => week.feedback_received_summary && week.feedback_received_summary.trim())
-    .slice(0, 6) // Limit to last 6 weeks to keep summary manageable
+    .slice(0, 6)
     .map(week => week.feedback_received_summary!);
 
   const providedSummaries = sortedSummaries
@@ -334,7 +510,6 @@ function aggregateWeeklySummaries(weeklySummaries: WeeklyAnalysis[]): Aggregated
     .slice(0, 6)
     .map(week => week.feedback_provided_summary!);
 
-  // Aggregate themes
   const allReceivedThemes = sortedSummaries
     .flatMap(week => week.feedback_received_themes || [])
     .filter((theme): theme is string => typeof theme === 'string' && theme.trim().length > 0);
@@ -343,7 +518,6 @@ function aggregateWeeklySummaries(weeklySummaries: WeeklyAnalysis[]): Aggregated
     .flatMap(week => week.feedback_provided_themes || [])
     .filter((theme): theme is string => typeof theme === 'string' && theme.trim().length > 0);
 
-  // Get unique themes
   const receivedThemes = [...new Set(allReceivedThemes)];
   const providedThemes = [...new Set(allProvidedThemes)];
 
@@ -363,42 +537,4 @@ function aggregateWeeklySummaries(weeklySummaries: WeeklyAnalysis[]): Aggregated
     receivedThemes,
     providedThemes
   };
-}
-
-function generateFinalSummaryText(summary: AggregatedSummary, userContext: UserContext): string {
-  const sentimentDescription = (score: number) => {
-    if (score >= 0.7) return 'very positive';
-    if (score >= 0.5) return 'positive';
-    if (score >= 0.3) return 'neutral';
-    if (score >= 0.1) return 'mixed';
-    return 'needs attention';
-  };
-
-  return `**FEEDBACK ANALYSIS FOR ${userContext.userName.toUpperCase()}**
-
-**OVERVIEW:**
-- Analysis period: ${summary.weeksAnalyzed} weeks (${summary.dateRange.start} to ${summary.dateRange.end})
-- Total feedback received: ${summary.totalFeedbackReceived} responses
-- Total feedback provided: ${summary.totalFeedbackProvided} responses
-- Company value nominations received: ${summary.totalValueNominations}
-- Overall sentiment of received feedback: ${sentimentDescription(summary.averageReceivedSentiment)} (${(summary.averageReceivedSentiment * 100).toFixed(1)}%)
-
-**FEEDBACK RECEIVED ANALYSIS:**
-${summary.combinedReceivedSummary || 'No detailed feedback received summary available.'}
-
-**FEEDBACK PROVIDED ANALYSIS:**
-${summary.combinedProvidedSummary || 'No detailed feedback provided summary available.'}
-
-**KEY THEMES IDENTIFIED:**
-${summary.receivedThemes.length > 0 ? `
-Feedback Received Themes: ${summary.receivedThemes.slice(0, 5).join(', ')}` : ''}
-${summary.providedThemes.length > 0 ? `
-Feedback Provided Themes: ${summary.providedThemes.slice(0, 5).join(', ')}` : ''}
-
-**PERFORMANCE INDICATORS:**
-- Feedback engagement: ${summary.totalFeedbackProvided > 0 ? 'Active contributor' : 'Limited feedback activity'}
-- Recognition level: ${summary.totalValueNominations > 0 ? `${summary.totalValueNominations} value-based nominations` : 'No recent value nominations'}
-- Peer perception: ${sentimentDescription(summary.averageReceivedSentiment)} overall sentiment
-
-*This analysis is compiled from ${summary.weeksAnalyzed} weeks of processed feedback data and represents comprehensive insights into performance and collaboration patterns.*`;
 }

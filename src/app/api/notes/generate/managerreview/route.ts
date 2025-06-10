@@ -6,28 +6,58 @@ import OpenAI from 'openai';
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
 interface UserContext {
   userName: string;
   jobTitle: string;
   company: string;
   industry: string;
 }
-interface ManagerReviewRequest {
-  summary: string;
-  userContext: {
-    userName: string;
-    jobTitle: string;
-    company: string;
-    industry: string;
+
+interface StructuredFeedbackAnalysis {
+  strengths: string[];
+  developmentAreas: string[];
+  keyThemes: {
+    received: string[];
+    provided: string[];
   };
+  performanceIndicators: {
+    engagementLevel: string;
+    recognitionLevel: string;
+    sentimentLevel: string;
+  };
+  notableQuotes: string[];
+  condensedSummary: string;
+}
+
+interface ManagerReviewRequest {
+  summary?: string; // Keep for backward compatibility
+  structuredAnalysis?: StructuredFeedbackAnalysis; // New structured format
+  userContext: UserContext;
   feedbackCount: number;
+  metadata?: {
+    weeksAnalyzed: number;
+    totalValueNominations: number;
+    averageSentiment: number;
+  };
 }
 
 export async function POST(request: Request) {
   try {
-    const { summary, userContext, feedbackCount } = await request.json() as ManagerReviewRequest;
+    const { 
+      summary, 
+      structuredAnalysis, 
+      userContext, 
+      feedbackCount, 
+      metadata 
+    } = await request.json() as ManagerReviewRequest;
 
-    console.log(`=== Generating Manager Review Content (${feedbackCount}) ===`);
+    console.log(`=== Generating Manager Review Content (${feedbackCount} feedback responses) ===`);
+
+    // Use structured analysis if available, otherwise fall back to summary
+    const analysisContent = structuredAnalysis 
+      ? formatStructuredAnalysisForAI(structuredAnalysis, userContext, metadata)
+      : summary;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4-turbo",
@@ -40,51 +70,47 @@ export async function POST(request: Request) {
           role: "user", 
           content: `Create a performance review template for ${userContext.userName} (${userContext.jobTitle}) based on this comprehensive feedback analysis.
 
-            FEEDBACK ANALYSIS:
-            ${summary}
+FEEDBACK ANALYSIS:
+${analysisContent}
 
-            Create a manager's performance review with these sections:
+Create a manager's performance review with these sections:
 
-            ## Performance Review: ${userContext.userName}
+## Performance Review: ${userContext.userName}
 
-            ### Executive Summary
-            [Brief overview of ${userContext.userName}'s performance and key contributions this period. Do not include the number of weeks or number of feedback received, focus on the insights.]
+### Executive Summary
+[Brief overview of ${userContext.userName}'s performance and key contributions this period. Do not include the number of weeks or number of feedback received, focus on the insights.]
 
-            ### Detailed Assessment
+### Detailed Assessment
 
-            #### Strengths
-            [Based on feedback analysis - areas where ${userContext.userName} excels]
+#### Strengths
+[Based on feedback analysis - areas where ${userContext.userName} excels]
 
-            #### Development Opportunities
-            [Based on feedback analysis - areas where ${userContext.userName} can grow]
+#### Development Opportunities
+[Based on feedback analysis - areas where ${userContext.userName} can grow]
 
-            ### Feedback Analysis
+### Feedback Analysis
+[Summary of feedback key themes, nominations, ratings and scores, if available]
 
-            #### Notable Quotes
-            [Key quotes from feedback that stood out and showcase ${userContext.userName}'s impact and areas for growth]
+### Managerial Support
+[What support, training, or resources you will provide to help ${userContext.userName} achieve these goals]
 
-            #### Feedback Summary
-            [Summary of feedback key themes, nominations, ratings and scores, if available]
+### Overall Rating and Rationale
+[Performance rating with clear justification]
 
-            ### Managerial Support
-            [What support, training, or resources you will provide to help ${userContext.userName} achieve these goals]
+----- 
 
-            ### Overall Rating and Rationale
-            [Performance rating with clear justification]
+### Questions for Discussion
+[Questions to facilitate a constructive discussion with ${userContext.userName} about their performance and development]
 
-            ----- 
-
-            ### Questions for Discussion
-            [Questions to facilitate a constructive discussion with ${userContext.userName} about their performance and development]
-
-            Write this in second person as a performance review.`
+Write this in second person as a performance review.`
         }
       ],
-      max_tokens: 5000,
+      max_tokens: 4000,
       temperature: 0.4
     });
 
-    const markdownContent = completion.choices[0]?.message?.content || createManagerReviewFallback(userContext, summary);
+    const markdownContent = completion.choices[0]?.message?.content || 
+      createManagerReviewFallback(userContext, structuredAnalysis || { condensedSummary: summary || '' });
     const htmlContent = await marked.parse(markdownContent);
 
     return NextResponse.json({
@@ -96,8 +122,11 @@ export async function POST(request: Request) {
     console.error('Manager review generation error:', error);
     
     // Fallback content
-    const { summary, userContext } = await request.json();
-    const fallbackMarkdown = createManagerReviewFallback(userContext, summary);
+    const { structuredAnalysis, userContext, summary } = await request.json();
+    const fallbackMarkdown = createManagerReviewFallback(
+      userContext, 
+      structuredAnalysis || { condensedSummary: summary || '' }
+    );
     const htmlContent = await marked.parse(fallbackMarkdown);
     
     return NextResponse.json({
@@ -108,30 +137,108 @@ export async function POST(request: Request) {
   }
 }
 
-function createManagerReviewFallback(userContext: UserContext, summary: string): string {
+function formatStructuredAnalysisForAI(
+  analysis: StructuredFeedbackAnalysis, 
+  userContext: UserContext,
+  metadata?: { weeksAnalyzed: number; totalValueNominations: number; averageSentiment: number }
+): string {
+  // Create a concise, structured format that's easy for AI to parse
+  // This should be much shorter than the original verbose summary
+  
+  return `**FEEDBACK ANALYSIS FOR ${userContext.userName.toUpperCase()}**
+
+**OVERVIEW:**
+${analysis.condensedSummary}
+
+**STRENGTHS IDENTIFIED:**
+${analysis.strengths.length > 0 
+  ? analysis.strengths.map((strength, index) => `${index + 1}. ${strength}`).join('\n')
+  : 'No specific strengths identified in feedback.'
+}
+
+**DEVELOPMENT OPPORTUNITIES:**
+${analysis.developmentAreas.length > 0 
+  ? analysis.developmentAreas.map((area, index) => `${index + 1}. ${area}`).join('\n')
+  : 'No specific development areas identified in feedback.'
+}
+
+**KEY THEMES:**
+- Feedback Received Themes: ${analysis.keyThemes.received.join(', ') || 'None identified'}
+- Feedback Provided Themes: ${analysis.keyThemes.provided.join(', ') || 'None identified'}
+
+**NOTABLE QUOTES:**
+${analysis.notableQuotes.length > 0 
+  ? analysis.notableQuotes.map((quote, index) => `${index + 1}. "${quote}"`).join('\n')
+  : 'No notable quotes available.'
+}
+
+**PERFORMANCE INDICATORS:**
+- Feedback Engagement: ${analysis.performanceIndicators.engagementLevel}
+- Recognition Level: ${analysis.performanceIndicators.recognitionLevel}
+- Peer Perception: ${analysis.performanceIndicators.sentimentLevel}
+
+${metadata ? `**ADDITIONAL CONTEXT:**
+- Analysis Period: ${metadata.weeksAnalyzed} weeks
+- Value Nominations: ${metadata.totalValueNominations}
+- Sentiment Score: ${(metadata.averageSentiment * 100).toFixed(1)}%` : ''}`;
+}
+
+function createManagerReviewFallback(
+  userContext: UserContext, 
+  analysis: Partial<StructuredFeedbackAnalysis> & { condensedSummary: string }
+): string {
   return `# Performance Review: ${userContext.userName}
 
 ## Executive Summary
-Performance assessment for ${userContext.userName} (${userContext.jobTitle}) based on comprehensive feedback analysis.
+This performance assessment for ${userContext.userName} (${userContext.jobTitle}) is based on comprehensive feedback analysis${analysis.condensedSummary ? ': ' + analysis.condensedSummary : '.'}
 
-## Key Accomplishments
-- [Accomplishment 1 with impact]
-- [Accomplishment 2 with impact]
-- [Accomplishment 3 with impact]
+## Detailed Assessment
 
-## 360-Degree Feedback Summary
-${summary.substring(0, 500)}...
+### Strengths
+${analysis.strengths && analysis.strengths.length > 0 
+  ? analysis.strengths.map(strength => `- ${strength}`).join('\n')
+  : '- [Strengths to be identified from feedback analysis]'
+}
 
-## Strengths
-- [Strength 1 from feedback]
-- [Strength 2 from feedback]
+### Development Opportunities
+${analysis.developmentAreas && analysis.developmentAreas.length > 0 
+  ? analysis.developmentAreas.map(area => `- ${area}`).join('\n')
+  : '- [Development areas to be identified from feedback analysis]'
+}
 
-## Development Areas
-- [Development area 1]
-- [Development area 2]
+## Feedback Analysis
 
-## Goals for Next Period
-- [Goal 1]
-- [Goal 2]
-- [Goal 3]`;
+### Notable Quotes
+${analysis.notableQuotes && analysis.notableQuotes.length > 0 
+  ? analysis.notableQuotes.map(quote => `> "${quote}"`).join('\n\n')
+  : '> [Notable feedback quotes to be added]'
+}
+
+### Feedback Summary
+${analysis.performanceIndicators 
+  ? `- **Engagement Level:** ${analysis.performanceIndicators.engagementLevel}
+- **Recognition Level:** ${analysis.performanceIndicators.recognitionLevel}
+- **Peer Perception:** ${analysis.performanceIndicators.sentimentLevel}`
+  : '- [Feedback summary metrics to be added]'
+}
+
+## Managerial Support
+- Regular one-on-one meetings to discuss progress and challenges
+- Targeted training opportunities based on identified development areas
+- Mentoring support for skill development
+- Clear goal setting and milestone tracking
+
+## Overall Rating and Rationale
+**Rating:** [To be determined based on comprehensive assessment]
+
+**Rationale:** ${userContext.userName} demonstrates [key strengths] while showing potential for growth in [development areas]. The feedback analysis indicates [overall performance summary].
+
+---
+
+## Questions for Discussion
+1. How do you feel about the feedback themes that emerged from your colleagues?
+2. Which of these strengths do you feel most confident about, and how can we leverage them further?
+3. What support do you need to address the development opportunities identified?
+4. What are your career goals for the next quarter, and how do they align with this feedback?
+5. Are there any feedback patterns that surprised you, and how might we address them?`;
 }

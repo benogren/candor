@@ -46,9 +46,27 @@ interface GenerationProgress {
   errorMessage?: string;
 }
 
+// Updated interface to include structured analysis
+interface StructuredFeedbackAnalysis {
+  strengths: string[];
+  developmentAreas: string[];
+  keyThemes: {
+    received: string[];
+    provided: string[];
+  };
+  performanceIndicators: {
+    engagementLevel: string;
+    recognitionLevel: string;
+    sentimentLevel: string;
+  };
+  notableQuotes: string[];
+  condensedSummary: string;
+}
+
 interface Stage1Response {
   success: boolean;
-  summary: string;
+  summary: string; // Keep for backward compatibility
+  structuredAnalysis?: StructuredFeedbackAnalysis; // New structured format
   userContext: {
     userName: string;
     jobTitle: string;
@@ -56,6 +74,11 @@ interface Stage1Response {
     industry: string;
   };
   feedbackCount: number;
+  metadata?: {
+    weeksAnalyzed: number;
+    totalValueNominations: number;
+    averageSentiment: number;
+  };
   usedFallback?: boolean;
 }
 
@@ -585,7 +608,7 @@ export default function NotesPage() {
     return await response.json();
   }, [note?.id, note?.subject_member_id, note?.subject_invited_id, note?.metadata?.timeframe, user?.id]);
 
-  // Stage 2: Generate content (updated to fetch previous prep content)
+  // Stage 2: Generate content (updated to use structured analysis)
   const executeStage2 = useCallback(async (stage1Data: Stage1Response) => {
     if (!note) throw new Error('Note not available');
 
@@ -619,19 +642,26 @@ export default function NotesPage() {
       previousContext = String(note.metadata.previousContext);
     }
 
-    // Create simplified request body - each endpoint only gets what it needs
+    // Create optimized request body using structured analysis when available
     const requestBody = {
-      summary: stage1Data.summary,
+      // Use structured analysis if available, otherwise fall back to summary
+      ...(stage1Data.structuredAnalysis 
+        ? { 
+            structuredAnalysis: stage1Data.structuredAnalysis,
+            metadata: stage1Data.metadata
+          } 
+        : { summary: stage1Data.summary }
+      ),
       userContext: stage1Data.userContext,
       feedbackCount: stage1Data.feedbackCount,
       ...(note.content_type === 'prep' && { previousContext })
-      // Note: themes endpoints handle manager vs individual logic through routing
     };
 
     // Route to the appropriate API endpoint
     const apiEndpoint = getGenerationEndpoint(note.content_type, isManagerContent);
     
-    console.log(`Calling ${apiEndpoint} with request including previous context:`, !!previousContext);
+    console.log(`Calling ${apiEndpoint} with ${stage1Data.structuredAnalysis ? 'structured analysis' : 'summary'} format`);
+    console.log('Request size estimate:', JSON.stringify(requestBody).length, 'characters');
     
     const response = await fetch(apiEndpoint, {
       method: 'POST',
@@ -716,10 +746,16 @@ export default function NotesPage() {
       console.log('Starting Stage 2');
       progressController.switchToStage2();
       
+      const stage2Message = stage1Result.structuredAnalysis 
+        ? `Generating content with optimized analysis (${JSON.stringify(stage1Result.structuredAnalysis).length} chars)...`
+        : note.content_type === 'prep' 
+          ? 'Generating prep with previous context...' 
+          : 'Generating personalized content...';
+      
       setGenerationProgress(prev => ({
         ...prev,
         currentStage: 2,
-        message: note.content_type === 'prep' ? 'Generating prep with previous context...' : 'Generating personalized content...'
+        message: stage2Message
       }));
 
       await executeStage2(stage1Result);
@@ -746,7 +782,7 @@ export default function NotesPage() {
       if (isMountedRef.current) {
         toast({
           title: 'Generation Complete',
-          description: `Your ${note.content_type} has been generated!`,
+          description: `Your ${note.content_type} has been generated with ${stage1Result.structuredAnalysis ? 'optimized' : 'standard'} analysis!`,
         });
 
         // Reset after delay
