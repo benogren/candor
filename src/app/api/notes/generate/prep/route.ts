@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     console.log('Previous context length:', previousContext.length);
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4-turbo",
+      model: "gpt-4.1",
       messages: [
         { 
           role: "system", 
