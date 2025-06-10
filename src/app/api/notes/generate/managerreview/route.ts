@@ -84,7 +84,7 @@ export async function POST(request: Request) {
             Write this as a comprehensive performance review from the manager's perspective. Be fair, specific, and development-focused. Include both recognition and constructive feedback.`
         }
       ],
-      max_tokens: 1200,
+      max_tokens: 1800,
       temperature: 0.4
     });
 

@@ -17,6 +17,7 @@ import { overpass } from '../../../fonts';
 import { radley } from '../../../fonts';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import React from 'react';
 
 // Type definitions
 type Note = {
@@ -58,11 +59,102 @@ interface Stage1Response {
   usedFallback?: boolean;
 }
 
-interface ProgressStage {
-  progress: number;
-  message: string;
-  duration: number;
-}
+// Memoized Generation Status Component to prevent unnecessary re-renders
+const GenerationStatus = React.memo(({ 
+  generationProgress, 
+  stage1Response, 
+  onRetry 
+}: {
+  generationProgress: GenerationProgress;
+  stage1Response: Stage1Response | null;
+  onRetry: () => void;
+}) => {
+  const { isGenerating, hasError, progress, message, errorMessage, startTime, currentStage, stage1Complete, stage2Complete } = generationProgress;
+  
+  // Don't render anything if no generation is happening
+  if (!isGenerating && !hasError && !stage1Complete) return null;
+
+  const elapsed = startTime ? Math.round((Date.now() - startTime.getTime()) / 1000) : 0;
+  const estimatedTotal = 90;
+  const estimatedRemaining = Math.max(0, estimatedTotal - elapsed);
+
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-4">
+      <div className="flex flex-col items-center max-w-md text-center">
+        {hasError ? (
+          <>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Generation Failed</h3>
+            <p className="text-gray-600 mb-2">Failed during Stage {currentStage}</p>
+            <p className="text-gray-600 mb-4">{errorMessage}</p>
+            <div className="flex space-x-3">
+              <Button variant="outline" onClick={onRetry}>
+                Retry Generation
+              </Button>
+            </div>
+          </>
+        ) : stage1Complete && !stage2Complete && !isGenerating ? (
+          <>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Analysis Complete!</h3>
+            <p className="text-gray-600 mb-2">
+              {stage1Response ? `Found ${stage1Response.feedbackCount} feedback responses` : 'Feedback analysis completed'}
+            </p>
+            <p className="text-gray-600 mb-4">Starting content generation...</p>
+          </>
+        ) : (
+          <>
+            <h3 className="text-lg font-medium text-gray-900 mb-8">
+              {currentStage === 1 ? 'Analyzing Feedback' : 'Generating Content'}
+            </h3>
+            <p className="text-gray-600 mb-2">{message}</p>
+            {elapsed > 60 && (
+              <p className="text-sm text-yellow-600 mb-4">
+                This is taking longer than usual. Please wait...
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="w-full max-w-md mb-6">
+        <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
+          <span className="font-medium">{message || (hasError ? 'Generation failed' : 'Processing...')}</span>
+          <div className="flex items-center space-x-2">
+            {elapsed > 0 && !hasError && <span>{elapsed}s</span>}
+            {isGenerating && estimatedRemaining > 0 && (
+              <span className="text-gray-500">
+                (~{estimatedRemaining}s remaining)
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+          <div 
+            className={`h-3 rounded-full transition-all duration-500 ease-out ${
+              hasError ? 'bg-red-500' : 'bg-cerulean-600'
+            }`}
+            style={{ width: `${Math.max(5, progress)}%` }}
+          ></div>
+        </div>
+        <div className="text-xs text-gray-500 mt-1 text-right">
+          {hasError ? 'Failed' : `${progress}% complete`}
+        </div>
+        
+        <div className="flex justify-between items-center mt-3 text-xs">
+          <div className={`flex items-center ${stage1Complete ? 'text-nonphotoblue-600' : currentStage === 1 ? 'text-cerulean' : 'text-gray-400'}`}>
+            {stage1Complete ? <CheckCircle className="h-3 w-3 mr-1" /> : currentStage === 1 ? <RefreshCw className="h-3 w-3 mr-1 animate-spin" /> : <div className="h-3 w-3 mr-1 rounded-full border border-gray-300" />}
+            Stage 1: Analysis
+          </div>
+          <div className={`flex items-center ${stage2Complete ? 'text-nonphotoblue-600' : currentStage === 2 ? 'text-cerulean' : 'text-gray-400'}`}>
+            {stage2Complete ? <CheckCircle className="h-3 w-3 mr-1" /> : currentStage === 2 ? <RefreshCw className="h-3 w-3 mr-1 animate-spin" /> : <div className="h-3 w-3 mr-1 rounded-full border border-gray-300" />}
+            Stage 2: Content
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+GenerationStatus.displayName = 'GenerationStatus';
 
 export default function NotesPage() {
   const router = useRouter();
@@ -97,6 +189,9 @@ export default function NotesPage() {
   
   // Prevent multiple simultaneous generations
   const generationInProgressRef = useRef(false);
+  
+  // Component mounted flag to prevent operations after unmount
+  const isMountedRef = useRef(true);
 
   // Create a TipTap editor
   const editor = useEditor({
@@ -129,15 +224,18 @@ export default function NotesPage() {
     },
   });
 
-  // Auto-save with debounce
+  // Auto-save with debounce and DOM safety
   const saveNote = useCallback((title: string, content: string) => {
-    if (!note?.id || !user || generationProgress.isGenerating) return;
+    if (!note?.id || !user || generationProgress.isGenerating || !isMountedRef.current) return;
     
     if (debouncedSaveRef.current) {
       debouncedSaveRef.current.cancel();
     }
     
     const saveToDB = async () => {
+      // Double-check component is still mounted before proceeding
+      if (!isMountedRef.current) return;
+      
       try {
         setIsSaving(true);
         
@@ -163,23 +261,31 @@ export default function NotesPage() {
         }
         
         const data = await response.json();
-        setNote(data.note);
-        setLastSaved(new Date());
+        
+        // Only update state if component is still mounted
+        if (isMountedRef.current) {
+          setNote(data.note);
+          setLastSaved(new Date());
+        }
       } catch (saveError) {
         console.error('Error saving note:', saveError);
-        toast({
-          title: 'Error saving changes',
-          description: 'Could not save your changes. Please try again.',
-          variant: 'destructive',
-        });
+        if (isMountedRef.current) {
+          toast({
+            title: 'Error saving changes',
+            description: 'Could not save your changes. Please try again.',
+            variant: 'destructive',
+          });
+        }
       } finally {
-        setIsSaving(false);
+        if (isMountedRef.current) {
+          setIsSaving(false);
+        }
       }
     };
 
     debouncedSaveRef.current = debounce(saveToDB, 500);
     debouncedSaveRef.current();
-  }, [note?.id, user, generationProgress.isGenerating]);
+  }, [note?.id, note, user, generationProgress.isGenerating]);
 
   // Handle title change
   const handleTitleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -216,9 +322,9 @@ export default function NotesPage() {
     }
   }, []);
 
-  // Function to update the note after generation
+  // Function to update the note after generation with complete DOM safety
   const updateNoteAfterGeneration = useCallback(async (content: string, usedFallback = false) => {
-    if (!note?.id) throw new Error('Note ID not available');
+    if (!note?.id || !isMountedRef.current) throw new Error('Note ID not available or component unmounted');
 
     console.log('Updating note after generation...', note.id);
 
@@ -247,104 +353,134 @@ export default function NotesPage() {
 
       console.log('Note updated successfully:', updatedNote);
 
+      // Only update state if component is still mounted
+      if (!isMountedRef.current) return;
+
       // Update local state immediately
       setNote(updatedNote);
       setLastSaved(new Date(updatedNote.updated_at));
       
-      // Update editor with new content
-      if (editor && content) {
-        try {
-          editor.commands.setContent(content);
-          console.log('Editor content updated');
-        } catch (editorError) {
-          console.error("Error setting editor content:", editorError);
-        }
+      // Update editor with new content (with maximum safety checks)
+      if (editor && content && isMountedRef.current) {
+        const updateEditor = () => {
+          if (!isMountedRef.current || !editor || editor.isDestroyed) return;
+          
+          try {
+            editor.commands.setContent(content);
+            console.log('Editor content updated');
+          } catch (editorError) {
+            console.error("Error setting editor content:", editorError);
+            // Don't try fallback methods if component is unmounting
+            if (!isMountedRef.current) return;
+            
+            try {
+              editor.commands.clearContent();
+              editor.commands.insertContent(content);
+            } catch (fallbackError) {
+              console.error("Fallback editor update also failed:", fallbackError);
+            }
+          }
+        };
+
+        // Use requestAnimationFrame for safer DOM timing
+        requestAnimationFrame(() => {
+          if (isMountedRef.current) {
+            updateEditor();
+          }
+        });
       }
 
     } catch (error) {
       console.error('Error updating note after generation:', error);
       
+      // Only try recovery if component is still mounted
+      if (!isMountedRef.current) return;
+      
       // Even if database update fails, try to update local state to prevent stuck loading
       setNote(prev => prev ? { ...prev, is_generating: false, content } : null);
-      if (editor && content) {
-        editor.commands.setContent(content);
+      
+      // Try to update editor content even if database update failed
+      if (editor && content && isMountedRef.current) {
+        requestAnimationFrame(() => {
+          if (isMountedRef.current && editor && !editor.isDestroyed) {
+            try {
+              editor.commands.setContent(content);
+            } catch (editorError) {
+              console.error("Error setting editor content in error handler:", editorError);
+            }
+          }
+        });
       }
       
       throw new Error('Failed to save generated content');
     }
   }, [note, editor]);
 
-  // Two-stage progress simulation
+  // Simplified progress simulation without complex timers
   const startProgressSimulation = useCallback(() => {
-    if (progressTimerRef.current) {
-      clearInterval(progressTimerRef.current);
-    }
+    let isActive = true;
 
-    const stage1Stages: ProgressStage[] = [
-      { progress: 15, message: 'Identifying feedback sources...', duration: 2000 },
-      { progress: 35, message: 'Gathering feedback data...', duration: 3000 },
-      { progress: 50, message: 'Analyzing feedback patterns...', duration: 4000 },
-    ];
-
-    const stage2Stages: ProgressStage[] = [
-      { progress: 60, message: 'Processing feedback analysis...', duration: 2000 },
-      { progress: 75, message: 'Generating personalized content...', duration: 5000 },
-      { progress: 90, message: 'Finalizing document...', duration: 3000 },
-    ];
-
-    let currentStages = stage1Stages;
-    let stageIndex = 0;
-    let currentProgress = 5;
-
-    const updateProgress = () => {
-      if (stageIndex < currentStages.length) {
-        const stage = currentStages[stageIndex];
-        const increment = (stage.progress - currentProgress) / (stage.duration / 1000);
-        
-        const timer = setInterval(() => {
-          currentProgress = Math.min(currentProgress + increment, stage.progress);
-          
-          setGenerationProgress(prev => {
-            if (!prev.isGenerating) return prev;
-            return {
-              ...prev,
-              progress: Math.round(currentProgress),
-              message: stage.message
-            };
-          });
-
-          if (currentProgress >= stage.progress) {
-            clearInterval(timer);
-            stageIndex++;
-            if (stageIndex < currentStages.length) {
-              setTimeout(updateProgress, 500);
-            } else if (currentStages === stage1Stages) {
-              // Stage 1 complete, wait for actual stage transition
-              setGenerationProgress(prev => ({
-                ...prev,
-                progress: 55,
-                message: 'Stage 1 complete - starting content generation...'
-              }));
-            }
-          }
-        }, 1000);
-
-        progressTimerRef.current = timer;
+    const updateProgress = (targetProgress: number, message: string) => {
+      if (!isActive || !isMountedRef.current) return;
+      
+      try {
+        setGenerationProgress(prev => ({
+          ...prev,
+          progress: targetProgress,
+          message: message
+        }));
+      } catch (error) {
+        console.log('Progress update failed:', error);
       }
     };
 
-    // Start stage 1 simulation
-    setTimeout(updateProgress, 1000);
+    // Stage 1 progress points
+    const stage1Updates = [
+      { progress: 15, message: 'Identifying feedback sources...', delay: 2000 },
+      { progress: 35, message: 'Gathering feedback data...', delay: 4000 },
+      { progress: 50, message: 'Analyzing feedback patterns...', delay: 6000 },
+    ];
 
-    // Function to switch to stage 2 simulation
+    // Stage 2 progress points  
+    const stage2Updates = [
+      { progress: 60, message: 'Processing feedback analysis...', delay: 1000 },
+      { progress: 75, message: 'Generating personalized content...', delay: 3000 },
+      { progress: 90, message: 'Finalizing document...', delay: 5000 },
+    ];
+
+    let timeoutIds: NodeJS.Timeout[] = [];
+
+    // Schedule stage 1 updates
+    stage1Updates.forEach(update => {
+      const timeoutId = setTimeout(() => {
+        updateProgress(update.progress, update.message);
+      }, update.delay);
+      timeoutIds.push(timeoutId);
+    });
+
     const switchToStage2 = () => {
-      currentStages = stage2Stages;
-      stageIndex = 0;
-      currentProgress = 55;
-      setTimeout(updateProgress, 1000);
+      if (!isActive) return;
+      
+      // Clear any remaining stage 1 timeouts
+      timeoutIds.forEach(id => clearTimeout(id));
+      timeoutIds = [];
+      
+      // Schedule stage 2 updates
+      stage2Updates.forEach(update => {
+        const timeoutId = setTimeout(() => {
+          updateProgress(update.progress, update.message);
+        }, update.delay);
+        timeoutIds.push(timeoutId);
+      });
     };
 
-    return switchToStage2;
+    const cleanup = () => {
+      isActive = false;
+      timeoutIds.forEach(id => clearTimeout(id));
+      timeoutIds = [];
+    };
+
+    return { switchToStage2, cleanup };
   }, []);
 
   // Stage 1: Analyze feedback
@@ -443,19 +579,20 @@ export default function NotesPage() {
     return result;
   }, [note, getGenerationEndpoint, updateNoteAfterGeneration]);
 
-  // Main two-stage generation orchestration
+  // Simplified two-stage generation without complex state management
   const startTwoStageGeneration = useCallback(async () => {
-    if (!note?.id || generationInProgressRef.current) {
-      console.log('Generation already in progress or no note ID');
+    if (!note?.id || generationInProgressRef.current || !isMountedRef.current) {
+      console.log('Generation conditions not met');
       return;
     }
 
-    console.log('Starting two-stage generation for note:', note.id);
+    console.log('Starting simplified two-stage generation');
     generationInProgressRef.current = true;
 
-    // Create abort controller for this request
+    // Create abort controller
     abortControllerRef.current = new AbortController();
 
+    // Set initial state once
     setGenerationProgress({
       isGenerating: true,
       currentStage: 1,
@@ -467,49 +604,58 @@ export default function NotesPage() {
       hasError: false
     });
 
-    // Start progress simulation
-    const switchToStage2Simulation = startProgressSimulation();
+    // Start simplified progress
+    const progressController = startProgressSimulation();
 
     try {
-      // Stage 1: Analyze feedback
-      console.log('Starting Stage 1: Feedback analysis');
-      setGenerationProgress(prev => ({
-        ...prev,
-        currentStage: 1,
-        message: 'Analyzing feedback data...'
-      }));
-
+      // Stage 1
+      console.log('Starting Stage 1');
       const stage1Result = await executeStage1();
+      
+      if (!isMountedRef.current || !generationInProgressRef.current) {
+        progressController.cleanup();
+        return;
+      }
+      
       setStage1Response(stage1Result);
-      console.log('Stage 1 completed:', stage1Result);
-
-      // Stage 1 complete
+      
+      // Update for stage 1 completion
       setGenerationProgress(prev => ({
         ...prev,
         stage1Complete: true,
         progress: 55,
-        message: `Analysis complete! Found ${stage1Result.feedbackCount} feedback items. Starting content generation...`
+        message: `Analysis complete! Found ${stage1Result.feedbackCount} feedback items.`
       }));
 
-      // Brief pause to show stage 1 completion
+      // Brief pause
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Start stage 2 progress simulation
-      switchToStage2Simulation();
+      if (!isMountedRef.current || !generationInProgressRef.current) {
+        progressController.cleanup();
+        return;
+      }
 
-      // Stage 2: Generate content
-      console.log('Starting Stage 2: Content generation');
+      // Stage 2
+      console.log('Starting Stage 2');
+      progressController.switchToStage2();
+      
       setGenerationProgress(prev => ({
         ...prev,
         currentStage: 2,
         message: 'Generating personalized content...'
       }));
 
-      const stage2Result = await executeStage2(stage1Result);
-      console.log('Stage 2 completed:', stage2Result);
+      await executeStage2(stage1Result);
+      console.log('Generation complete');
 
-      // Both stages complete - reset generation state immediately
-      console.log('Both stages complete, resetting generation state');
+      if (!isMountedRef.current) {
+        progressController.cleanup();
+        return;
+      }
+
+      // Cleanup and complete
+      progressController.cleanup();
+      
       setGenerationProgress({
         isGenerating: false,
         currentStage: 2,
@@ -520,49 +666,42 @@ export default function NotesPage() {
         hasError: false
       });
 
-      // Clear timers
-      if (progressTimerRef.current) {
-        clearInterval(progressTimerRef.current);
-        progressTimerRef.current = null;
+      if (isMountedRef.current) {
+        toast({
+          title: 'Generation Complete',
+          description: `Your ${note.content_type} has been generated!`,
+        });
+
+        // Reset after delay
+        setTimeout(() => {
+          if (isMountedRef.current) {
+            setGenerationProgress({
+              isGenerating: false,
+              currentStage: 1,
+              stage1Complete: false,
+              stage2Complete: false,
+              progress: 0,
+              message: '',
+              hasError: false
+            });
+            setStage1Response(null);
+          }
+        }, 3000);
       }
 
-      toast({
-        title: 'Generation Complete',
-        description: `Your ${note.content_type} has been generated based on ${stage1Result.feedbackCount} feedback responses!`,
-      });
-
-      // After a brief delay, fully reset the generation UI
-      setTimeout(() => {
-        console.log('Final reset of generation progress');
-        setGenerationProgress({
-          isGenerating: false,
-          currentStage: 1,
-          stage1Complete: false,
-          stage2Complete: false,
-          progress: 0,
-          message: '',
-          hasError: false
-        });
-        setStage1Response(null);
-      }, 3000);
-
-    } catch (generationError: unknown) {
-      if (generationError instanceof Error && generationError.name === 'AbortError') {
+    } catch (error: unknown) {
+      progressController.cleanup();
+      
+      if (error instanceof Error && error.name === 'AbortError') {
         console.log('Generation aborted');
         return;
       }
 
-      console.error('Error in two-stage generation:', generationError);
+      console.error('Generation error:', error);
       
-      // Clear timers on error
-      if (progressTimerRef.current) {
-        clearInterval(progressTimerRef.current);
-        progressTimerRef.current = null;
-      }
+      if (!isMountedRef.current) return;
       
-      const errorMessage = generationError instanceof Error 
-        ? generationError.message 
-        : 'Generation failed';
+      const errorMessage = error instanceof Error ? error.message : 'Generation failed';
       
       setGenerationProgress(prev => ({
         ...prev,
@@ -571,23 +710,24 @@ export default function NotesPage() {
         errorMessage: errorMessage
       }));
       
-      // Also ensure the note is marked as not generating in case of error
-      if (note?.id) {
-        await supabase
-          .from('notes')
-          .update({ is_generating: false })
-          .eq('id', note.id);
-        
-        setNote(prev => prev ? { ...prev, is_generating: false } : null);
+      // Update note status
+      if (note?.id && isMountedRef.current) {
+        try {
+          await supabase.from('notes').update({ is_generating: false }).eq('id', note.id);
+          setNote(prev => prev ? { ...prev, is_generating: false } : null);
+        } catch (updateError) {
+          console.error('Failed to update note status:', updateError);
+        }
       }
       
-      toast({
-        title: 'Generation Failed',
-        description: errorMessage,
-        variant: 'destructive',
-      });
+      if (isMountedRef.current) {
+        toast({
+          title: 'Generation Failed',
+          description: errorMessage,
+          variant: 'destructive',
+        });
+      }
     } finally {
-      console.log('Generation cleanup');
       generationInProgressRef.current = false;
     }
   }, [note?.id, note?.content_type, executeStage1, executeStage2, startProgressSimulation]);
@@ -658,49 +798,89 @@ export default function NotesPage() {
     };
   }, [id, user, editor]);
 
-  // Handle retry generation
+  // Handle retry generation with complete DOM safety
   const handleRetryGeneration = useCallback(async () => {
-    if (!note?.id) return;
+    if (!note?.id || !isMountedRef.current) return;
     
     console.log('Retrying generation for note:', note.id);
     
-    // Reset error state
-    generationInProgressRef.current = false;
-    setGenerationProgress({
-      isGenerating: false,
-      currentStage: 1,
-      stage1Complete: false,
-      stage2Complete: false,
-      progress: 0,
-      message: '',
-      hasError: false
-    });
-    setStage1Response(null);
-    
-    // Clear any existing timers
-    if (progressTimerRef.current) {
-      clearInterval(progressTimerRef.current);
-      progressTimerRef.current = null;
-    }
-    
-    // Mark note as generating if it isn't already
-    if (!note.is_generating) {
-      console.log('Marking note as generating');
-      const { error: updateError } = await supabase
-        .from('notes')
-        .update({ is_generating: true })
-        .eq('id', note.id);
+    try {
+      // Reset error state and clean up any existing operations
+      generationInProgressRef.current = false;
       
-      if (updateError) {
-        console.error('Error updating note status:', updateError);
-        return;
+      // Clean up any existing timers
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
       }
       
-      setNote(prev => prev ? { ...prev, is_generating: true } : null);
+      // Cancel any existing requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      
+      // Only continue if component is still mounted
+      if (!isMountedRef.current) return;
+      
+      // Reset state completely
+      setGenerationProgress({
+        isGenerating: false,
+        currentStage: 1,
+        stage1Complete: false,
+        stage2Complete: false,
+        progress: 0,
+        message: '',
+        hasError: false
+      });
+      setStage1Response(null);
+      
+      // Wait a moment for cleanup to complete
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Check again if component is still mounted
+      if (!isMountedRef.current) return;
+      
+      // Mark note as generating if it isn't already
+      if (!note.is_generating) {
+        console.log('Marking note as generating');
+        const { error: updateError } = await supabase
+          .from('notes')
+          .update({ is_generating: true })
+          .eq('id', note.id);
+        
+        if (updateError) {
+          console.error('Error updating note status:', updateError);
+          if (isMountedRef.current) {
+            toast({
+              title: 'Error',
+              description: 'Failed to start generation. Please try again.',
+              variant: 'destructive',
+            });
+          }
+          return;
+        }
+        
+        if (isMountedRef.current) {
+          setNote(prev => prev ? { ...prev, is_generating: true } : null);
+        }
+      }
+      
+      // Final check before starting generation
+      if (!isMountedRef.current) return;
+      
+      // Start generation
+      await startTwoStageGeneration();
+      
+    } catch (error) {
+      console.error('Error in retry generation:', error);
+      if (isMountedRef.current) {
+        toast({
+          title: 'Retry Failed',
+          description: 'Could not restart generation. Please refresh the page and try again.',
+          variant: 'destructive',
+        });
+      }
     }
-    
-    // Start generation
-    await startTwoStageGeneration();
   }, [note, startTwoStageGeneration]);
 
   // Handle back navigation
@@ -712,142 +892,75 @@ export default function NotesPage() {
     router.back();
   }, [router]);
 
-  // Auto-start generation when note is in generating state - with better conditions
+  // Auto-start generation when note is in generating state - with complete safety checks
   useEffect(() => {
-    // Only auto-start if:
-    // 1. Note exists and is marked as generating
-    // 2. No generation is currently in progress
-    // 3. No generation error has occurred
-    // 4. Generation hasn't been completed yet
-    if (note?.is_generating && 
+    // Only auto-start if all conditions are met and component is mounted
+    if (isMountedRef.current &&
+        note?.is_generating && 
         !generationProgress.isGenerating && 
         !generationProgress.hasError && 
         !generationInProgressRef.current &&
-        !generationProgress.stage2Complete) {
-      console.log('Auto-starting generation for note in generating state');
-      startTwoStageGeneration();
+        !generationProgress.stage2Complete &&
+        note.id) {
+      
+      console.log('Auto-starting generation for note in generating state', note.id);
+      
+      // Add a small delay to ensure component is fully mounted and stable
+      const timeoutId = setTimeout(() => {
+        // Double-check conditions before starting and ensure still mounted
+        if (isMountedRef.current &&
+            note?.is_generating && 
+            !generationInProgressRef.current && 
+            !generationProgress.isGenerating) {
+          startTwoStageGeneration();
+        }
+      }, 100);
+      
+      return () => clearTimeout(timeoutId);
     }
-  }, [note?.is_generating, generationProgress.isGenerating, generationProgress.hasError, generationProgress.stage2Complete, startTwoStageGeneration]);
+  }, [note?.is_generating, note?.id, generationProgress.isGenerating, generationProgress.hasError, generationProgress.stage2Complete, startTwoStageGeneration]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount with complete DOM safety
   useEffect(() => {
+    // Set mounted flag to true when component mounts
+    isMountedRef.current = true;
+    
     return () => {
-      console.log('Cleaning up notes page');
-      if (progressTimerRef.current) {
-        clearInterval(progressTimerRef.current);
-        progressTimerRef.current = null;
-      }
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      if (debouncedSaveRef.current) {
-        debouncedSaveRef.current.cancel();
-      }
+      console.log('Cleaning up notes page - preventing all DOM operations');
+      
+      // Set flag to prevent any ongoing operations
+      isMountedRef.current = false;
       generationInProgressRef.current = false;
+      
+      // Clean up progress timer
+      if (progressTimerRef.current) {
+        try {
+          clearInterval(progressTimerRef.current);
+          progressTimerRef.current = null;
+        } catch (error) {
+          console.log('Error clearing progress timer:', error);
+        }
+      }
+      
+      // Abort any ongoing requests
+      if (abortControllerRef.current) {
+        try {
+          abortControllerRef.current.abort();
+        } catch (abortError) {
+          console.log('Error aborting request:', abortError);
+        }
+      }
+      
+      // Cancel any pending saves
+      if (debouncedSaveRef.current) {
+        try {
+          debouncedSaveRef.current.cancel();
+        } catch (cancelError) {
+          console.log('Error canceling debounced save:', cancelError);
+        }
+      }
     };
   }, []);
-
-  // Render generation status with two-stage support
-  const renderGenerationStatus = () => {
-    const { isGenerating, hasError, progress, message, errorMessage, startTime, currentStage, stage1Complete, stage2Complete } = generationProgress;
-    
-    // Debug logging
-    console.log('Render generation status:', {
-      isGenerating,
-      hasError,
-      stage1Complete,
-      stage2Complete,
-      progress,
-      noteIsGenerating: note?.is_generating
-    });
-    
-    if (!isGenerating && !hasError && !stage1Complete) return null;
-
-    const elapsed = startTime ? Math.round((Date.now() - startTime.getTime()) / 1000) : 0;
-    const estimatedTotal = 90; // seconds for both stages
-    const estimatedRemaining = Math.max(0, estimatedTotal - elapsed);
-
-    return (
-      <div className="flex flex-col items-center justify-center py-16 px-4">
-        {/* Status Content */}
-        <div className="flex flex-col items-center max-w-md text-center">
-          {hasError ? (
-            <>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Generation Failed</h3>
-              <p className="text-gray-600 mb-2">Failed during Stage {currentStage}</p>
-              <p className="text-gray-600 mb-4">{errorMessage}</p>
-              <div className="flex space-x-3">
-                <Button
-                  variant={"outline"}
-                  onClick={handleRetryGeneration}
-                  >
-                    Retry Generation
-                  </Button>
-              </div>
-            </>
-          ) : stage1Complete && !stage2Complete && !isGenerating ? (
-            <>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Analysis Complete!</h3>
-              <p className="text-gray-600 mb-2">
-                {stage1Response ? `Found ${stage1Response.feedbackCount} feedback responses` : 'Feedback analysis completed'}
-              </p>
-              <p className="text-gray-600 mb-4">Starting content generation...</p>
-            </>
-          ) : (
-            <>
-              <h3 className="text-lg font-medium text-gray-900 mb-8">
-                {currentStage === 1 ? 'Analyzing Feedback' : 'Generating Content'}
-              </h3>
-              <p className="text-gray-600 mb-2">{message}</p>
-              {elapsed > 60 && (
-                <p className="text-sm text-yellow-600 mb-4">
-                  This is taking longer than usual. Please wait...
-                </p>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Progress Bar */}
-        <div className="w-full max-w-md mb-6">
-          <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
-            <span className="font-medium">{message || (hasError ? 'Generation failed' : 'Processing...')}</span>
-            <div className="flex items-center space-x-2">
-              {elapsed > 0 && !hasError && <span>{elapsed}s</span>}
-              {isGenerating && estimatedRemaining > 0 && (
-                <span className="text-gray-500">
-                  (~{estimatedRemaining}s remaining)
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-            <div 
-              className={`h-3 rounded-full transition-all duration-500 ease-out ${
-                hasError ? 'bg-red-500' : 'bg-cerulean-600'
-              }`}
-              style={{ width: `${Math.max(5, progress)}%` }}
-            ></div>
-          </div>
-          <div className="text-xs text-gray-500 mt-1 text-right">
-            {hasError ? 'Failed' : `${progress}% complete`}
-          </div>
-          
-          {/* Stage indicators */}
-          <div className="flex justify-between items-center mt-3 text-xs">
-            <div className={`flex items-center ${stage1Complete ? 'text-nonphotoblue-600' : currentStage === 1 ? 'text-cerulean' : 'text-gray-400'}`}>
-              {stage1Complete ? <CheckCircle className="h-3 w-3 mr-1" /> : currentStage === 1 ? <RefreshCw className="h-3 w-3 mr-1 animate-spin" /> : <div className="h-3 w-3 mr-1 rounded-full border border-gray-300" />}
-              Stage 1: Analysis
-            </div>
-            <div className={`flex items-center ${stage2Complete ? 'text-nonphotoblue-600' : currentStage === 2 ? 'text-cerulean' : 'text-gray-400'}`}>
-              {stage2Complete ? <CheckCircle className="h-3 w-3 mr-1" /> : currentStage === 2 ? <RefreshCw className="h-3 w-3 mr-1 animate-spin" /> : <div className="h-3 w-3 mr-1 rounded-full border border-gray-300" />}
-              Stage 2: Content
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   if (isLoading) {
     return (
@@ -1056,7 +1169,11 @@ export default function NotesPage() {
             <div className="p-4">
               {/* Show generation status or editor */}
               {(generationProgress.isGenerating || generationProgress.hasError || generationProgress.stage1Complete) ? 
-                renderGenerationStatus() : (
+                <GenerationStatus 
+                  generationProgress={generationProgress}
+                  stage1Response={stage1Response}
+                  onRetry={handleRetryGeneration}
+                /> : (
                 <div className={`w-full mx-auto overflow-hidden ${overpass.className}`}>
                   {editor && (
                     <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }}>
