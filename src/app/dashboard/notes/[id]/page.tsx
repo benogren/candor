@@ -662,6 +662,7 @@ export default function NotesPage() {
     
     console.log(`Calling ${apiEndpoint} with ${stage1Data.structuredAnalysis ? 'structured analysis' : 'summary'} format`);
     console.log('Request size estimate:', JSON.stringify(requestBody).length, 'characters');
+    // console.log('Request body:', JSON.stringify(requestBody, null, 2));
     
     const response = await fetch(apiEndpoint, {
       method: 'POST',
@@ -724,6 +725,8 @@ export default function NotesPage() {
         return;
       }
       
+      // console.log('****** Stage 1 complete:', stage1Result);
+
       setStage1Response(stage1Result);
       
       // Update for stage 1 completion

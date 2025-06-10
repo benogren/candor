@@ -15,6 +15,7 @@ interface UserContext {
 }
 
 interface ManagerThemesRequest {
+  structuredAnalysis: [] | string; // Can be structured analysis or a summary string
   summary: string;
   userContext: UserContext;
   feedbackCount: number;
@@ -22,7 +23,10 @@ interface ManagerThemesRequest {
 
 export async function POST(request: Request) {
   try {
-    const { summary, userContext, feedbackCount } = await request.json() as ManagerThemesRequest;
+    const { structuredAnalysis, userContext, feedbackCount } = await request.json() as ManagerThemesRequest;
+
+    const analysisContent = JSON.stringify(structuredAnalysis, null, 2) || (structuredAnalysis as string);
+    // console.log('JSON Analysis Content:', analysisContent);
 
     console.log(`=== Generating Manager Themes Content (${feedbackCount}) ===`);
 
@@ -38,7 +42,7 @@ export async function POST(request: Request) {
           content: `Create a comprehensive 360-degree Feedback Summary Report for ${userContext.userName} (${userContext.jobTitle})'s Manager based on this 360 feedback analysis.
 
           FEEDBACK ANALYSIS:
-          ${summary}
+          ${analysisContent}
 
           Your Task:
           - Create a concise report summarizing the feedback for ${userContext.userName}'s manager.
@@ -50,11 +54,11 @@ export async function POST(request: Request) {
           - This report will be for ${userContext.userName}'s manager, write it in the 3rd person as if you are speaking about to them.`     
         }
       ],
-      max_tokens: 4000,
+      max_tokens: 2000,
       temperature: 0.4
     });
 
-    const markdownContent = completion.choices[0]?.message?.content || createManagerThemesFallback(userContext, summary);
+    const markdownContent = completion.choices[0]?.message?.content || createManagerThemesFallback(userContext, analysisContent as string);
     const htmlContent = await marked.parse(markdownContent);
 
     return NextResponse.json({
@@ -86,6 +90,9 @@ export async function POST(request: Request) {
 }
 
 function createManagerThemesFallback(userContext: UserContext, summary: string): string {
+  console.log('====== Using fallback content for themes generation ======');
+
+
   return `# Manager's Feedback Themes Analysis: ${userContext.userName}
 
 ## Executive Summary

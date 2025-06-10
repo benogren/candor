@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { marked } from 'marked';
 import OpenAI from 'openai';
+// import { json } from 'stream/consumers';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -15,6 +16,7 @@ interface UserContext {
 }
 
 interface ThemesRequest {
+  structuredAnalysis: [] | string; // Can be structured analysis or a summary string
   summary: string;
   userContext: UserContext;
   feedbackCount: number;
@@ -22,7 +24,10 @@ interface ThemesRequest {
 
 export async function POST(request: Request) {
   try {
-    const { summary, userContext, feedbackCount } = await request.json() as ThemesRequest;
+    const { structuredAnalysis, userContext, feedbackCount } = await request.json() as ThemesRequest;
+
+    const analysisContent = JSON.stringify(structuredAnalysis, null, 2) || (structuredAnalysis as string);
+    // console.log('JSON Analysis Content:', analysisContent);
 
     console.log(`=== Generating Individual Themes Content (${feedbackCount}) ===`);
 
@@ -38,26 +43,23 @@ export async function POST(request: Request) {
           content: `Create a comprehensive report for ${userContext.userName} (${userContext.jobTitle}) based on this 360 feedback analysis.
 
           FEEDBACK ANALYSIS:
-          ${summary}
+          ${analysisContent}
 
           Your Task:
-          Develop a Summary Report:
-          - Create a concise report summarizing the feedback for the employee.
+          - Create a concise report summarizing the feedback for ${userContext.userName}.
           - Be specific, constructive, and focused on actionable themes from the feedback.
+          - Include specific examples or quotes.
           - Create sections, such as: Overview, Key Strengths, Development Areas, Recommendations, and Questions to Ask Your Manager.
           - Use H3 headings for each section.
           - Do not include a Conclusion section.
-          - Include specific examples or quotes.
-          - Provide actionable recommendations based on the feedback themes.
-          - Focus on providing coaching and development insights that the employee can use to improve their performance.
           - This report will be for ${userContext.userName}'s personal development use, write it in the 2nd person as if you are speaking directly to them.`
         }
       ],
-      max_tokens: 1000,
+      max_tokens: 2000,
       temperature: 0.4
     });
 
-    const markdownContent = completion.choices[0]?.message?.content || createThemesFallback(userContext, summary);
+    const markdownContent = completion.choices[0]?.message?.content || createThemesFallback(userContext, analysisContent as string);
     const htmlContent = await marked.parse(markdownContent);
 
     return NextResponse.json({
@@ -89,6 +91,9 @@ export async function POST(request: Request) {
 }
 
 function createThemesFallback(userContext: UserContext, summary: string): string {
+  console.log('====== Using fallback content for themes generation ======');
+
+
   return `# Feedback Themes Summary
 
 ## Overview
