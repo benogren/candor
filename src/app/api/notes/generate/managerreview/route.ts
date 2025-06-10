@@ -80,7 +80,7 @@ export async function POST(request: Request) {
             Write this in second person as a performance review.`
         }
       ],
-      max_tokens: 2000,
+      max_tokens: 2400,
       temperature: 0.4
     });
 
