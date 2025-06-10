@@ -66,11 +66,6 @@ export async function POST(request: Request) {
             #### Feedback Summary
             [Summary of feedback key themes, nominations, ratings and scores, if available]
 
-            ### Goals for Next Review Period
-            - [Goal 1]
-            - [Goal 2]
-            - [Goal 3]
-
             ### Managerial Support
             [What support, training, or resources you will provide to help ${userContext.userName} achieve these goals]
 
@@ -82,7 +77,7 @@ export async function POST(request: Request) {
             ### Questions for Discussion
             [Questions to facilitate a constructive discussion with ${userContext.userName} about their performance and development]
 
-            Write this in first person as a self-evaluation. Be honest, specific, and growth-oriented. Check for bias, clarity, fairness, and actionable insights. Include both recognition and constructive feedback.`
+            Write this in second person as a performance review.`
         }
       ],
       max_tokens: 2000,
