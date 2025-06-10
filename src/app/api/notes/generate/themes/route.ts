@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     console.log(`=== Generating Individual Themes Content (${feedbackCount}) ===`);
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4-turbo",
+      model: "gpt-4.1",
       messages: [
         { 
           role: "system", 
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
           - This report will be for ${userContext.userName}'s personal development use, write it in the 2nd person as if you are speaking directly to them.`
         }
       ],
-      
+      max_tokens: 2000,
       temperature: 0.4
     });
 
