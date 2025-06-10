@@ -63,11 +63,8 @@ export async function POST(request: Request) {
             #### Notable Quotes
             [Key quotes from feedback that stood out and showcase ${userContext.userName}'s impact and areas for growth]
 
-            #### Quantitative Feedback Summary
-            [Summary of feedback ratings or scores, if available]
-
-            #### Qualitative Feedback Summary
-            [Summary of key themes from qualitative feedback]
+            #### Feedback Summary
+            [Summary of feedback key themes, nominations, ratings and scores, if available]
 
             ### Goals for Next Review Period
             - [Goal 1]
@@ -83,11 +80,7 @@ export async function POST(request: Request) {
             ----- 
 
             ### Questions for Discussion
-            1. [Question about development opportunities]
-            2. [Question about role expansion or new challenges]
-            3. [Question about team dynamics or collaboration]
-            4. [Question about organizational priorities]
-            5. [Question about support or resources needed]
+            [Questions to facilitate a constructive discussion with ${userContext.userName} about their performance and development]
 
             Write this in first person as a self-evaluation. Be honest, specific, and growth-oriented. Check for bias, clarity, fairness, and actionable insights. Include both recognition and constructive feedback.`
         }
