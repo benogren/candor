@@ -92,7 +92,7 @@ export async function POST(request: Request) {
             Write this in first person as a self-evaluation. Be honest, specific, and growth-oriented. Check for bias, clarity, fairness, and actionable insights. Include both recognition and constructive feedback.`
         }
       ],
-      max_tokens: 1800,
+      max_tokens: 2000,
       temperature: 0.4
     });
 
