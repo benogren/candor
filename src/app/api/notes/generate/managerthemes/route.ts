@@ -35,7 +35,7 @@ export async function POST(request: Request) {
         },
         { 
           role: "user", 
-          content: `Create a comprehensive report for ${userContext.userName} (${userContext.jobTitle}) based on this 360 feedback analysis.
+          content: `Create a comprehensive report for ${userContext.userName} (${userContext.jobTitle})'s Manager based on this 360 feedback analysis.
 
           FEEDBACK ANALYSIS:
           ${summary}
@@ -44,12 +44,10 @@ export async function POST(request: Request) {
           Develop a Summary Report:
           - Create a concise report summarizing the feedback for ${userContext.userName}'s manager.
           - Be specific, constructive, and focused on actionable themes from the feedback.
+          - Include specific examples or quotes.
           - Create sections, such as: Overview, Key Strengths, Development Areas, Recommendations, and Questions to Ask ${userContext.userName}.
           - Use H3 headings for each section.
           - Do not include a Conclusion section.
-          - Include specific examples or quotes.
-          - Provide actionable recommendations based on the feedback themes.
-          - Focus on providing coaching and development insights that the employee's manager can use to help them improve their performance.
           - This report will be for ${userContext.userName}'s manager, write it in the 3rd person as if you are speaking about to them.`     
         }
       ],
