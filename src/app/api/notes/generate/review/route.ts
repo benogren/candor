@@ -48,19 +48,15 @@ export async function POST(request: Request) {
       summary, 
       structuredAnalysis, 
       userContext, 
-      feedbackCount, 
-      metadata 
+      feedbackCount
     } = await request.json() as ReviewRequest;
 
     console.log(`=== Generating Self-Review Content (${feedbackCount} feedback responses) ===`);
 
-    // Use structured analysis if available, otherwise fall back to summary
-    const analysisContent = structuredAnalysis 
-      ? formatStructuredAnalysisForAI(structuredAnalysis, userContext, metadata)
-      : summary;
+    const JSONAnalysisContent = JSON.stringify(structuredAnalysis, null, 2) || (structuredAnalysis);
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4.1",
+      model: "gpt-4o-mini",
       messages: [
         { 
           role: "system", 
@@ -70,53 +66,49 @@ export async function POST(request: Request) {
           role: "user", 
           content: `Create a self-evaluation for ${userContext.userName} (${userContext.jobTitle}) based on this feedback analysis.
 
-FEEDBACK ANALYSIS:
-${analysisContent}
+          FEEDBACK ANALYSIS:
+          ${JSONAnalysisContent}
 
-Create a comprehensive self-evaluation with these sections:
+          Create a comprehensive self-evaluation with these sections:
 
-## Self-Evaluation: ${userContext.userName}
+          ## Self-Evaluation: ${userContext.userName}
 
-### Executive Summary
-[Brief overview of your performance and key contributions this period. Do not include the number of weeks or number of feedback received, focus on the insights.]
+          ### Executive Summary
+          [Brief overview of your performance and key contributions this period. Do not include the number of weeks or number of feedback received, focus on the insights.]
 
-### Detailed Assessment
+          ### Detailed Assessment
 
-#### My Strengths
-[Based on feedback analysis - areas where I excel]
+          #### My Strengths
+          [Based on feedback analysis - areas where I excel]
 
-#### My Areas for Improvement
-[Based on feedback analysis - areas where I want to grow]
+          #### My Areas for Improvement
+          [Based on feedback analysis - areas where I want to grow]
 
-### Feedback Analysis
+          ### Feedback Analysis
 
-#### Quantitative Feedback Summary
-[Summary of feedback ratings or scores, if available]
+          #### Quantitative Feedback Summary
+          [Summary of feedback ratings or scores, if available]
 
-#### Qualitative Feedback Summary
-[Summary of key themes from qualitative feedback]
+          #### Qualitative Feedback Summary
+          [Summary of key themes from qualitative feedback]
 
-### What I've Learned
-[Key insights and lessons from this period]
+          ### What I've Learned
+          [Key insights and lessons from this period]
 
-### Goals for Next Review Period
-- [Goal 1]
-- [Goal 2]
-- [Goal 3]
+          ### Goals for Next Review Period
+          - [Goal 1]
+          - [Goal 2]
+          - [Goal 3]
 
-### Managerial Support
-[What support or resources you need from your manager to achieve these goals]
+          ### Managerial Support
+          [What support or resources you need from your manager to achieve these goals]
 
------ 
+          ----- 
 
-### Questions for Discussion
-1. [Question about development opportunities]
-2. [Question about role expansion or new challenges]
-3. [Question about team dynamics or collaboration]
-4. [Question about organizational priorities]
-5. [Question about support or resources needed]
+          ### Questions for Discussion
+          [Questions to facilitate a constructive discussion with your manager about your performance goals and development]
 
-Write this in first person as a self-evaluation. Be honest, specific, and growth-oriented.`
+          Write this in first person as a self-evaluation. Be honest, specific, and growth-oriented.`
         }
       ],
       max_tokens: 4000,
@@ -149,52 +141,6 @@ Write this in first person as a self-evaluation. Be honest, specific, and growth
       usedFallback: true
     });
   }
-}
-
-function formatStructuredAnalysisForAI(
-  analysis: StructuredFeedbackAnalysis, 
-  userContext: UserContext,
-  metadata?: { weeksAnalyzed: number; totalValueNominations: number; averageSentiment: number }
-): string {
-  // Create a concise, structured format that's easy for AI to parse
-  // This should be much shorter than the original verbose summary
-  
-  return `**FEEDBACK ANALYSIS FOR ${userContext.userName.toUpperCase()}**
-
-**OVERVIEW:**
-${analysis.condensedSummary}
-
-**STRENGTHS IDENTIFIED:**
-${analysis.strengths.length > 0 
-  ? analysis.strengths.map((strength, index) => `${index + 1}. ${strength}`).join('\n')
-  : 'No specific strengths identified in feedback.'
-}
-
-**DEVELOPMENT OPPORTUNITIES:**
-${analysis.developmentAreas.length > 0 
-  ? analysis.developmentAreas.map((area, index) => `${index + 1}. ${area}`).join('\n')
-  : 'No specific development areas identified in feedback.'
-}
-
-**KEY THEMES:**
-- Feedback Received Themes: ${analysis.keyThemes.received.join(', ') || 'None identified'}
-- Feedback Provided Themes: ${analysis.keyThemes.provided.join(', ') || 'None identified'}
-
-**NOTABLE QUOTES:**
-${analysis.notableQuotes.length > 0 
-  ? analysis.notableQuotes.map((quote, index) => `${index + 1}. "${quote}"`).join('\n')
-  : 'No notable quotes available.'
-}
-
-**PERFORMANCE INDICATORS:**
-- Feedback Engagement: ${analysis.performanceIndicators.engagementLevel}
-- Recognition Level: ${analysis.performanceIndicators.recognitionLevel}
-- Peer Perception: ${analysis.performanceIndicators.sentimentLevel}
-
-${metadata ? `**ADDITIONAL CONTEXT:**
-- Analysis Period: ${metadata.weeksAnalyzed} weeks
-- Value Nominations: ${metadata.totalValueNominations}
-- Sentiment Score: ${(metadata.averageSentiment * 100).toFixed(1)}%` : ''}`;
 }
 
 function createReviewFallback(

@@ -24,17 +24,22 @@ interface ManagerPrepRequest {
   };
   feedbackCount: number;
   previousContext?: string;
+  structuredAnalysis?: [] | string; // Optional structured analysis or summary string
 }
 
 export async function POST(request: Request) {
   try {
-    const { summary, userContext, feedbackCount, previousContext = '' } = await request.json() as ManagerPrepRequest;
+    const { structuredAnalysis, userContext, feedbackCount, previousContext } = await request.json() as ManagerPrepRequest;
 
     console.log(`=== Generating Manager 1:1 Prep Content (${feedbackCount}) ===`);
-    console.log('Previous context length:', previousContext.length);
+
+    const JSONAnalysisContent = JSON.stringify(structuredAnalysis, null, 2) || (structuredAnalysis as string);
+    const condensedPreviousContent = smartTruncateContext(previousContext ?? '', 400);
+
+    console.log(condensedPreviousContent);
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4.1",
+      model: "gpt-4o-mini",
       messages: [
         { 
           role: "system", 
@@ -45,10 +50,10 @@ export async function POST(request: Request) {
           content: `Create a 1:1 meeting agenda and preparation for ${userContext.userName}'s manager based on this feedback analysis and previous conversation history.
 
           CURRENT FEEDBACK ANALYSIS:
-          ${summary}
+          ${JSONAnalysisContent}
 
           PREVIOUS 1:1 CONTEXT:
-          ${previousContext || 'No previous 1:1 notes available at this time.'}
+          ${previousContext ? condensedPreviousContent : 'No previous 1:1 notes available at this time.'}
 
           Create a manager's 1:1 preparation:
           ${previousContext ? `- Include 2-3 Follow-ups from Previous 1:1` : ''}
@@ -58,14 +63,15 @@ export async function POST(request: Request) {
           - Include support and resources to offer
           - Include action items to propose
           - Provide guidance for the manager on how to have constructive conversations about both strengths and development areas
-          - Use H3 headings for each section`
+          
+          Use H3 headings for each section header`
         }
       ],
-      max_tokens: 2000,
+      max_tokens: 1800,
       temperature: 0.4
     });
 
-    const markdownContent = completion.choices[0]?.message?.content || createManagerPrepFallback(userContext, summary, previousContext);
+    const markdownContent = completion.choices[0]?.message?.content || createManagerPrepFallback(userContext, structuredAnalysis as string, previousContext);
     const htmlContent = await marked.parse(markdownContent);
 
     return NextResponse.json({
@@ -90,6 +96,7 @@ export async function POST(request: Request) {
 }
 
 function createManagerPrepFallback(userContext: UserContext, summary: string, previousContext?: string): string {
+  console.log('******* Using fallback for manager 1:1 preparation content *******');
   return `# Manager 1:1 Preparation: ${userContext.userName}
 
 ## Key Discussion Points
@@ -115,4 +122,40 @@ ${previousContext ? '- Recognize progress made since last meeting' : ''}
 - Address growth areas constructively
 - Explore learning and development options
 ${previousContext ? '- Continue previous development conversations' : ''}`;
+}
+
+function smartTruncateContext(previousContext: string, maxLength: number = 400): string {
+  if (!previousContext || previousContext.length <= maxLength) return previousContext;
+  
+  // Extract key actionable content first
+  const actionablePatterns = [
+    /(?:action items?|next steps?|goals?|follow[- ]?up)[^.!?]*[.!?]/gi,
+    /(?:^|\n)(?:\*|-|\d+\.)\s+[^\n]{20,}/gm,  // Bullet points
+    /(?:will|should|need to|plan to|decided to)[^.!?]*[.!?]/gi,
+    /(?:progress|completed|achieved|improved)[^.!?]*[.!?]/gi,
+    /(?:challenge|difficulty|focus|priority)[^.!?]*[.!?]/gi
+  ];
+  
+  const extracted = [];
+  for (const pattern of actionablePatterns) {
+    const matches = previousContext.match(pattern);
+    if (matches) {
+      extracted.push(...matches.slice(0, 2).map(match => match.trim()));
+    }
+  }
+  
+  if (extracted.length > 0) {
+    const result = extracted.join(' ').substring(0, maxLength);
+    return result + (result.length >= maxLength ? '...' : '');
+  }
+  
+  // Fallback: smart truncation at sentence boundary
+  const sentences = previousContext.split(/[.!?]+/).filter(s => s.trim().length > 10);
+  let result = '';
+  for (const sentence of sentences) {
+    if ((result + sentence).length > maxLength - 20) break;
+    result += sentence.trim() + '. ';
+  }
+  
+  return result.trim() || previousContext.substring(0, maxLength);
 }

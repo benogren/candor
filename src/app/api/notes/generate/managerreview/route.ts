@@ -48,19 +48,15 @@ export async function POST(request: Request) {
       summary, 
       structuredAnalysis, 
       userContext, 
-      feedbackCount, 
-      metadata 
+      feedbackCount 
     } = await request.json() as ManagerReviewRequest;
 
     console.log(`=== Generating Manager Review Content (${feedbackCount} feedback responses) ===`);
 
-    // Use structured analysis if available, otherwise fall back to summary
-    const analysisContent = structuredAnalysis 
-      ? formatStructuredAnalysisForAI(structuredAnalysis, userContext, metadata)
-      : summary;
+    const JSONAnalysisContent = JSON.stringify(structuredAnalysis, null, 2) || (structuredAnalysis);
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4.1",
+      model: "gpt-4o-mini",
       messages: [
         { 
           role: "system", 
@@ -68,41 +64,41 @@ export async function POST(request: Request) {
         },
         { 
           role: "user", 
-          content: `Create a performance review template for ${userContext.userName} (${userContext.jobTitle}) based on this comprehensive feedback analysis.
+          content: `Create a performance review for ${userContext.userName} (${userContext.jobTitle}) based on this comprehensive feedback analysis.
 
-FEEDBACK ANALYSIS:
-${analysisContent}
+          FEEDBACK ANALYSIS:
+          ${JSONAnalysisContent}
 
-Create a manager's performance review with these sections:
+          Create a manager's performance review with these sections:
 
-## Performance Review: ${userContext.userName}
+          ## Performance Review: ${userContext.userName}
 
-### Executive Summary
-[Brief overview of ${userContext.userName}'s performance and key contributions this period. Do not include the number of weeks or number of feedback received, focus on the insights.]
+          ### Executive Summary
+          [Brief overview of ${userContext.userName}'s performance and key contributions this period. Do not include the number of weeks or number of feedback received, focus on the insights.]
 
-### Detailed Assessment
+          ### Detailed Assessment
 
-#### Strengths
-[Based on feedback analysis - areas where ${userContext.userName} excels]
+          #### Strengths
+          [Based on feedback analysis - areas where ${userContext.userName} excels]
 
-#### Development Opportunities
-[Based on feedback analysis - areas where ${userContext.userName} can grow]
+          #### Development Opportunities
+          [Based on feedback analysis - areas where ${userContext.userName} can grow]
 
-### Feedback Analysis
-[Summary of feedback key themes, nominations, ratings and scores, if available]
+          ### Feedback Analysis
+          [Summary of feedback key themes, nominations, ratings and scores, if available]
 
-### Managerial Support
-[What support, training, or resources you will provide to help ${userContext.userName} achieve these goals]
+          ### Managerial Support
+          [What support, training, or resources you will provide to help ${userContext.userName} achieve these goals]
 
-### Overall Rating and Rationale
-[Performance rating with clear justification]
+          ### Overall Rating and Rationale
+          [Performance rating with clear justification]
 
------ 
+          ----- 
 
-### Questions for Discussion
-[Questions to facilitate a constructive discussion with ${userContext.userName} about their performance and development]
+          ### Questions for Discussion
+          [Questions to facilitate a constructive discussion with ${userContext.userName} about their performance and development]
 
-Write this in second person as a performance review.`
+          Write this in the 3rd person as if you are speaking with ${userContext.userName} about their performance review.`
         }
       ],
       max_tokens: 4000,
@@ -135,52 +131,6 @@ Write this in second person as a performance review.`
       usedFallback: true
     });
   }
-}
-
-function formatStructuredAnalysisForAI(
-  analysis: StructuredFeedbackAnalysis, 
-  userContext: UserContext,
-  metadata?: { weeksAnalyzed: number; totalValueNominations: number; averageSentiment: number }
-): string {
-  // Create a concise, structured format that's easy for AI to parse
-  // This should be much shorter than the original verbose summary
-  
-  return `**FEEDBACK ANALYSIS FOR ${userContext.userName.toUpperCase()}**
-
-**OVERVIEW:**
-${analysis.condensedSummary}
-
-**STRENGTHS IDENTIFIED:**
-${analysis.strengths.length > 0 
-  ? analysis.strengths.map((strength, index) => `${index + 1}. ${strength}`).join('\n')
-  : 'No specific strengths identified in feedback.'
-}
-
-**DEVELOPMENT OPPORTUNITIES:**
-${analysis.developmentAreas.length > 0 
-  ? analysis.developmentAreas.map((area, index) => `${index + 1}. ${area}`).join('\n')
-  : 'No specific development areas identified in feedback.'
-}
-
-**KEY THEMES:**
-- Feedback Received Themes: ${analysis.keyThemes.received.join(', ') || 'None identified'}
-- Feedback Provided Themes: ${analysis.keyThemes.provided.join(', ') || 'None identified'}
-
-**NOTABLE QUOTES:**
-${analysis.notableQuotes.length > 0 
-  ? analysis.notableQuotes.map((quote, index) => `${index + 1}. "${quote}"`).join('\n')
-  : 'No notable quotes available.'
-}
-
-**PERFORMANCE INDICATORS:**
-- Feedback Engagement: ${analysis.performanceIndicators.engagementLevel}
-- Recognition Level: ${analysis.performanceIndicators.recognitionLevel}
-- Peer Perception: ${analysis.performanceIndicators.sentimentLevel}
-
-${metadata ? `**ADDITIONAL CONTEXT:**
-- Analysis Period: ${metadata.weeksAnalyzed} weeks
-- Value Nominations: ${metadata.totalValueNominations}
-- Sentiment Score: ${(metadata.averageSentiment * 100).toFixed(1)}%` : ''}`;
 }
 
 function createManagerReviewFallback(

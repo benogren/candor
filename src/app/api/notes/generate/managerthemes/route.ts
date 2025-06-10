@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     console.log(`=== Generating Manager Themes Content (${feedbackCount}) ===`);
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4.1",
+      model: "gpt-4o-mini",
       messages: [
         { 
           role: "system", 

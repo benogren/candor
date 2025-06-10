@@ -24,17 +24,20 @@ interface PrepRequest {
   };
   feedbackCount: number;
   previousContext?: string;
+  structuredAnalysis?: [] | string;
 }
 
 export async function POST(request: Request) {
   try {
-    const { summary, userContext, feedbackCount, previousContext = '' } = await request.json() as PrepRequest;
+    const { structuredAnalysis, userContext, feedbackCount, previousContext = '' } = await request.json() as PrepRequest;
 
     console.log(`=== Generating Self 1:1 Prep Content (${feedbackCount}) ===`);
-    console.log('Previous context length:', previousContext.length);
+    
+    const JSONAnalysisContent = JSON.stringify(structuredAnalysis, null, 2) || (structuredAnalysis as string);
+    const condensedPreviousContent = smartTruncateContext(previousContext ?? '', 400);
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4.1",
+      model: "gpt-4o-mini",
       messages: [
         { 
           role: "system", 
@@ -45,10 +48,10 @@ export async function POST(request: Request) {
           content: `Create a 1:1 meeting agenda and preparation for ${userContext.userName} (${userContext.jobTitle}) based on this feedback analysis and previous 1:1 preparation history.
 
           CURRENT FEEDBACK ANALYSIS:
-          ${summary}
+          ${JSONAnalysisContent}
 
           PREVIOUS 1:1 CONTEXT:
-          ${previousContext || 'No previous 1:1 notes available at this time.'}
+          ${previousContext ? condensedPreviousContent : 'No previous 1:1 notes available at this time.'}
 
           Create a 1:1 preparation for ${userContext.userName} as they prepare to meet with their manager:
           ${previousContext ? `- Include 2-3 Follow-ups from Previous 1:1` : ''}
@@ -57,14 +60,15 @@ export async function POST(request: Request) {
           - Include support and resources to ask for from their manager
           - Include action items to propose
           - Provide guidance for ${userContext.userName} on how to have conversations with their manager about both strengths and development areas
-          - Use H3 headings for each section`
+
+          Use H3 headings for each section header`
         }
       ],
       max_tokens: 2000,
       temperature: 0.4
     });
 
-    const markdownContent = completion.choices[0]?.message?.content || createPrepFallback(userContext, summary, previousContext);
+    const markdownContent = completion.choices[0]?.message?.content || createPrepFallback(userContext, structuredAnalysis as string, previousContext);
     const htmlContent = await marked.parse(markdownContent);
 
     return NextResponse.json({
@@ -116,4 +120,40 @@ Review and update goals from last 1:1 meeting.
 
 ` : ''}## Action Items to Propose
 Specific steps I can take to address feedback and grow professionally.`;
+}
+
+function smartTruncateContext(previousContext: string, maxLength: number = 400): string {
+  if (!previousContext || previousContext.length <= maxLength) return previousContext;
+  
+  // Extract key actionable content first
+  const actionablePatterns = [
+    /(?:action items?|next steps?|goals?|follow[- ]?up)[^.!?]*[.!?]/gi,
+    /(?:^|\n)(?:\*|-|\d+\.)\s+[^\n]{20,}/gm,  // Bullet points
+    /(?:will|should|need to|plan to|decided to)[^.!?]*[.!?]/gi,
+    /(?:progress|completed|achieved|improved)[^.!?]*[.!?]/gi,
+    /(?:challenge|difficulty|focus|priority)[^.!?]*[.!?]/gi
+  ];
+  
+  const extracted = [];
+  for (const pattern of actionablePatterns) {
+    const matches = previousContext.match(pattern);
+    if (matches) {
+      extracted.push(...matches.slice(0, 2).map(match => match.trim()));
+    }
+  }
+  
+  if (extracted.length > 0) {
+    const result = extracted.join(' ').substring(0, maxLength);
+    return result + (result.length >= maxLength ? '...' : '');
+  }
+  
+  // Fallback: smart truncation at sentence boundary
+  const sentences = previousContext.split(/[.!?]+/).filter(s => s.trim().length > 10);
+  let result = '';
+  for (const sentence of sentences) {
+    if ((result + sentence).length > maxLength - 20) break;
+    result += sentence.trim() + '. ';
+  }
+  
+  return result.trim() || previousContext.substring(0, maxLength);
 }
