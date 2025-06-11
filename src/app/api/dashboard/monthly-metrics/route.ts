@@ -32,6 +32,11 @@ interface MonthlyMetrics {
   weeklySentiment: WeeklySentimentData[];
 }
 
+interface FeedbackItem {
+  created_at: string;
+  [key: string]: unknown;
+}
+
 function calculateTrend(current: number, previous: number): number {
   if (previous === 0) {
     return current > 0 ? 100 : 0;
@@ -59,7 +64,7 @@ async function getMonthlyFeedbackReceived(userId: string, isCurrentMonth: boolea
   }
 
   const feedbackData = data?.feedback_data || [];
-  return feedbackData.filter((item: any) => {
+  return feedbackData.filter((item: FeedbackItem) => {
     const createdAt = new Date(item.created_at);
     return createdAt >= startDate && createdAt <= endDate;
   }).length;
@@ -98,15 +103,6 @@ async function getMonthlyParticipationRate(userId: string, isCurrentMonth: boole
   const startDate = new Date(year, month, 1);
   const endDate = new Date(year, month + 1, 0, 23, 59, 59);
 
-  // Get user's company
-  const { data: userData, error: userError } = await supabase
-    .from('company_members')
-    .select('company_id')
-    .eq('id', userId)
-    .single();
-
-  if (userError) return 0;
-
   // Get all feedback cycle occurrences for the month
   const { data: occurrences, error: occError } = await supabase
     .from('feedback_cycle_occurrences')
@@ -144,13 +140,13 @@ async function getWeeklySentimentData(userId: string): Promise<WeeklySentimentDa
   const endDate = new Date(year, month + 1, 0, 23, 59, 59);
   
   // Find the Monday of the week that contains the first day of the month
-  let queryStartDate = new Date(startDate);
+  const queryStartDate = new Date(startDate);
   while (queryStartDate.getDay() !== 1) {
     queryStartDate.setDate(queryStartDate.getDate() - 1);
   }
   
   // Find the Sunday of the week that contains the last day of the month
-  let queryEndDate = new Date(endDate);
+  const queryEndDate = new Date(endDate);
   while (queryEndDate.getDay() !== 0) {
     queryEndDate.setDate(queryEndDate.getDate() + 1);
   }
@@ -171,7 +167,7 @@ async function getWeeklySentimentData(userId: string): Promise<WeeklySentimentDa
 
   // Generate all weeks that overlap with the month
   const weeks: WeeklySentimentData[] = [];
-  let currentWeekStart = new Date(queryStartDate);
+  const currentWeekStart = new Date(queryStartDate);
   
   while (currentWeekStart <= queryEndDate) {
     const weekKey = currentWeekStart.toISOString().split('T')[0];
@@ -210,13 +206,13 @@ async function getTeamWeeklySentimentData(userId: string): Promise<WeeklySentime
   const endDate = new Date(year, month + 1, 0, 23, 59, 59);
   
   // Find the Monday of the week that contains the first day of the month
-  let queryStartDate = new Date(startDate);
+  const queryStartDate = new Date(startDate);
   while (queryStartDate.getDay() !== 1) {
     queryStartDate.setDate(queryStartDate.getDate() - 1);
   }
   
   // Find the Sunday of the week that contains the last day of the month
-  let queryEndDate = new Date(endDate);
+  const queryEndDate = new Date(endDate);
   while (queryEndDate.getDay() !== 0) {
     queryEndDate.setDate(queryEndDate.getDate() + 1);
   }
@@ -237,7 +233,7 @@ async function getTeamWeeklySentimentData(userId: string): Promise<WeeklySentime
 
   // Generate all weeks that overlap with the month and aggregate team data
   const weeks: WeeklySentimentData[] = [];
-  let currentWeekStart = new Date(queryStartDate);
+  const currentWeekStart = new Date(queryStartDate);
   
   while (currentWeekStart <= queryEndDate) {
     const weekKey = currentWeekStart.toISOString().split('T')[0];

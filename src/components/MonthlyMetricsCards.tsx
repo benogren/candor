@@ -2,9 +2,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { MessageSquare, MoveDownRight, MoveRight, MoveUpRight, TrendingUp, Star, BarChart3, ChartScatter, HeartPulse, MessageCircleQuestion } from 'lucide-react';
+import { MoveDownRight, MoveRight, MoveUpRight, TrendingUp, BarChart3, ChartScatter, HeartPulse, MessageCircleQuestion } from 'lucide-react';
 import { LoadingSpinner } from '@/components/loading-spinner';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import supabase from '@/lib/supabase/client';
 
 interface WeeklySentimentData {
@@ -36,6 +36,19 @@ interface MonthlyMetricsCardsProps {
   userId: string;
   mode: 'personal' | 'team';
   selectedMemberId?: string;
+}
+
+// Types for recharts Tooltip
+interface TooltipPayload {
+  color: string;
+  name: string;
+  value: number | null;
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: TooltipPayload[];
+  label?: string;
 }
 
 export function MonthlyMetricsCards({ userId, mode, selectedMemberId }: MonthlyMetricsCardsProps) {
@@ -281,7 +294,6 @@ interface SentimentTrendCardProps {
 
 function SentimentTrendCard({
   title,
-  subtitle,
   data
 }: SentimentTrendCardProps) {
   const formatTooltipValue = (value: number | null) => {
@@ -301,12 +313,12 @@ function SentimentTrendCard({
     return `${value.toFixed(1)} (${value > 0 ? 'Positive' : value < 0 ? 'Negative' : 'Neutral'})`;
   };
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
           <p className="text-sm font-medium text-gray-900">{`Week of ${label}`}</p>
-          {payload.map((entry: any, index: number) => (
+          {payload.map((entry: TooltipPayload, index: number) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
               {`${entry.name}: ${formatTooltipValue(entry.value)}`}
             </p>
