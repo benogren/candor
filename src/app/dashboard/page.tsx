@@ -34,7 +34,7 @@ import {
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { FeedbackCoachPanel, type TeamMember } from '@/components/feedback-coach';
-// import { WeeklyMetricsCards } from '@/components/WeeklyMetricsCards';
+import { MonthlyMetricsCards } from '@/components/MonthlyMetricsCards';
 
 // Type for notes data
 type Note = {
@@ -582,28 +582,6 @@ export default function DashboardPage() {
     return employee ? employee.full_name + (employee.is_invited_user ? ' (Invited)' : '') : 'All Team Members';
   };
 
-  // Helper function to safely strip HTML for previews
-  // const stripHtml = (html: string) => {
-  //   if (!html) return '';
-    
-  //   try {
-  //     // For browser environments
-  //     if (typeof window !== 'undefined') {
-  //       const doc = new DOMParser().parseFromString(html, 'text/html');
-  //       return doc.body.textContent || '';
-  //     } 
-  //     // Fallback for SSR
-  //     return html.replace(/<[^>]*>?/gm, ' ')
-  //       .replace(/\s+/g, ' ')
-  //       .trim();
-  //   } catch {
-  //     // Fallback if parsing fails
-  //     return html.replace(/<[^>]*>?/gm, ' ')
-  //         .replace(/\s+/g, ' ')
-  //         .trim();
-  //   }
-  // };
-
   // Format relative time (like "1 day ago")
   const formatRelativeTime = (timestamp: string) => {
     try {
@@ -613,27 +591,6 @@ export default function DashboardPage() {
       return 'some time ago';
     }
   };
-
-  // Get a preview of the content (first 160 characters)
-  // const getContentPreview = (content: string) => {
-  //   if (!content) return '';
-  //   const plainText = stripHtml(content);
-  //   return plainText.length > 160 ? plainText.substring(0, 160) + '...' : plainText;
-  // };
-
-  // Get note type display label
-  // const getNoteTypeLabel = (note: Note) => {
-  //   if (note.content_type === 'summary') {
-  //     return 'Feedback Summary';
-  //   } 
-  //   if (note.content_type === 'prep') {
-  //     return '1:1 Prep Notes';
-  //   }
-  //   if (note.content_type === 'review') {
-  //     return 'Self-Evaluation Prep';
-  //   }
-  //   return 'Note';
-  // };
 
   // Find team member name by ID (for team notes)
   const getMemberName = (note: Note) => {
@@ -1048,13 +1005,15 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* {user && (
-          <WeeklyMetricsCards
+        {user && (
+          <>
+          <MonthlyMetricsCards
             userId={user.id}
             mode={activeTab}
             selectedMemberId={activeTab === 'team' ? selectedEmployee : undefined}
           />
-        )} */}
+          </>
+        )}
 
         <div className='grid grid-cols-3 gap-4'>
           <div className='col-span-2 mt-4'>
