@@ -26,8 +26,6 @@ export async function middleware(request: NextRequest) {
     // Check for feedback authentication token
     const feedbackAuth = request.cookies.get('feedback_auth');
     
-    // console.log('*****Feedback Auth:', feedbackAuth);
-    
     if (!feedbackAuth || !feedbackAuth.value) {
       // Redirect to login if no token
       return loginRedirect(request);

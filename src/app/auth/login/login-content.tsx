@@ -28,20 +28,6 @@ const formSchema = z.object({
   password: z.string().min(1, { message: 'Password is required' }),
 });
 
-// Function to determine if a message should block redirection
-function shouldBlockRedirect(message: string | null): boolean {
-  if (!message) return false;
-  
-  // Messages that should block redirection
-  const blockingMessages = [
-    'confirm your account',
-    'email verification',
-    'verify your email'
-  ];
-  
-  return blockingMessages.some(phrase => message.toLowerCase().includes(phrase));
-}
-
 export default function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -55,132 +41,81 @@ export default function LoginContent() {
     },
   });
   
-  // Store the message/error in state to persist even if URL changes
-  const [urlMessage, setUrlMessage] = useState<string | null>(null);
-  const [urlError, setUrlError] = useState<string | null>(null);
-  
-  // Get the redirect parameter directly - store in a ref for durability
-  const redirectParamRef = React.useRef<string | null>(searchParams.get('redirect'));
-  const redirectParam = searchParams.get('redirect');
-  
-  // Track if we've processed the params
-  const [messageProcessed, setMessageProcessed] = useState(false);
-  const [messageShownToUser, setMessageShownToUser] = useState(false);
-  
-  // Log the current URL and redirect parameter when the component mounts
+  // Handle URL messages once on mount
   useEffect(() => {
-    if (redirectParam) {
-      redirectParamRef.current = redirectParam;
-      console.log('Detected redirect parameter:', {
-        raw: redirectParam,
-        decoded: decodeURIComponent(redirectParam)
-      });
-    }
-  }, [redirectParam]);
-
-  // Handle URL message parameters
-  useEffect(() => {
-    // Don't process if we've already done so
-    if (messageProcessed) return;
-    
     const message = searchParams.get('message');
     const error = searchParams.get('error');
     
-    // Store in state instead of just showing toast
     if (message) {
-      console.log('Processing URL message parameter:', message);
-      setUrlMessage(message);
-      setMessageProcessed(true);
-      setMessageShownToUser(true);
-      
       toast({
         title: 'Notice',
         description: message,
       });
-      
-      // For non-blocking messages (like password reset success),
-      // set a timer to allow redirect after showing the message
-      if (!shouldBlockRedirect(message)) {
-        setTimeout(() => {
-          console.log('Message has been shown, allowing redirect');
-          setMessageShownToUser(false);
-        }, 2500); // Show message for 2.5 seconds before allowing redirect
-      }
     }
     
     if (error) {
-      console.log('Processing URL error parameter:', error);
-      setUrlError(error);
-      setMessageProcessed(true);
-      setMessageShownToUser(true);
-      
       toast({
         title: 'Error',
         description: error,
         variant: 'destructive',
       });
     }
-    
-  }, [searchParams, messageProcessed]);
+  }, []); // Only run once on mount
+
+  // Handle redirect when user is already authenticated
+  useEffect(() => {
+    if (isInitialized && user) {
+      const redirectParam = searchParams.get('redirect');
+      
+      if (redirectParam) {
+        const decodedPath = decodeURIComponent(redirectParam);
+        console.log(`User already authenticated, redirecting to: ${decodedPath}`);
+        router.replace(decodedPath);
+      } else {
+        console.log('User already authenticated, redirecting to dashboard');
+        router.replace('/dashboard');
+      }
+    }
+  }, [isInitialized, user, router, searchParams]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
       setIsLoading(true);
-      setUrlError(null); // Clear any previous errors
       
-      // Reset message states
-      setMessageProcessed(false);
-      setMessageShownToUser(false);
-      
-      // Capture the redirect parameter before login
-      const redirectPathToUse = redirectParamRef.current;
-      console.log('Captured redirect before login:', redirectPathToUse);
-      
+      console.log('Attempting login...');
       const { error } = await login(values.email, values.password);
       
       if (error) {
         console.error('Login error:', error.message);
-        
-        // Set the error in state so it displays in the UI
-        setUrlError(error.message);
-        
-        // Also show a toast for immediate feedback
         toast({
           title: 'Error signing in',
           description: error.message,
           variant: 'destructive',
         });
-        
-        return; // Stop execution here
+        return;
       }
   
-      // If we get here, login was successful
+      // Login successful
+      console.log('Login successful');
       toast({
         title: 'Signed in successfully',
         description: 'Welcome back to Candor!',
       });
       
-      // Set a short delay to ensure the login completes
-      setTimeout(() => {
-        // Use the captured redirect parameter if available
-        if (redirectPathToUse) {
-          const decodedPath = decodeURIComponent(redirectPathToUse);
-          console.log(`Redirecting to custom path: ${decodedPath}`);
-          router.push(decodedPath);
-        } else {
-          console.log('No redirect parameter, going to dashboard');
-          router.push('/dashboard');
-        }
-      }, 1500);
+      // Handle redirect immediately - no setTimeout
+      const redirectParam = searchParams.get('redirect');
+      if (redirectParam) {
+        const decodedPath = decodeURIComponent(redirectParam);
+        console.log(`Redirecting to custom path: ${decodedPath}`);
+        router.replace(decodedPath);
+      } else {
+        console.log('No redirect parameter, going to dashboard');
+        router.replace('/dashboard');
+      }
       
     } catch (error: unknown) {
       console.error('Unexpected login error:', error);
-      
-      // Handle unexpected errors
       const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-      
-      // Set the error in state so it displays in the UI
-      setUrlError(errorMessage);
       
       toast({
         title: 'Something went wrong',
@@ -190,21 +125,6 @@ export default function LoginContent() {
     } finally {
       setIsLoading(false);
     }
-  }
-
-  // Block automatic redirects for clarity - we'll handle redirects only in the form submission
-  const message = searchParams.get('message');
-  const blockingMessage = shouldBlockRedirect(message);
-
-  // Show loading if already authenticated but waiting for redirect
-  // Only show when there's no message being displayed
-  if (isInitialized && user && !messageShownToUser && !blockingMessage) {
-    return (
-      <div className="flex flex-col justify-center items-center min-h-screen bg-slate-50">
-        <LoadingSpinner />
-        <p className="mt-4 text-gray-500">Already signed in. Redirecting...</p>
-      </div>
-    );
   }
 
   // Show loading if auth state is still initializing
@@ -217,10 +137,20 @@ export default function LoginContent() {
     );
   }
 
-  // Use the state variables instead of reading directly from URL
-  // Fall back to URL parameters if state is not set (first render)
-  const displayMessage = urlMessage || searchParams.get('message');
-  const displayError = urlError || searchParams.get('error');
+  // Show loading if already authenticated (will redirect via useEffect)
+  if (user) {
+    return (
+      <div className="flex flex-col justify-center items-center min-h-screen bg-slate-50">
+        <LoadingSpinner />
+        <p className="mt-4 text-gray-500">Already signed in. Redirecting...</p>
+      </div>
+    );
+  }
+
+  // Get current URL params for display
+  const currentMessage = searchParams.get('message');
+  const currentError = searchParams.get('error');
+  const redirectParam = searchParams.get('redirect');
 
   return (
     <div className="flex justify-center items-center min-h-screen bg-slate-50">
@@ -238,19 +168,19 @@ export default function LoginContent() {
         </CardHeader>
         <CardContent>
           {/* Show success message if present */}
-          {displayMessage && (
+          {currentMessage && (
             <Alert className="mb-4 bg-green-50 border-green-200">
               <AlertDescription className="text-green-700">
-                {displayMessage}
+                {currentMessage}
               </AlertDescription>
             </Alert>
           )}
 
           {/* Show error message if present */}
-          {displayError && (
+          {currentError && (
             <Alert variant="destructive" className="mb-4">
               <AlertDescription>
-                {displayError}
+                {currentError}
               </AlertDescription>
             </Alert>
           )}
