@@ -24,7 +24,8 @@ interface Question {
   id: string;
   question_text: string;
   question_description: string;
-  question_type: 'rating' | 'text' | 'values' | 'ai';
+  question_type: 'rating' | 'text' | 'values';
+  question_subtype?: string | null;
   active: boolean;
   company_value_id?: string | null;
   icon?: string | null;
@@ -73,7 +74,8 @@ type QuestionData = {
   question_id: string;
   question_text: string;
   question_description: string;
-  question_type: 'rating' | 'text' | 'values' | 'ai';
+  question_type: 'rating' | 'text' | 'values';
+  question_subtype?: string | null;
   session_id: string;
   rating_value: number | null;
   text_response: string | null;
@@ -185,14 +187,14 @@ export default function QuestionsContent() {
     }
   };
   
-  // Function to generate a question using OpenAI based on relationship
-  const generateAIQuestion = async (
+  // Function to generate AI questions using OpenAI based on relationship
+  const generateAIQuestions = async (
     providerId: string, 
     recipientId: string, 
     recipientName: string, 
     relationship: RelationshipResponse,
     companyId: string
-  ): Promise<{ questionText: string, questionDescription: string } | null> => {
+  ): Promise<{ textQuestion: { questionText: string, questionDescription: string }, ratingQuestion: { questionText: string, questionDescription: string } } | null> => {
     try {
       // Call your OpenAI API endpoint
       const response = await fetch('/api/generate-question', {
@@ -212,31 +214,37 @@ export default function QuestionsContent() {
       
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('Error generating question:', errorData);
+        console.error('Error generating questions:', errorData);
         return null;
       }
       
       const data = await response.json();
       return { 
-        questionText: data.question_text, 
-        questionDescription: data.question_description 
+        textQuestion: {
+          questionText: data.text_question.question_text, 
+          questionDescription: data.text_question.question_description
+        },
+        ratingQuestion: {
+          questionText: data.rating_question.question_text,
+          questionDescription: data.rating_question.question_description
+        }
       };
     } catch (error) {
-      console.error('Error generating question with OpenAI:', error);
+      console.error('Error generating questions with OpenAI:', error);
       return null;
     }
   };
   
-  // Function to create AI question and response
-  const createAIQuestionAndResponse = async (
+  // Function to create AI questions and responses
+  const createAIQuestionsAndResponses = async (
     companyId: string,
     sessionId: string,
     providerId: string,
     recipientId: string,
-    generatedQuestion: { questionText: string, questionDescription: string },
+    generatedQuestions: { textQuestion: { questionText: string, questionDescription: string }, ratingQuestion: { questionText: string, questionDescription: string } },
     relationshipType?: string,
     relationshipDescription?: string
-  ): Promise<QuestionData | null> => {
+  ): Promise<QuestionData[] | null> => {
     try {
       // First, find the feedback_recipients entry that links this session with this recipient
       const { data: recipientEntry, error: recipientError } = await supabase
@@ -251,29 +259,48 @@ export default function QuestionsContent() {
         throw new Error(`Recipient entry not found for user ${recipientId} in session ${sessionId}`);
       }
       
-      // Create the question record
-      const { data: questionData, error: questionError } = await supabase
+      // Create the text question record
+      const { data: textQuestionData, error: textQuestionError } = await supabase
         .from('feedback_questions')
         .insert({
           company_id: companyId,
-          question_text: generatedQuestion.questionText,
-          question_description: generatedQuestion.questionDescription,
-          question_type: 'ai',
+          question_text: generatedQuestions.textQuestion.questionText,
+          question_description: generatedQuestions.textQuestion.questionDescription,
+          question_type: 'text',
+          question_subtype: 'ai',
           active: true,
-          scope: 'company',
-          is_admin_manageable: false  // Mark as not manageable by admins
+          scope: 'global',
+          is_admin_manageable: false
         })
         .select()
         .single();
       
-      if (questionError) throw questionError;
+      if (textQuestionError) throw textQuestionError;
       
-      // Then create the response record using the recipient entry ID (not the user ID)
-      const { data: responseData, error: responseError } = await supabase
+      // Create the rating question record
+      const { data: ratingQuestionData, error: ratingQuestionError } = await supabase
+        .from('feedback_questions')
+        .insert({
+          company_id: companyId,
+          question_text: generatedQuestions.ratingQuestion.questionText,
+          question_description: generatedQuestions.ratingQuestion.questionDescription,
+          question_type: 'rating',
+          question_subtype: 'ai',
+          active: true,
+          scope: 'global',
+          is_admin_manageable: false
+        })
+        .select()
+        .single();
+      
+      if (ratingQuestionError) throw ratingQuestionError;
+      
+      // Create response records for both questions
+      const { data: textResponseData, error: textResponseError } = await supabase
         .from('feedback_responses')
         .insert({
-          recipient_id: recipientEntry.id, // Use the feedback_recipients.id here, not the user id
-          question_id: questionData.id,
+          recipient_id: recipientEntry.id,
+          question_id: textQuestionData.id,
           session_id: sessionId,
           has_comment: false,
           skipped: false
@@ -281,7 +308,21 @@ export default function QuestionsContent() {
         .select()
         .single();
       
-      if (responseError) throw responseError;
+      if (textResponseError) throw textResponseError;
+      
+      const { data: ratingResponseData, error: ratingResponseError } = await supabase
+        .from('feedback_responses')
+        .insert({
+          recipient_id: recipientEntry.id,
+          question_id: ratingQuestionData.id,
+          session_id: sessionId,
+          has_comment: false,
+          skipped: false
+        })
+        .select()
+        .single();
+      
+      if (ratingResponseError) throw ratingResponseError;
       
       // Get recipient name
       const { data: recipientData } = await supabase
@@ -293,25 +334,46 @@ export default function QuestionsContent() {
       const recipientName = recipientData?.name || recipientData?.email?.split('@')[0] || 'Colleague';
       
       // Return formatted question data
-      return {
-        id: responseData.id,
-        recipient_id: recipientEntry.id, // Use recipient entry ID here too
-        question_id: questionData.id,
-        question_text: questionData.question_text,
-        question_description: questionData.question_description,
-        question_type: 'ai',
-        session_id: sessionId,
-        rating_value: null,
-        text_response: null,
-        comment_text: null,
-        has_comment: false,
-        skipped: false,
-        recipient_name: recipientName,
-        relationship_type: relationshipType,
-        relationship_description: relationshipDescription
-      };
+      return [
+        {
+          id: textResponseData.id,
+          recipient_id: recipientEntry.id,
+          question_id: textQuestionData.id,
+          question_text: textQuestionData.question_text,
+          question_description: textQuestionData.question_description,
+          question_type: 'text',
+          question_subtype: 'ai',
+          session_id: sessionId,
+          rating_value: null,
+          text_response: null,
+          comment_text: null,
+          has_comment: false,
+          skipped: false,
+          recipient_name: recipientName,
+          relationship_type: relationshipType,
+          relationship_description: relationshipDescription
+        },
+        {
+          id: ratingResponseData.id,
+          recipient_id: recipientEntry.id,
+          question_id: ratingQuestionData.id,
+          question_text: ratingQuestionData.question_text,
+          question_description: ratingQuestionData.question_description,
+          question_type: 'rating',
+          question_subtype: 'ai',
+          session_id: sessionId,
+          rating_value: null,
+          text_response: null,
+          comment_text: null,
+          has_comment: false,
+          skipped: false,
+          recipient_name: recipientName,
+          relationship_type: relationshipType,
+          relationship_description: relationshipDescription
+        }
+      ];
     } catch (error) {
-      console.error('Error creating AI question and response:', error);
+      console.error('Error creating AI questions and responses:', error);
       return null;
     }
   };
@@ -381,7 +443,7 @@ export default function QuestionsContent() {
         const { data: existingQuestions, error: existingQuestionsError } = questionIds.length > 0 
           ? await supabase
               .from('feedback_questions')
-              .select('id, question_type')
+              .select('*') // Get all question data, not just id, question_type, question_subtype
               .in('id', questionIds)
           : { data: [], error: null };
 
@@ -389,25 +451,23 @@ export default function QuestionsContent() {
           console.error("Error fetching existing questions:", existingQuestionsError);
         }
 
-        // Create a map of question types by ID for efficient lookup
-        const questionTypeMap = new Map<string, string>();
+        // Create a map of questions by ID for efficient lookup
+        const questionMap = new Map<string, Question>();
         if (existingQuestions) {
           existingQuestions.forEach(q => {
-            questionTypeMap.set(q.id, q.question_type);
+            questionMap.set(q.id, q as Question);
           });
         }
 
         // Create a map to track which recipients already have AI questions
-        const recipientWithAIQuestion = new Map<string, boolean>();
+        const recipientWithAIQuestions = new Map<string, { hasText: boolean, hasRating: boolean }>();
 
-        // Now check the existing responses to see which recipients already have AI questions
+        // Check existing responses to see which recipients already have AI questions
         if (existingResponses && existingQuestions) {
           for (const response of existingResponses) {
-            // Get the question type for this response
-            const questionType = questionTypeMap.get(response.question_id);
+            const question = questionMap.get(response.question_id);
             
-            // If this is an AI question, mark this recipient as having one
-            if (questionType === 'ai') {
+            if (question?.question_subtype === 'ai') {
               // Get the actual recipient_id from the feedback_recipients table
               const { data: recipientEntry } = await supabase
                 .from('feedback_recipients')
@@ -416,8 +476,17 @@ export default function QuestionsContent() {
                 .single();
                 
               if (recipientEntry?.recipient_id) {
-                recipientWithAIQuestion.set(recipientEntry.recipient_id, true);
-                console.log(`Recipient ${recipientEntry.recipient_id} already has an AI question`);
+                const recipientId = recipientEntry.recipient_id;
+                const current = recipientWithAIQuestions.get(recipientId) || { hasText: false, hasRating: false };
+                
+                if (question.question_type === 'text') {
+                  current.hasText = true;
+                } else if (question.question_type === 'rating') {
+                  current.hasRating = true;
+                }
+                
+                recipientWithAIQuestions.set(recipientId, current);
+                console.log(`Recipient ${recipientId} has AI ${question.question_type} question`);
               }
             }
           }
@@ -473,68 +542,8 @@ export default function QuestionsContent() {
           }
         }
         
-        // Step 5: Get active standard questions (rating and text)
-        const { data: standardQuestionsData, error: questionsError } = await supabase
-          .from('feedback_questions')
-          .select(`
-            *,
-            company_values(icon)
-          `)
-          .eq('active', true)
-          .in('question_type', ['rating', 'text'])
-          .or(`company_id.eq.${companyId},scope.eq.global`);
-        
-        if (questionsError) throw questionsError;
-        
-        // Create a map of questions by ID for easier lookup
-        const questionMap = new Map<string, Question>();
-        if (standardQuestionsData) {
-          for (const question of standardQuestionsData) {
-            const questionData = {
-              ...question,
-              icon: question.company_values?.icon || null
-            };
-            questionMap.set(question.id, questionData as Question);
-          }
-        }
-        
-        // Add existing question types to the question map as well
-        if (existingQuestions) {
-          for (const question of existingQuestions) {
-            if (!questionMap.has(question.id)) {
-              // If the question isn't in the map yet, fetch its full details
-              const { data: fullQuestionData } = await supabase
-                .from('feedback_questions')
-                .select('*')
-                .eq('id', question.id)
-                .single();
-              
-              if (fullQuestionData) {
-                questionMap.set(question.id, fullQuestionData as Question);
-              }
-            }
-          }
-        }
-        
-        // Filter questions by type
-        const ratingQuestions = standardQuestionsData?.filter(q => q.question_type === 'rating') || [];
-        const textQuestions = standardQuestionsData?.filter(q => q.question_type === 'text') || [];
-        
-        // Check if we have enough standard questions
-        if (ratingQuestions.length === 0 || textQuestions.length === 0) {
-          console.error("Question type counts:", {
-            all: standardQuestionsData?.length || 0,
-            rating: ratingQuestions.length,
-            text: textQuestions.length
-          });
-          
-          // Log a warning but proceed if possible
-          if (standardQuestionsData && standardQuestionsData.length > 0) {
-            console.warn("Using available questions despite missing some types");
-          } else {
-            throw new Error('Not enough question types available');
-          }
-        }
+        // Step 5: We no longer use standard questions - only AI-generated questions
+        console.log("Skipping standard question setup - using AI-generated questions only");
         
         // Step 6: Get values questions separately
         const { data: valuesQuestionsData, error: valuesError } = await supabase
@@ -669,7 +678,7 @@ export default function QuestionsContent() {
         if (existingResponses) {
           console.log("Organizing existing responses by recipient ID and question type:");
           for (const response of existingResponses) {
-            // Only process standard and AI questions (not values questions)
+            // Only process AI and values questions (no more standard questions)
             const question = questionMap.get(response.question_id);
             if (!question || question.question_type === 'values') continue;
             
@@ -678,10 +687,12 @@ export default function QuestionsContent() {
               const existing = recipientMap.get(response.recipient_id) || [];
               existing.push(response as FeedbackResponse);
               
-              // Track question type
+              // Track question type with subtype
               if (questionTypeByRecipient.has(response.recipient_id)) {
-                questionTypeByRecipient.get(response.recipient_id)?.add(question.question_type);
-                console.log(`  Added response ${response.id} to recipient ${response.recipient_id} (type: ${question.question_type})`);
+                const typeKey = question.question_subtype === 'ai' ? 
+                  `${question.question_type}_ai` : question.question_type;
+                questionTypeByRecipient.get(response.recipient_id)?.add(typeKey);
+                console.log(`  Added response ${response.id} to recipient ${response.recipient_id} (type: ${typeKey})`);
               }
             } else {
               console.log(`  Warning: Response ${response.id} has recipient ${response.recipient_id} which doesn't match any current recipient`);
@@ -694,150 +705,17 @@ export default function QuestionsContent() {
           console.log(`Recipient ${recipientId} has question types: ${Array.from(types).join(', ')}`);
         }
         
-        // Create deterministic question selection function
-        function getQuestionForRecipient(
-          questions: Question[], 
-          recipientId: string, 
-          index: number = 0
-        ): Question {
-          if (questions.length === 0) {
-            return {
-              id: '',
-              question_text: '',
-              question_description: '',
-              question_type: 'text',
-              active: false
-            };
-          }
-
-          const seed = recipientId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-          const questionIndex = (seed + index) % questions.length;
-          return questions[questionIndex];
-        }
-        
-        // Identify which standard responses need to be created
-        const responsesToCreate: Partial<FeedbackResponse>[] = [];
-                
-        if (recipients) {
-          for (const recipient of recipients) {
-            // Get existing question types for this recipient
-            const existingTypes = questionTypeByRecipient.get(recipient.id) || new Set<string>();
-            
-            console.log(`Checking recipient ${recipient.id}: has rating=${existingTypes.has('rating')}, has text=${existingTypes.has('text')}, has ai=${existingTypes.has('ai')}`);
-            
-            // Create rating question if needed and available
-            if (!existingTypes.has('rating') && ratingQuestions.length > 0) {
-              const ratingQuestion = getQuestionForRecipient(
-                ratingQuestions as Question[], 
-                recipient.id
-              );
-              
-              if (ratingQuestion) {
-                // Double check we aren't creating a duplicate
-                const isDuplicate = responsesToCreate.some(r => 
-                  r.recipient_id === recipient.id && 
-                  questionMap.get(r.question_id as string)?.question_type === 'rating'
-                );
-                
-                if (!isDuplicate) {
-                  responsesToCreate.push({
-                    recipient_id: recipient.id,
-                    question_id: ratingQuestion.id,
-                    session_id: sessionId,
-                    has_comment: false,
-                    skipped: false
-                  });
-                  console.log(`  Adding new rating question for recipient ${recipient.id}`);
-                } else {
-                  console.log(`  Skipping duplicate rating question for recipient ${recipient.id}`);
-                }
-              }
-            }
-            
-            // Create text question if needed and available
-            if (!existingTypes.has('text') && textQuestions.length > 0) {
-              const textQuestion = getQuestionForRecipient(
-                textQuestions as Question[], 
-                recipient.id, 
-                1
-              );
-              
-              if (textQuestion) {
-                // Double check we aren't creating a duplicate
-                const isDuplicate = responsesToCreate.some(r => 
-                  r.recipient_id === recipient.id && 
-                  questionMap.get(r.question_id as string)?.question_type === 'text'
-                );
-                
-                if (!isDuplicate) {
-                  responsesToCreate.push({
-                    recipient_id: recipient.id,
-                    question_id: textQuestion.id,
-                    session_id: sessionId,
-                    has_comment: false,
-                    skipped: false
-                  });
-                  console.log(`  Adding new text question for recipient ${recipient.id}`);
-                } else {
-                  console.log(`  Skipping duplicate text question for recipient ${recipient.id}`);
-                }
-              }
-            }
-          }
-        }
-        
-        console.log(`Need to create ${responsesToCreate.length} new standard responses`);
-        
-        // Gather all standard responses (existing + new)
-        let finalResponses: FeedbackResponse[] = [...(existingResponses as FeedbackResponse[] || [])].filter(
-          r => {
-            const question = questionMap.get(r.question_id);
-            return question && question.question_type !== 'values';
-          }
-        );
-        
-        // Create only the necessary responses
-        if (responsesToCreate.length > 0) {
-          // Double-check one more time that these responses don't already exist
-          const { data: finalCheck } = await supabase
-            .from('feedback_responses')
-            .select('*')
-            .eq('session_id', sessionId);
-            
-          // If more responses were created since we started, abort creation
-          if (finalCheck && finalCheck.length > existingResponses?.length) {
-            console.log('Additional responses were created while processing, skipping creation');
-            // Use the final check data
-            finalResponses = finalCheck.filter(r => {
-              const question = questionMap.get(r.question_id);
-              return question && question.question_type !== 'values';
-            }) as FeedbackResponse[];
-          } else {
-            // Proceed with creation as normal
-            const { data: newResponses, error: createError } = await supabase
-              .from('feedback_responses')
-              .insert(responsesToCreate)
-              .select();
-            
-            if (createError) throw createError;
-            console.log(`Successfully created ${newResponses?.length || 0} new responses`);
-            
-            // Add the new responses to our final list
-            if (newResponses) {
-              finalResponses = [...finalResponses, ...(newResponses as FeedbackResponse[])];
-            }
-          }
-        }
+        // No longer creating standard questions - only AI questions will be generated
         
         // Step 7: Check for and generate AI questions if needed
         const aiQuestionsToGenerate: { recipientId: string, recipientName: string }[] = [];
         
         if (recipients) {
           for (const recipient of recipients) {
-            // Check if this recipient already has an AI question using our map
-            const hasAIQuestion = recipientWithAIQuestion.get(recipient.recipient_id);
+            // Check if this recipient already has both AI questions
+            const aiQuestionStatus = recipientWithAIQuestions.get(recipient.recipient_id) || { hasText: false, hasRating: false };
             
-            if (!hasAIQuestion) {
+            if (!aiQuestionStatus.hasText || !aiQuestionStatus.hasRating) {
               // Get recipient name
               let recipientName = 'Unknown Colleague';
               const recipientProfile = recipient.feedback_user_identities;
@@ -849,13 +727,13 @@ export default function QuestionsContent() {
                 recipientName = singleProfile.name || singleProfile.email || 'Unknown';
               }
               
-              console.log(`Will generate AI question for ${recipientName} (${recipient.recipient_id})`);
+              console.log(`Will generate AI questions for ${recipientName} (${recipient.recipient_id}) - needs text: ${!aiQuestionStatus.hasText}, needs rating: ${!aiQuestionStatus.hasRating}`);
               aiQuestionsToGenerate.push({
                 recipientId: recipient.recipient_id,
                 recipientName
               });
             } else {
-              console.log(`Skipping AI question generation for user ${recipient.recipient_id} - already exists`);
+              console.log(`Skipping AI question generation for user ${recipient.recipient_id} - already has both questions`);
             }
           }
         }
@@ -864,7 +742,7 @@ export default function QuestionsContent() {
         const aiQuestionData: QuestionData[] = [];
         
         for (const { recipientId, recipientName } of aiQuestionsToGenerate) {
-          console.log(`Generating AI question for ${recipientName} (${recipientId})`);
+          console.log(`Generating AI questions for ${recipientName} (${recipientId})`);
           
           // Get relationship between provider and recipient
           const relationship = await getUserRelationship(providerId, recipientId);
@@ -876,8 +754,8 @@ export default function QuestionsContent() {
             const relationshipType = relationship.relationship.type;
             const relationshipDescription = relationship.relationship.description;
             
-            // Generate AI question
-            const generatedQuestion = await generateAIQuestion(
+            // Generate AI questions
+            const generatedQuestions = await generateAIQuestions(
               providerId, 
               recipientId,
               recipientName,
@@ -885,24 +763,24 @@ export default function QuestionsContent() {
               companyId
             );
             
-            if (generatedQuestion) {
-              console.log(`Generated question: ${generatedQuestion.questionText}`);
-              console.log(`Generated description: ${generatedQuestion.questionDescription}`);
+            if (generatedQuestions) {
+              console.log(`Generated text question: ${generatedQuestions.textQuestion.questionText}`);
+              console.log(`Generated rating question: ${generatedQuestions.ratingQuestion.questionText}`);
               
               // Create question and response records
-              const aiQuestion = await createAIQuestionAndResponse(
+              const aiQuestions = await createAIQuestionsAndResponses(
                 companyId,
                 sessionId,
                 providerId,
                 recipientId,
-                generatedQuestion,
+                generatedQuestions,
                 relationshipType,
                 relationshipDescription
               );
               
-              if (aiQuestion) {
-                aiQuestionData.push(aiQuestion);
-                console.log(`Created AI question for ${recipientName}`);
+              if (aiQuestions) {
+                aiQuestionData.push(...aiQuestions);
+                console.log(`Created AI questions for ${recipientName}`);
               }
             }
           } else {
@@ -910,7 +788,15 @@ export default function QuestionsContent() {
           }
         }
         
-        // Process all standard responses with question and recipient info
+        // Gather all responses (existing + new AI) - no more standard responses
+        const finalResponses: FeedbackResponse[] = [...(existingResponses as FeedbackResponse[] || [])].filter(
+          r => {
+            const question = questionMap.get(r.question_id);
+            return question && question.question_type !== 'values';
+          }
+        );
+        
+        // Process all AI responses with question and recipient info
         const finalQuestions: QuestionData[] = [];
         const processedResponseIds = new Set<string>();
         
@@ -918,7 +804,7 @@ export default function QuestionsContent() {
         const includedQuestionTypes = new Map<string, Set<string>>();
         recipients?.forEach(r => includedQuestionTypes.set(r.id, new Set()));
         
-        console.log('Processing all standard responses for final UI display:');
+        console.log('Processing all AI responses for final UI display:');
         
         // Process existing responses
         for (const response of finalResponses) {
@@ -957,15 +843,24 @@ export default function QuestionsContent() {
             continue;
           }
           
+          // Only process AI questions now
+          if (question.question_subtype !== 'ai') {
+            console.log(`  Skipping non-AI question for response ${response.id}`);
+            continue;
+          }
+          
+          // Create unique type key for AI questions
+          const typeKey = `${question.question_type}_ai`;
+          
           // If we already have this question type for this recipient, skip it
-          if (includedQuestionTypes.get(recipient.id)?.has(question.question_type)) {
-            console.log(`  Skipping duplicate ${question.question_type} question for recipient ${recipient.id}`);
+          if (includedQuestionTypes.get(recipient.id)?.has(typeKey)) {
+            console.log(`  Skipping duplicate ${typeKey} question for recipient ${recipient.id}`);
             continue;
           }
           
           // Mark this response as processed
           processedResponseIds.add(response.id);
-          includedQuestionTypes.get(recipient.id)?.add(question.question_type);
+          includedQuestionTypes.get(recipient.id)?.add(typeKey);
           
           // Get recipient name
           let recipientName = 'Unknown Colleague';
@@ -981,7 +876,7 @@ export default function QuestionsContent() {
           // Get relationship info for this recipient
           const relationship = relationshipMap.get(recipient.recipient_id);
           
-          console.log(`  Adding ${question.question_type} question for ${recipientName} (${recipient.id})`);
+          console.log(`  Adding ${typeKey} question for ${recipientName} (${recipient.id})`);
           
           finalQuestions.push({
             id: response.id,
@@ -990,6 +885,7 @@ export default function QuestionsContent() {
             question_text: question.question_text || '',
             question_description: question.question_description || '',
             question_type: question.question_type,
+            question_subtype: question.question_subtype,
             session_id: response.session_id,
             rating_value: response.rating_value,
             text_response: response.text_response,
@@ -1007,18 +903,21 @@ export default function QuestionsContent() {
           finalQuestions.push(aiQuestion);
         }
         
-        // Sort standard questions by recipient and then by question type (with ai type last)
+        // Sort questions by recipient and then by question type (rating first, then text)
         finalQuestions.sort((a, b) => {
           if (a.recipient_id !== b.recipient_id) {
             return a.recipient_id.localeCompare(b.recipient_id);
           }
           
-          // Define order of question types: rating, text, ai
-          const typeOrder = { 'rating': 0, 'text': 1, 'values': 2, 'ai': 3 };
-          return typeOrder[a.question_type] - typeOrder[b.question_type];
+          // Order: rating, then text (both AI)
+          const getTypeOrder = (q: QuestionData) => {
+            return q.question_type === 'rating' ? 0 : 1;
+          };
+          
+          return getTypeOrder(a) - getTypeOrder(b);
         });
         
-        console.log(`Final standard questions count: ${finalQuestions.length}`);
+        console.log(`Final AI questions count: ${finalQuestions.length}`);
         
         // Update state
         setStandardQuestions(finalQuestions);
@@ -1384,8 +1283,7 @@ export default function QuestionsContent() {
   const progress = ((currentQuestionIndex + 1) / totalQuestions) * 100;
   
   // Check if the current question has a valid response
-  const hasValidTextResponse = currentStandardQuestion?.question_type === 'text' || 
-                               currentStandardQuestion?.question_type === 'ai' ? 
+  const hasValidTextResponse = currentStandardQuestion?.question_type === 'text' ? 
     !!currentStandardQuestion?.text_response?.trim() : false;
   const hasSelectedRating = currentStandardQuestion?.question_type === 'rating' && 
     currentStandardQuestion?.rating_value !== null;
@@ -1412,20 +1310,16 @@ export default function QuestionsContent() {
           {(currentStandardQuestion?.question_type === 'text') && (
             <Badge variant="secondary" className="text-slate-500 font-light uppercase items-center">
               <MessageCircle className="h-3 w-3 text-slate-400" />
-              {/* Open-Ended */}
             </Badge>
           )}
           {(currentStandardQuestion?.question_type === 'rating') && (
             <Badge variant="secondary" className="text-slate-500 font-light uppercase items-center">
               <Star className="h-3 w-3 text-slate-400" />
-              {/* Closed-Ended */}
-              {/* Rating */}
             </Badge>
           )}
-          {(currentStandardQuestion?.question_type === 'ai') && (
+          {(currentStandardQuestion?.question_subtype === 'ai') && (
             <Badge variant="secondary" className="text-slate-500 font-light uppercase items-center">
               <Sparkles className="h-3 w-3 text-slate-400" />
-              {/* AI Generated */}
             </Badge>
           )}
           {!isOnValuesQuestion && currentStandardQuestion?.relationship_type && currentStandardQuestion.relationship_type !== 'unrelated' && (
@@ -1477,7 +1371,7 @@ export default function QuestionsContent() {
             </div>
           </>
         ) : (
-          // Regular rating/text/ai questions
+          // Regular rating/text questions
           <>
             <h1 className='text-4xl font-light text-berkeleyblue pb-2'>
             {currentStandardQuestion && currentStandardQuestion.question_text.split(/\{name\}/g).map((part, i, arr) => (
@@ -1544,7 +1438,7 @@ export default function QuestionsContent() {
                 </>
               ) : (
                 <>
-                  {currentStandardQuestion && (currentStandardQuestion.question_type === 'text' || currentStandardQuestion.question_type === 'ai') && (
+                  {currentStandardQuestion && currentStandardQuestion.question_type === 'text' && (
                     <div>
                       <FeedbackTextarea
                         placeholder="Enter your response..."
