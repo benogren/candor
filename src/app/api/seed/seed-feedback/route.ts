@@ -60,6 +60,7 @@ async function generateAIFeedbackResponse(
     } else {
       questionTone = 'very positive';
     }
+    console.log(`======== Generated question tone: ${questionTone} for rating: ${randomRating1to10}`);
 
     const prompt = `You are ${providerName}, providing a ${questionTone} toned workplace feedback about ${recipientName} who is your ${relationship?.relationship?.type || 'colleague'}.
 
@@ -221,11 +222,140 @@ export async function POST(request: NextRequest) {
     const ratingQuestions = standardQuestions?.filter(q => q.question_type === 'rating') || [];
     const textQuestions = standardQuestions?.filter(q => q.question_type === 'text') || [];
 
+    // Helper function to get recent question usage for a recipient
+    const getRecentQuestionUsage = async (recipientId: string, questionType: string) => {
+      console.log(`======== Checking recent usage for recipient ${recipientId}, question type: ${questionType}`);
+      
+      // Get the last 3 occurrences for this cycle to check recent usage
+      const { data: recentOccurrences } = await supabase
+        .from('feedback_cycle_occurrences')
+        .select('id')
+        .eq('cycle_id', occurrence.cycle_id)
+        .order('start_date', { ascending: false })
+        .limit(3);
+
+      if (!recentOccurrences || recentOccurrences.length === 0) {
+        console.log(`======== No recent occurrences found for cycle ${occurrence.cycle_id}`);
+        return { usedQuestionIds: [], questionUsageCount: new Map() };
+      }
+
+      const occurrenceIds = recentOccurrences.map(o => o.id);
+      console.log(`======== Checking usage across occurrences:`, occurrenceIds);
+
+      // Get sessions for these occurrences
+      const { data: recentSessions } = await supabase
+        .from('feedback_sessions')
+        .select('id, occurrence_id')
+        .in('occurrence_id', occurrenceIds);
+
+      if (!recentSessions || recentSessions.length === 0) {
+        console.log(`======== No sessions found for recent occurrences`);
+        return { usedQuestionIds: [], questionUsageCount: new Map() };
+      }
+
+      const sessionIds = recentSessions.map(s => s.id);
+
+      // Get recipients for these sessions that match our current recipient
+      const { data: recentRecipients } = await supabase
+        .from('feedback_recipients')
+        .select('id, session_id, recipient_id')
+        .in('session_id', sessionIds)
+        .eq('recipient_id', recipientId);
+
+      if (!recentRecipients || recentRecipients.length === 0) {
+        console.log(`======== No recent recipient records found for recipient ${recipientId}`);
+        return { usedQuestionIds: [], questionUsageCount: new Map() };
+      }
+
+      const recipientRecordIds = recentRecipients.map(r => r.id);
+
+      // Get recent feedback responses for this recipient
+      const { data: recentResponses } = await supabase
+        .from('feedback_responses')
+        .select(`
+          question_id,
+          created_at,
+          feedback_questions!inner(question_type)
+        `)
+        .in('recipient_id', recipientRecordIds)
+        .eq('feedback_questions.question_type', questionType);
+
+      console.log(`======== Found ${recentResponses?.length || 0} recent responses for ${questionType} questions`);
+
+      // Count usage of each question
+      const questionUsageCount = new Map();
+      const usedQuestionIds = new Set();
+
+      recentResponses?.forEach(response => {
+        const questionId = response.question_id;
+        usedQuestionIds.add(questionId);
+        questionUsageCount.set(questionId, (questionUsageCount.get(questionId) || 0) + 1);
+        console.log(`======== Question ${questionId} used ${questionUsageCount.get(questionId)} times`);
+      });
+
+      return { 
+        usedQuestionIds: Array.from(usedQuestionIds), 
+        questionUsageCount 
+      };
+    };
+
+    // Enhanced question selection with variance logic
+    const selectQuestionWithVariance = async (questions: any[], recipientId: string, questionType: string) => {
+      if (questions.length === 0) return null;
+
+      console.log(`======== Selecting ${questionType} question for recipient ${recipientId}`);
+      console.log(`======== Available ${questionType} questions:`, questions.length);
+
+      // Get recent question usage for this recipient
+      const { usedQuestionIds, questionUsageCount } = await getRecentQuestionUsage(recipientId, questionType);
+      
+      console.log(`======== Recipient ${recipientId} (${questionType}): Recently used questions:`, usedQuestionIds);
+
+      // Filter out recently used questions
+      const availableQuestions = questions.filter(q => !usedQuestionIds.includes(q.id));
+      
+      console.log(`======== Available ${questionType} questions after filtering:`, availableQuestions.length, 'out of', questions.length);
+
+      // If no questions are available (all recently used), use the least recently used
+      let questionsToChooseFrom = availableQuestions;
+      
+      if (questionsToChooseFrom.length === 0) {
+        console.log(`======== All ${questionType} questions recently used, selecting least used`);
+        
+        // Sort by usage count (ascending) to get least used questions
+        const sortedByUsage = questions.sort((a, b) => {
+          const usageA = questionUsageCount.get(a.id) || 0;
+          const usageB = questionUsageCount.get(b.id) || 0;
+          return usageA - usageB;
+        });
+        
+        // Take the least used questions (bottom 50% or at least 1)
+        const numToTake = Math.max(1, Math.floor(questions.length * 0.5));
+        questionsToChooseFrom = sortedByUsage.slice(0, numToTake);
+        
+        console.log(`======== Selected ${numToTake} least used questions for ${questionType}`);
+        questionsToChooseFrom.forEach(q => {
+          console.log(`======== Least used option: "${q.question_text}" (used ${questionUsageCount.get(q.id) || 0} times)`);
+        });
+      } else {
+        console.log(`======== Using ${questionsToChooseFrom.length} unused questions for ${questionType}`);
+      }
+
+      // Now randomly select from available questions
+      const randomIndex = Math.floor(Math.random() * questionsToChooseFrom.length);
+      const selectedQuestion = questionsToChooseFrom[randomIndex];
+      
+      console.log(`======== Selected ${questionType} question: "${selectedQuestion.question_text}"`);
+      return selectedQuestion;
+    };
+
     // Process each recipient
     const results = [];
     
     for (const recipientId of recipientIds) {
       try {
+        console.log(`======== Processing recipient: ${recipientId}`);
+        
         // Get recipient details
         let recipientName = 'Colleague';
         let recipientData = null;
@@ -254,6 +384,8 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        console.log(`======== Recipient name: ${recipientName}`);
+
         // Ensure recipient exists in feedback_user_identities
         const { data: existingIdentity } = await supabase
           .from('feedback_user_identities')
@@ -262,6 +394,7 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (!existingIdentity && recipientData) {
+          console.log(`======== Creating feedback_user_identity for ${recipientName}`);
           await supabase
             .from('feedback_user_identities')
             .insert({
@@ -289,37 +422,42 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
+        console.log(`======== Created recipient record with ID: ${recipientRecord.id}`);
+
         // Get relationship between provider and recipient
         const relationship = await getUserRelationship(providerId, recipientId, token);
+        console.log(`======== Relationship: ${relationship?.relationship?.type || 'unknown'}`);
 
-        // Select questions deterministically
-        const getQuestionForRecipient = (questions: any[], index: number = 0) => {
-          if (questions.length === 0) return null;
-          const seed = recipientId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-          const questionIndex = (seed + index) % questions.length;
-          return questions[questionIndex];
-        };
-
-        // Create 2-3 responses per recipient
+        // Create 2-3 responses per recipient using enhanced selection
         const questionsToCreate = [];
         
         if (ratingQuestions.length > 0) {
-          questionsToCreate.push({
-            question: getQuestionForRecipient(ratingQuestions),
-            type: 'rating'
-          });
+          const selectedRatingQuestion = await selectQuestionWithVariance(ratingQuestions, recipientId, 'rating');
+          if (selectedRatingQuestion) {
+            questionsToCreate.push({
+              question: selectedRatingQuestion,
+              type: 'rating'
+            });
+          }
         }
         
         if (textQuestions.length > 0) {
-          questionsToCreate.push({
-            question: getQuestionForRecipient(textQuestions, 1),
-            type: 'text'
-          });
+          const selectedTextQuestion = await selectQuestionWithVariance(textQuestions, recipientId, 'text');
+          if (selectedTextQuestion) {
+            questionsToCreate.push({
+              question: selectedTextQuestion,
+              type: 'text'
+            });
+          }
         }
+
+        console.log(`======== Will create ${questionsToCreate.length} responses for ${recipientName}`);
 
         // Generate and save responses
         for (const { question, type } of questionsToCreate) {
           if (!question) continue;
+
+          console.log(`======== Generating AI response for ${type} question: "${question.question_text}"`);
 
           // Generate AI response
           const aiResponse = await generateAIFeedbackResponse(
@@ -329,6 +467,8 @@ export async function POST(request: NextRequest) {
             recipientName,
             relationship
           );
+
+          console.log(`======== Generated response:`, type === 'rating' ? `Rating: ${aiResponse.rating_value}` : `Text: ${aiResponse.text_response?.substring(0, 50)}...`);
 
           // Save response
           const responseData = {
@@ -347,6 +487,8 @@ export async function POST(request: NextRequest) {
 
           if (responseError) {
             console.error('Error saving response:', responseError);
+          } else {
+            console.log(`======== Saved ${type} response successfully`);
           }
         }
 
@@ -356,6 +498,8 @@ export async function POST(request: NextRequest) {
           questionsGenerated: questionsToCreate.length
         });
 
+        console.log(`======== Completed processing for ${recipientName}`);
+
       } catch (error) {
         console.error(`Error processing recipient ${recipientId}:`, error);
         results.push({
@@ -364,6 +508,8 @@ export async function POST(request: NextRequest) {
         });
       }
     }
+
+    console.log(`======== Seeding completed. Generated responses for ${results.length} recipients`);
 
     return NextResponse.json({ 
       success: true, 
