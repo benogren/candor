@@ -357,8 +357,20 @@ async function fetchWeeklySummaries(
   console.log('Fetching weekly summaries from database...');
   
   const { startDate, weeksToFetch } = calculateWeekRange(timeframe);
+  const { data, error } = await supabase.rpc('get_week_start_date', {
+    input_date: startDate.toISOString().substring(0, 10) // Gets YYYY-MM-DD format
+  });
   
-  console.log(`Fetching weekly summaries from ${startDate.toISOString()} (${weeksToFetch} weeks)`);
+  if (error) {
+    console.log('Error fetching week start date:', error);
+  }
+  const weekStartDate = data;
+
+  // console.log('******** Week start date:', startDate);
+  // console.log('******** Weeks to fetch:', weeksToFetch);
+  // console.log(`******** Week Start Date:`, data);
+  
+  console.log(`Fetching weekly summaries from ${startDate.toISOString().split('T')[0]} (start of the week: ${weekStartDate}) (${weeksToFetch} weeks)`);
 
   let userContext: UserContext;
   
@@ -439,7 +451,7 @@ async function fetchWeeklySummaries(
     .select('*')
     .eq('user_id', targetUserId)
     .eq('status', 'completed')
-    .gte('week_start_date', startDate.toISOString().split('T')[0])
+    .gte('week_start_date', weekStartDate)
     .order('week_start_date', { ascending: false })
     .limit(weeksToFetch);
 

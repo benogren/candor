@@ -605,7 +605,10 @@ export default function NotesPage() {
       throw new Error(errorData.error || `Stage 1 failed: ${response.statusText}`);
     }
 
-    return await response.json();
+    const summaryData = await response.json();
+    // console.log('Stage 1 summary data:', summaryData);
+
+    return summaryData;
   }, [note?.id, note?.subject_member_id, note?.subject_invited_id, note?.metadata?.timeframe, user?.id]);
 
   // Stage 2: Generate content (updated to use structured analysis)
@@ -656,6 +659,8 @@ export default function NotesPage() {
       feedbackCount: stage1Data.feedbackCount,
       ...(note.content_type === 'prep' && { previousContext })
     };
+
+    // console.log('Executing Stage 2 with request body:', JSON.stringify(requestBody, null, 2));
 
     // Route to the appropriate API endpoint
     const apiEndpoint = getGenerationEndpoint(note.content_type, isManagerContent);
