@@ -212,8 +212,12 @@ export async function POST(request: NextRequest) {
       .select('*')
       .eq('active', true)
       .in('question_type', ['rating', 'text'])
-      .or(`company_id.eq.${member.company_id},scope.eq.global`);
+      .or(`company_id.eq.${member.company_id},scope.eq.global`)
+      .or('question_subtype.is.null,question_subtype.neq.ai');
 
+      console.log('All questions:', standardQuestions?.length);
+      console.log('Sample question subtypes:', standardQuestions?.slice(0, 5).map(q => q.question_subtype));
+      
     if (questionsError) {
       console.error('Error fetching questions:', questionsError);
       return NextResponse.json({ error: 'Failed to fetch questions' }, { status: 500 });
