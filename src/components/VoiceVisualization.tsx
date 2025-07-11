@@ -387,12 +387,12 @@ export const VoiceVisualization: React.FC<VoiceVisualizationProps> = ({
         </p>
 
         {/* Debug info in development */}
-        {process.env.NODE_ENV === 'development' && (
+        {/* {process.env.NODE_ENV === 'development' && (
           <div className="mt-2 text-xs text-gray-500">
             {`Pulse: ${Math.round(pulseIntensity)}%`}
             {conversationActive && ' | 🎯 Event-Driven'}
           </div>
-        )}
+        )} */}
       </div>
     </div>
   );
