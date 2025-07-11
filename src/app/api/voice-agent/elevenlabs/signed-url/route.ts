@@ -28,6 +28,9 @@ export async function POST(request: NextRequest) {
     const agentId = process.env.ELEVENLABS_AGENT_ID;
 
     if (!apiKey || !agentId) {
+      
+      console.log('**** Missing ElevenLabs configuration:', { apiKey, agentId });
+
       return NextResponse.json({
         error: 'ElevenLabs configuration missing',
         details: 'ELEVENLABS_API_KEY and ELEVENLABS_AGENT_ID must be set for private agents'
