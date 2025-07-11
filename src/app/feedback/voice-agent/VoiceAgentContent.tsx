@@ -102,13 +102,16 @@ export default function VoiceAgentContent() {
           // Get relationship data for this teammate
           let relationship, jobTitle, industry;
           try {
+
             const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+
             if (session) {
               const relationshipResponse = await fetch(
                 `/api/voice-agent/relationship?providerId=${session.user.id}&recipientId=${recipient.recipient_id}`,
                 {
                   headers: {
-                    'Authorization': `Bearer ${session.access_token}`
+                    'Authorization': `Bearer ${token}`
                   }
                 }
               );
@@ -195,13 +198,15 @@ export default function VoiceAgentContent() {
     
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
       if (!session) throw new Error('Not authenticated');
 
       const response = await fetch('/api/voice-agent/session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           feedbackSessionId: sessionId,
@@ -297,12 +302,14 @@ export default function VoiceAgentContent() {
   const completeSession = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
       if (session && voiceSession) {
         await fetch('/api/voice-agent/session/complete', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
+            'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({
             voiceSessionId: voiceSession.id,
