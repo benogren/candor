@@ -41,7 +41,7 @@ export default function LoginContent() {
     },
   });
   
-  // Handle URL messages once on mount
+  // Handle URL messages when searchParams change
   useEffect(() => {
     const message = searchParams.get('message');
     const error = searchParams.get('error');
@@ -60,7 +60,7 @@ export default function LoginContent() {
         variant: 'destructive',
       });
     }
-  }, []); // Only run once on mount
+  }, [searchParams]); // Include searchParams in dependency array
 
   // Handle redirect when user is already authenticated
   useEffect(() => {
