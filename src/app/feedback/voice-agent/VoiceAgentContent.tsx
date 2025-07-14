@@ -119,6 +119,8 @@ export default function VoiceAgentContent() {
                 relationship = relationshipData.relationship;
                 jobTitle = relationshipData.jobTitle;
                 industry = relationshipData.industry;
+
+                console.log('**** Relationship data:', relationshipData);
               }
             }
           } catch (error) {

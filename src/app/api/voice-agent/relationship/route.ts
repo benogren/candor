@@ -29,6 +29,8 @@ export async function GET(request: NextRequest) {
 
     // Get auth header
     const authHeader = request.headers.get('Authorization');
+
+    console.log('**** Auth Header:', authHeader);
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
