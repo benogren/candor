@@ -107,11 +107,9 @@ export default function VoiceAgentContent() {
             const token = session?.access_token;
 
             if (session) {
-              const relationshipResponse = await fetch(
-                `/api/voice-agent/relationship?providerId=${session.user.id}&recipientId=${recipient.recipient_id}`,
-                {
+              const relationshipResponse = await fetch(`/api/voice-agent/relationship?providerId=${session.user.id}&recipientId=${recipient.recipient_id}`, {
                   headers: {
-                    'Authorization': `Bearer ${token}`
+                    Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
                   }
                 }
               );
