@@ -1,4 +1,4 @@
-// src/app/feedback/voice-agent/VoiceAgentContent.tsx - Fixed version
+// src/app/feedback/voice-agent/VoiceAgentContent.tsx - Auto-start version
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -45,10 +45,59 @@ export default function VoiceAgentContent() {
   const sessionId = searchParams.get('session');
 
   const [loading, setLoading] = useState(true);
+  const [creatingVoiceSession, setCreatingVoiceSession] = useState(false);
   const [voiceSession, setVoiceSession] = useState<VoiceSession | null>(null);
   const [teammates, setTeammates] = useState<Teammate[]>([]);
   const [currentTeammateIndex, setCurrentTeammateIndex] = useState(0);
   const [sessionComplete, setSessionComplete] = useState(false);
+
+  const createVoiceSession = async (teammateData: Teammate[]) => {
+    if (!sessionId) return null;
+    
+    setCreatingVoiceSession(true);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      if (!session) throw new Error('Not authenticated');
+
+      const response = await fetch('/api/voice-agent/session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          feedbackSessionId: sessionId,
+          teammates: teammateData.map(t => ({
+            id: t.id,
+            name: t.name
+          }))
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create voice session');
+      }
+
+      const { voiceSession: newVoiceSession } = await response.json();
+      setVoiceSession(newVoiceSession);
+      
+      return newVoiceSession;
+    } catch (error) {
+      console.error('Error creating voice session:', error);
+      toast({
+        title: 'Error creating voice session',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+      throw error;
+    } finally {
+      setCreatingVoiceSession(false);
+    }
+  };
 
   useEffect(() => {
     const loadSession = async () => {
@@ -102,9 +151,7 @@ export default function VoiceAgentContent() {
           // Get relationship data for this teammate
           let relationship, jobTitle, industry;
           try {
-
             const { data: { session } } = await supabase.auth.getSession();
-            // const token = session?.access_token;
 
             if (session) {
               const relationshipResponse = await fetch(`/api/voice-agent/relationship?providerId=${session.user.id}&recipientId=${recipient.recipient_id}`, {
@@ -137,14 +184,27 @@ export default function VoiceAgentContent() {
 
         setTeammates(teammateData);
 
-        if (existingVoiceSession) {
-          setVoiceSession(existingVoiceSession);
+        let currentVoiceSession = existingVoiceSession;
+
+        // If no voice session exists, create one automatically
+        if (!existingVoiceSession && teammateData.length > 0) {
+          try {
+            currentVoiceSession = await createVoiceSession(teammateData);
+          } catch (error) {
+            // If voice session creation fails, redirect to choice page
+            router.push('/feedback/choice?session=' + sessionId);
+            return;
+          }
+        }
+
+        if (currentVoiceSession) {
+          setVoiceSession(currentVoiceSession);
           
           // Load progress if session exists
           const { data: progress } = await supabase
             .from('voice_session_recipients')
             .select('recipient_id, discussed, transcript')
-            .eq('voice_session_id', existingVoiceSession.id);
+            .eq('voice_session_id', currentVoiceSession.id);
 
           if (progress) {
             const updatedTeammates = teammateData.map(teammate => {
@@ -190,52 +250,6 @@ export default function VoiceAgentContent() {
 
     loadSession();
   }, [sessionId, router]);
-
-  const createVoiceSession = async () => {
-    if (!sessionId) return;
-    
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      if (!session) throw new Error('Not authenticated');
-
-      const response = await fetch('/api/voice-agent/session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          feedbackSessionId: sessionId,
-          teammates: teammates.map(t => ({
-            id: t.id,
-            name: t.name
-          }))
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create voice session');
-      }
-
-      const { voiceSession: newVoiceSession } = await response.json();
-      setVoiceSession(newVoiceSession);
-      
-      toast({
-        title: 'Voice session ready!',
-        description: 'You can now start your conversations',
-      });
-    } catch (error) {
-      console.error('Error creating voice session:', error);
-      toast({
-        title: 'Error creating voice session',
-        description: error instanceof Error ? error.message : 'Unknown error',
-        variant: 'destructive',
-      });
-    }
-  };
 
   const handleTeammateComplete = async (transcript: string) => {
     // Mark current teammate as discussed
@@ -293,10 +307,6 @@ export default function VoiceAgentContent() {
     router.push(`/feedback/choice?session=${sessionId}`);
   };
 
-  // const goBack = () => {
-  //   router.push(`/feedback/choice?session=${sessionId}`);
-  // };
-
   const completeSession = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -331,16 +341,16 @@ export default function VoiceAgentContent() {
   const currentTeammate = teammates[currentTeammateIndex];
   const isValidForVoiceInterface = voiceSession?.id && currentTeammate?.id && !sessionComplete;
 
-  if (loading) {
+  if (loading || creatingVoiceSession) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-cerulean" />
+      <div className="flex flex-col justify-center items-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-cerulean mb-4" />
+        <p className="text-slate-500">
+          {loading ? 'Loading your feedback session...' : 'Setting up your voice session...'}
+        </p>
       </div>
     );
   }
-
-  // const completedCount = teammates.filter(t => t.discussed).length;
-  // const progressPercentage = teammates.length > 0 ? (completedCount / teammates.length) * 100 : 0;
 
   return (
     <>
@@ -381,37 +391,15 @@ export default function VoiceAgentContent() {
           </>
         ) : (
           <>
-          <h1 className='text-4xl font-light text-berkeleyblue pb-2'>Ready to Start?</h1>
-          <ul className='list-disc pl-5 space-y-2 text-slate-500 text-base font-light pb-4'>
-            <li>You&apos;ll have a natural conversation about each teammate (3-4 minutes each)</li>
-            <li>The AI will ask follow-up questions based on your answers</li>
-            <li>After each conversation, you&apos;ll move onto the next person</li>
-            <li>Total time: about {teammates.length * 4} minutes</li>
-          </ul>
-
-          {/* Debug info in development */}
-          {/* {process.env.NODE_ENV === 'development' && (
-            <div className="mb-4 p-4 bg-gray-100 rounded">
-              <p className="text-sm">Debug:</p>
-              <ul className="text-xs">
-                <li>voiceSession: {voiceSession ? voiceSession.id : 'null'}</li>
-                <li>currentTeammate: {currentTeammate ? currentTeammate.name : 'null'}</li>
-                <li>currentTeammateId: {currentTeammate?.id || 'null'}</li>
-                <li>teammates.length: {teammates.length}</li>
-                <li>sessionComplete: {sessionComplete.toString()}</li>
-              </ul>
-            </div>
-          )} */}
-
-          <Button 
-              onClick={createVoiceSession}
-              disabled={teammates.length === 0}
-            >
-              Start Voice Conversations
+            <h1 className='text-4xl font-light text-berkeleyblue pb-2'>Session Error</h1>
+            <p className='text-slate-500 text-base font-light pb-4'>
+              There was an issue setting up your voice session. Please try again.
+            </p>
+            <Button onClick={() => router.push(`/feedback/choice?session=${sessionId}`)}>
+              Go Back
             </Button>
           </>
         )}
-
 
     </div>
     </>
