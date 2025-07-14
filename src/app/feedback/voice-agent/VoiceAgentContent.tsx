@@ -191,6 +191,7 @@ export default function VoiceAgentContent() {
           try {
             currentVoiceSession = await createVoiceSession(teammateData);
           } catch (error) {
+            console.error('Error creating voice session:', error);
             // If voice session creation fails, redirect to choice page
             router.push('/feedback/choice?session=' + sessionId);
             return;
